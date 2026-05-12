@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
 dependencies:
-  koolbase_flutter: ^2.6.3
+  koolbase_flutter: ^2.8.0
 ```
 
 **4. Initialize before `runApp()`:**
@@ -43,6 +43,8 @@ That's it. Every feature below is now available via `Koolbase.*`.
 
 ## Authentication
 
+Email + password, Google, Apple, and phone + OTP — out of the box.
+
 ```dart
 // Register
 await Koolbase.auth.register(email: 'user@example.com', password: 'password');
@@ -56,15 +58,40 @@ final user = Koolbase.auth.currentUser;
 // Logout
 await Koolbase.auth.logout();
 
-// Google OAuth
-await Koolbase.auth.signInWithGoogle(idToken: googleIdToken);
-
-// Sign in with Apple
-final session = await KoolbaseAppleAuth.signIn();
-
 // Password reset
 await Koolbase.auth.forgotPassword(email: 'user@example.com');
 ```
+
+### OAuth — Google & Apple
+
+```dart
+// Google
+await Koolbase.auth.signInWithGoogle(idToken: googleIdToken);
+
+// Apple
+final session = await KoolbaseAppleAuth.signIn();
+```
+
+### Phone + OTP
+
+```dart
+// Send a one-time code
+await Koolbase.auth.sendOtp(phoneE164: '+233200000000');
+
+// Verify and sign in
+await Koolbase.auth.verifyOtp(
+  phoneE164: '+233200000000',
+  code: '123456',
+);
+
+// Or link a phone to an existing account
+await Koolbase.auth.linkPhone(
+  phoneE164: '+233200000000',
+  code: '123456',
+);
+```
+
+Configure your SMS provider (Twilio, Africa's Talking, or Hubtel) in the dashboard under Phone Auth.
 
 ---
 
@@ -152,6 +179,8 @@ subscription.cancel();
 
 ## Functions
 
+Invoke deployed serverless functions. When a user is signed in via `Koolbase.auth`, their access token is automatically forwarded — the function receives the caller's identity via `ctx.auth`. No token handling on the client side.
+
 ```dart
 // Invoke a deployed function
 final result = await Koolbase.functions.invoke(
@@ -161,6 +190,22 @@ final result = await Koolbase.functions.invoke(
 
 if (result.success) print(result.data);
 ```
+
+Inside the function, read the caller:
+
+```dart
+// In your deployed Dart function
+Future<Map<String, dynamic>> handler(Map<String, dynamic> ctx) async {
+  final userId = (ctx['auth'] as Map?)?['user_id'] as String?;
+  if (userId == null) {
+    return {'error': {'code': 'AUTH_REQUIRED'}, 'status': 401};
+  }
+  // Authenticated logic here
+  return {'ok': true};
+}
+```
+
+Token refresh is transparent — the SDK reads the current token fresh on every invoke. Full docs at [docs.koolbase.com/functions/authentication](https://docs.koolbase.com/functions/authentication).
 
 ---
 
@@ -337,18 +382,20 @@ await Koolbase.messaging.send(
 
 | Feature | Koolbase | Firebase | Supabase |
 | --- | --- | --- | --- |
-| Flutter-first SDK | ✅ | ✅ | ❌ |
-| Feature flags | ✅ | ❌ | ❌ |
-| Remote config | ✅ | ✅ | ❌ |
-| Version enforcement | ✅ | ❌ | ❌ |
-| Dart functions runtime | ✅ | ❌ | ❌ |
-| Offline-first database | ✅ | ✅ | ❌ |
-| Code push (OTA) | ✅ | ❌ | ❌ |
-| Server-driven UI | ✅ | ❌ | ❌ |
-| Logic engine (flows OTA) | ✅ | ❌ | ❌ |
-| Analytics | ✅ | ✅ | ❌ |
-| Cloud Messaging | ✅ | ✅ | ❌ |
-| Sign in with Apple | ✅ | ✅ | ❌ |
+| Flutter-first SDK | Yes | Yes | — |
+| Feature flags | Yes | — | — |
+| Remote config | Yes | Yes | — |
+| Version enforcement | Yes | — | — |
+| Dart functions runtime | Yes | — | — |
+| Offline-first database | Yes | Yes | — |
+| Code push (OTA) | Yes | — | — |
+| Server-driven UI | Yes | — | — |
+| Logic engine (flows OTA) | Yes | — | — |
+| Analytics | Yes | Yes | — |
+| Cloud Messaging | Yes | Yes | — |
+| Sign in with Apple | Yes | Yes | — |
+| Phone + OTP | Yes | Yes | Yes |
+| Authenticated functions (`ctx.auth`) | Yes | Yes | Yes |
 
 ---
 
@@ -364,7 +411,7 @@ Manage your projects at [app.koolbase.com](https://app.koolbase.com)
 
 - [GitHub Issues](https://github.com/kennedyowusu/koolbase_flutter/issues)
 - [docs.koolbase.com](https://docs.koolbase.com)
-- Email: hello@koolbase.com
+- Email: <hello@koolbase.com>
 
 ## License
 
