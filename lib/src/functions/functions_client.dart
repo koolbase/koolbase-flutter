@@ -27,19 +27,28 @@ extension FunctionRuntimeExtension on FunctionRuntime {
 class KoolbaseFunctionsClient {
   final String baseUrl;
   final String publicKey;
+  final String? Function()? _userAccessTokenProvider;
   String? _authToken;
 
   KoolbaseFunctionsClient({
     required this.baseUrl,
     required this.publicKey,
-  });
+    String? Function()? userAccessTokenProvider,
+  }) : _userAccessTokenProvider = userAccessTokenProvider;
 
   void setAuthToken(String? token) => _authToken = token;
 
-  Map<String, String> get _sdkHeaders => {
-        'Content-Type': 'application/json',
-        'x-api-key': publicKey,
-      };
+  Map<String, String> get _sdkHeaders {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'x-api-key': publicKey,
+    };
+    final userToken = _userAccessTokenProvider?.call();
+    if (userToken != null && userToken.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $userToken';
+    }
+    return headers;
+  }
 
   Map<String, String> get _authHeaders => {
         'Content-Type': 'application/json',
@@ -47,22 +56,6 @@ class KoolbaseFunctionsClient {
       };
 
   /// Invoke a deployed function by name.
-  ///
-  /// [name] — the function name as deployed in the dashboard.
-  /// [body] — optional JSON payload sent as the request body.
-  /// [timeout] — request timeout, defaults to 30 seconds.
-  ///
-  /// Example:
-  /// ```dart
-  /// final result = await Koolbase.functions.invoke(
-  ///   'send-welcome-email',
-  ///   body: {'userId': '123', 'email': 'user@example.com'},
-  /// );
-  ///
-  /// if (result.success) {
-  ///   print(result.data);
-  /// }
-  /// ```
   Future<FunctionInvokeResult> invoke(
     String name, {
     Map<String, dynamic>? body,

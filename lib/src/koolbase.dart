@@ -7,7 +7,8 @@ import 'auth/auth_api.dart';
 import 'code_push/code_push_client.dart';
 import 'analytics/analytics_client.dart';
 import 'messaging/messaging_client.dart';
-export 'messaging/messaging_client.dart' show KoolbaseMessaging, KoolbaseMessage;
+export 'messaging/messaging_client.dart'
+    show KoolbaseMessaging, KoolbaseMessage;
 export 'analytics/analytics_client.dart' show KoolbaseNavigatorObserver;
 import 'code_push/flow_models.dart';
 import 'rfw/rfw_models.dart';
@@ -168,6 +169,7 @@ class Koolbase {
     _functions = KoolbaseFunctionsClient(
       baseUrl: config.baseUrl,
       publicKey: config.publicKey,
+      userAccessTokenProvider: () => _auth?.accessToken,
     );
 
     // Initialize OTA client

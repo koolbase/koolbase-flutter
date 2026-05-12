@@ -1,9 +1,20 @@
+# 2.8.0
+
+- **Functions:** Authenticated invocations now forward the signed-in user's session automatically.
+  - When a user is signed in via `Koolbase.auth`, calls to `Koolbase.functions.invoke()` include their access token in the request.
+  - Functions receive caller identity via `ctx.auth` — a map with `user_id` (string or null) and `is_authenticated` (bool).
+  - Unauthenticated invokes continue to work; Functions decide whether they require auth and respond with `AUTH_REQUIRED` if needed.
+  - Token refresh is handled transparently — the next invoke after a refresh uses the fresh token without any client-side wiring.
+- Backwards compatible: no breaking changes. Existing code paths continue to work.
+
 ## 2.7.0
 
 ### Phone + OTP authentication
+
 Sign users in with their phone number — for emerging markets and apps where email isn't the primary identifier.
 
 New methods on `Koolbase.auth`:
+
 - `sendOtp({required String phoneNumber})` — sends a 6-digit OTP to an E.164 phone number, returns the expiry timestamp.
 - `verifyOtp({required String phoneNumber, required String code})` — verifies the code and signs the user in (creates the account if new). Returns `PhoneVerifyResult` with an `isNewUser` flag for routing first-time users to onboarding.
 - `linkPhone({required String phoneNumber, required String code})` — links a phone number to an already-authenticated user.
@@ -40,6 +51,7 @@ Phone numbers must be in E.164 format (e.g. `+233244000000`). Configure your SMS
 ### Logic Engine v2 — Richer conditions
 
 New operators:
+
 - `gte` — greater than or equals
 - `lte` — less than or equals
 - `contains` — string or list contains value
