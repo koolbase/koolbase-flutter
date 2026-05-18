@@ -41,6 +41,14 @@ class KoolbaseAuthClient {
   String? _accessToken;
   DateTime? _accessTokenExpiresAt;
 
+  /// Single-flight refresh slot. Multiple concurrent callers that hit
+  /// [_ensureValidToken] or [refreshSession] while a refresh is in progress
+  /// share the same Future and receive the same resulting session — avoiding
+  /// the multi-refresh race where each parallel caller triggers its own
+  /// refresh and the server rotates the refresh token from under the
+  /// in-flight peers.
+  Future<AuthSession>? _ongoingRefresh;
+
   final StreamController<KoolbaseUser?> _authStateController =
       StreamController<KoolbaseUser?>.broadcast();
 
@@ -177,26 +185,36 @@ class KoolbaseAuthClient {
     await _api.verifyEmail(token);
   }
 
+  /// Consume an unlock token from a brute-force unlock email. Apps typically
+  /// extract this token from a deep link parameter when the user clicks the
+  /// unlock link in their email.
+  ///
+  /// Throws [UnlockTokenInvalidException] if the token is invalid, expired,
+  /// or already consumed (one-shot).
+  Future<void> unlock(String token) async {
+    await _api.unlock(token);
+  }
+
   /// Manually refresh the access token using the persisted refresh token.
   /// Returns true on success, false if no session exists or refresh failed.
   ///
   /// Useful for recovering from [RestoreResult.offline] once network is back,
   /// or for proactively refreshing before a long-running operation.
+  ///
+  /// Concurrent calls are deduplicated via [_ongoingRefresh] — multiple
+  /// simultaneous callers share one underlying refresh and receive the same
+  /// result.
   Future<bool> refreshSession() async {
-    final persisted = await _storage.readSession();
-    if (persisted == null) return false;
     try {
-      final session = await _api.refresh(persisted.refreshToken);
-      await _setSession(session);
+      await _refreshSingleFlight();
       return true;
     } catch (_) {
-      await _clearSession();
       return false;
     }
   }
 
   Future<String> _ensureValidToken() async {
-    // Check if access token exists and is not expired (1-min buffer).
+    // Fast path: existing token is still valid (1-min buffer).
     if (_accessToken != null &&
         _accessTokenExpiresAt != null &&
         DateTime.now().isBefore(
@@ -204,17 +222,51 @@ class KoolbaseAuthClient {
       return _accessToken!;
     }
 
-    // Token expired or missing — refresh from persisted session.
-    final persisted = await _storage.readSession();
-    if (persisted == null) throw const SessionExpiredException();
-
+    // Slow path: refresh (deduplicated across concurrent callers).
     try {
-      final session = await _api.refresh(persisted.refreshToken);
-      await _setSession(session);
+      final session = await _refreshSingleFlight();
       return session.accessToken;
     } catch (_) {
-      await _clearSession();
       throw const SessionExpiredException();
+    }
+  }
+
+  /// Single-flight refresh. The first caller to find [_ongoingRefresh] null
+  /// claims the slot synchronously, performs the refresh, and shares its
+  /// Future with any concurrent callers via the field. All callers receive
+  /// the same [AuthSession] result (or the same error).
+  ///
+  /// On failure, [_clearSession] is called once and the error is propagated
+  /// to all waiters.
+  Future<AuthSession> _refreshSingleFlight() async {
+    final inFlight = _ongoingRefresh;
+    if (inFlight != null) {
+      // Another caller already started a refresh — share their Future.
+      return inFlight;
+    }
+
+    // Claim the slot synchronously. No awaits between the null-check above
+    // and this assignment, so this is atomic relative to other Dart code.
+    final completer = Completer<AuthSession>();
+    _ongoingRefresh = completer.future;
+
+    try {
+      final persisted = await _storage.readSession();
+      if (persisted == null) {
+        throw const SessionExpiredException();
+      }
+      final session = await _api.refresh(persisted.refreshToken);
+      await _setSession(session);
+      completer.complete(session);
+      return session;
+    } catch (e, st) {
+      // Propagate the error to any concurrent waiters before clearing the
+      // session, so they don't see a half-cleared state.
+      if (!completer.isCompleted) completer.completeError(e, st);
+      await _clearSession();
+      rethrow;
+    } finally {
+      _ongoingRefresh = null;
     }
   }
 

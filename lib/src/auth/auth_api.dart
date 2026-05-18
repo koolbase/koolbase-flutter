@@ -53,6 +53,10 @@ class AuthApi {
     return _parseSession(res);
   }
 
+  /// Refresh exchanges a refresh token for a new access token + rotated
+  /// refresh token. 401 in this context means the refresh token was rejected
+  /// (revoked, expired, or otherwise invalid) — distinct from login's 401
+  /// which means bad credentials.
   Future<AuthSession> refresh(String refreshToken) async {
     final res = await http
         .post(
@@ -61,7 +65,7 @@ class AuthApi {
           body: jsonEncode({'refresh_token': refreshToken}),
         )
         .timeout(const Duration(seconds: 10));
-    return _parseSession(res);
+    return _parseSession(res, isRefresh: true);
   }
 
   Future<void> logout(String accessToken) async {
@@ -104,13 +108,14 @@ class AuthApi {
   }
 
   Future<void> forgotPassword(String email) async {
-    await http
+    final res = await http
         .post(
           Uri.parse('$baseUrl/v1/sdk/auth/password-reset'),
           headers: _headers,
           body: jsonEncode({'email': email}),
         )
         .timeout(const Duration(seconds: 10));
+    _checkError(res);
   }
 
   Future<void> resetPassword({
@@ -138,22 +143,80 @@ class AuthApi {
     _checkError(res);
   }
 
-  AuthSession _parseSession(http.Response res) {
+  /// Consume an unlock token from a brute-force unlock email. Returns
+  /// nothing on success (204). Throws [UnlockTokenInvalidException] if
+  /// the token is invalid, expired, or already consumed.
+  Future<void> unlock(String token) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/auth/unlock'),
+          headers: _headers,
+          body: jsonEncode({'token': token}),
+        )
+        .timeout(const Duration(seconds: 10));
+    _checkError(res);
+  }
+
+  /// Parse a session-returning response (login, signUp, refresh).
+  ///
+  /// [isRefresh] controls how 401 is interpreted:
+  /// - false (default, login/signUp): 401 = invalid credentials
+  /// - true (refresh): 401 = session expired (refresh token was rejected)
+  AuthSession _parseSession(http.Response res, {bool isRefresh = false}) {
     if (res.statusCode == 409) throw const EmailAlreadyInUseException();
-    if (res.statusCode == 401) throw const InvalidCredentialsException();
+    if (res.statusCode == 401) {
+      throw isRefresh
+          ? const SessionExpiredException()
+          : const InvalidCredentialsException();
+    }
     if (res.statusCode == 403) throw const UserDisabledException();
     _checkError(res);
     return AuthSession.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Map a non-2xx response to a typed exception.
+  ///
+  /// Status-based routing:
+  /// - 429 + "account temporarily locked" → [AccountLockedException]
+  /// - 429 (other) → [RateLimitException]
+  ///
+  /// Message-based routing (for status codes too generic on their own):
+  /// - "invalid or expired unlock token" → [UnlockTokenInvalidException]
+  /// - "session revoked" / "token revoked" → [TokenRevokedException]
+  ///   (forward-compatible; server may not yet emit these markers)
+  ///
+  /// Fallback: generic [KoolbaseAuthException] with the server-provided
+  /// message or a default.
   void _checkError(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
     Map<String, dynamic> body = {};
     try {
       body = jsonDecode(res.body) as Map<String, dynamic>;
     } catch (_) {}
+    final msg = (body['error'] as String?) ?? '';
+
+    // 429 — account lock vs general rate limit
+    if (res.statusCode == 429) {
+      if (msg.contains('account temporarily locked')) {
+        throw const AccountLockedException();
+      }
+      throw RateLimitException(msg.isEmpty ? null : msg);
+    }
+
+    // 400 — unlock token invalid (specific message)
+    if (msg.contains('invalid or expired unlock token')) {
+      throw const UnlockTokenInvalidException();
+    }
+
+    // 401 — token revoked (forward-compatible; server messages may evolve)
+    if (msg.contains('session revoked') ||
+        msg.contains('token revoked') ||
+        msg.contains('session has been revoked')) {
+      throw const TokenRevokedException();
+    }
+
     throw KoolbaseAuthException(
-      body['error'] as String? ?? 'An unexpected error occurred',
+      msg.isEmpty ? 'An unexpected error occurred' : msg,
     );
   }
 
@@ -207,7 +270,8 @@ class AuthApi {
         )
         .timeout(const Duration(seconds: 10));
     _checkPhoneError(res);
-    return PhoneVerifyResult.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    return PhoneVerifyResult.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   Future<void> linkPhone({

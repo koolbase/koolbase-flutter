@@ -35,7 +35,8 @@ class WeakPasswordException extends KoolbaseAuthException {
 
 class NetworkException extends KoolbaseAuthException {
   const NetworkException()
-      : super('Network error, please check your connection', code: 'network_error');
+      : super('Network error, please check your connection',
+            code: 'network_error');
 }
 
 class InvalidPhoneNumberException extends KoolbaseAuthException {
@@ -51,8 +52,7 @@ class OtpExpiredException extends KoolbaseAuthException {
 }
 
 class OtpInvalidException extends KoolbaseAuthException {
-  const OtpInvalidException()
-      : super('Invalid OTP code', code: 'otp_invalid');
+  const OtpInvalidException() : super('Invalid OTP code', code: 'otp_invalid');
 }
 
 class OtpMaxAttemptsException extends KoolbaseAuthException {
@@ -77,4 +77,54 @@ class SmsConfigMissingException extends KoolbaseAuthException {
   const SmsConfigMissingException()
       : super('SMS provider not configured for this project',
             code: 'sms_config_missing');
+}
+
+/// Thrown when the account is temporarily locked due to too many failed
+/// login attempts (brute-force protection). The server uses progressive
+/// 5/10/20-attempt lockouts; if an unlock email was issued (level 2+),
+/// the user can clear the lock by clicking that link, which calls
+/// [KoolbaseAuthClient.unlock] with the token.
+///
+/// [lockedUntil] is currently null — the server returns a generic 429 but
+/// does not yet include the unlock timestamp in the response body. Field
+/// is forward-compatible for when the server adds it.
+class AccountLockedException extends KoolbaseAuthException {
+  final DateTime? lockedUntil;
+
+  const AccountLockedException({this.lockedUntil})
+      : super('Account temporarily locked due to too many failed attempts',
+            code: 'account_locked');
+}
+
+/// Thrown when the server rate-limits a non-phone authentication endpoint
+/// (HTTP 429 without the "account temporarily locked" marker). Phone OTP
+/// endpoints throw [OtpRateLimitException] instead — they have a separate
+/// rate-limiter on the server.
+class RateLimitException extends KoolbaseAuthException {
+  const RateLimitException([String? message])
+      : super(message ?? 'Too many requests, please wait before trying again',
+            code: 'rate_limit');
+}
+
+/// Thrown when the unlock token (from a brute-force unlock email) is
+/// invalid or expired. Unlock tokens are one-shot — once consumed, the
+/// same token can't be reused.
+class UnlockTokenInvalidException extends KoolbaseAuthException {
+  const UnlockTokenInvalidException()
+      : super('Unlock link is invalid or has expired',
+            code: 'unlock_token_invalid');
+}
+
+/// Thrown when the access token references a session that has been
+/// revoked centrally — either by the user (via the sessions endpoint) or
+/// by an administrator. Distinct from [SessionExpiredException] which
+/// indicates the access token TTL elapsed without a successful refresh.
+///
+/// Forward-compatible: the server's session-aware JWT validation will
+/// emit specific revocation signals in a future release; this exception
+/// will be thrown when those signals appear.
+class TokenRevokedException extends KoolbaseAuthException {
+  const TokenRevokedException()
+      : super('Session has been revoked, please log in again',
+            code: 'token_revoked');
 }
