@@ -1,6 +1,6 @@
 name: koolbase_flutter
 description: Flutter SDK for Koolbase — feature flags, remote config, version enforcement, authentication, storage, database, realtime, OTA updates, and code push for mobile apps.
-version: 2.10.1
+version: 2.11.0
 homepage: https://koolbase.com
 repository: https://github.com/kennedyowusu/koolbase_flutter
 

@@ -437,4 +437,75 @@ class AuthApi {
         );
     }
   }
+
+  /// POST /v1/sdk/auth/oauth/google — server-side Google Sign-In.
+  ///
+  /// [idToken] is the JWT from a native Google Sign-In credential.
+  /// [nonce], if provided, must match what was passed to the native
+  /// sign-in flow (replay defense). Google embeds the user's name and
+  /// email in the token itself, so unlike Apple this method does not
+  /// take a fullName parameter.
+  Future<AuthSession> signInWithGoogle({
+    required String idToken,
+    String? nonce,
+  }) async {
+    final body = <String, dynamic>{
+      'identity_token': idToken,
+    };
+    if (nonce != null && nonce.isNotEmpty) {
+      body['nonce'] = nonce;
+    }
+
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/auth/oauth/google'),
+          headers: _headers,
+          body: jsonEncode(body),
+        )
+        .timeout(timeout);
+
+    return _parseGoogleSessionResponse(res);
+  }
+
+  /// Parses a /v1/sdk/auth/oauth/google response. Distinct from
+  /// _parseSession and _parseAppleSessionResponse because OAuth error
+  /// semantics differ per-provider.
+  Future<AuthSession> _parseGoogleSessionResponse(
+      http.Response response) async {
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return AuthSession.fromJson(json);
+    }
+
+    String errorMessage = '';
+    try {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      errorMessage = (json['error'] as String?) ?? '';
+    } catch (_) {
+      // best-effort error message extraction
+    }
+
+    switch (response.statusCode) {
+      case 400:
+        if (errorMessage.contains('not configured')) {
+          throw const GoogleSignInNotConfiguredException();
+        }
+        if (errorMessage.contains('did not return email')) {
+          throw const GoogleEmailRequiredException();
+        }
+        throw KoolbaseAuthException('google sign-in failed: $errorMessage');
+      case 401:
+        throw const InvalidGoogleTokenException();
+      case 403:
+        throw const UserDisabledException();
+      case 409:
+        throw const OAuthEmailConflictException();
+      case 429:
+        throw RateLimitException(errorMessage);
+      default:
+        throw KoolbaseAuthException(
+          'google sign-in failed: ${response.statusCode} $errorMessage',
+        );
+    }
+  }
 }

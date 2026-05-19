@@ -160,3 +160,27 @@ class OAuthEmailConflictException extends KoolbaseAuthException {
           code: 'oauth_email_conflict',
         );
 }
+
+class GoogleSignInNotConfiguredException extends KoolbaseAuthException {
+  const GoogleSignInNotConfiguredException()
+      : super(
+          'Google Sign-In is not configured for this environment',
+          code: 'google_not_configured',
+        );
+}
+
+class InvalidGoogleTokenException extends KoolbaseAuthException {
+  const InvalidGoogleTokenException()
+      : super(
+          'Invalid Google identity token',
+          code: 'invalid_google_token',
+        );
+}
+
+class GoogleEmailRequiredException extends KoolbaseAuthException {
+  const GoogleEmailRequiredException()
+      : super(
+          'Google did not return email for this sign-in. Ensure the email scope is requested in the native flow.',
+          code: 'google_email_required',
+        );
+}

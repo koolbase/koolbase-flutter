@@ -175,6 +175,41 @@ class KoolbaseAuthClient {
     return session.user;
   }
 
+  /// Sign in with Google using an idToken obtained from a native Google
+  /// Sign-In SDK.
+  ///
+  /// The SDK is library-agnostic — use any native Google Sign-In package
+  /// (`google_sign_in`, etc.) and pass the resulting [idToken]. Google
+  /// embeds the user's name and email in the idToken itself, so this
+  /// method does not take a fullName parameter (unlike [signInWithApple]).
+  ///
+  /// On success the session is persisted via [KoolbaseAuthStorage] and
+  /// [authStateChanges] fires with the resolved user.
+  ///
+  /// Throws:
+  ///   - [GoogleSignInNotConfiguredException] (400) — provider not enabled
+  ///     in OAuth config for this environment.
+  ///   - [InvalidGoogleTokenException] (401) — token signature, audience,
+  ///     expiry, replay, or nonce check failed server-side.
+  ///   - [UserDisabledException] (403) — account flag set to disabled.
+  ///   - [GoogleEmailRequiredException] (400) — Google did not return
+  ///     email for a new-account sign-in. Recovery: ensure the email
+  ///     scope is requested in the native flow.
+  ///   - [OAuthEmailConflictException] (409) — email matches existing
+  ///     user but auto-link rule blocked. Recovery: sign in with existing
+  ///     method, link from settings.
+  Future<KoolbaseUser> signInWithGoogle({
+    required String idToken,
+    String? nonce,
+  }) async {
+    final session = await _api.signInWithGoogle(
+      idToken: idToken,
+      nonce: nonce,
+    );
+    await _setSession(session);
+    return session.user;
+  }
+
   /// Log the user out.
   ///
   /// The local session is **always cleared**, regardless of whether the

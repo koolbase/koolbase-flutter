@@ -43,7 +43,7 @@ That's it. Every feature below is now available via `Koolbase.*`.
 
 ## Authentication
 
-Email + password, Apple Sign-In, and phone + OTP — out of the box.
+Email + password, Apple Sign-In, Google Sign-In, and phone + OTP — out of the box.
 
 ```dart
 // Register
@@ -93,9 +93,24 @@ final user = await Koolbase.auth.signInWithApple(
 );
 ```
 
-Before users can sign in, configure Apple Sign-In for your environment with your iOS app's Bundle ID. Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+Configure Apple Sign-In for your environment with your iOS app's Bundle ID. Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
 
-> **Google Sign-In** — coming in v2.11.0.
+### OAuth — Google
+
+Google Sign-In uses the native authentication flow via the `google_sign_in` package:
+
+```dart
+import 'package:google_sign_in/google_sign_in.dart';
+
+final googleUser = await GoogleSignIn().signIn();
+final googleAuth = await googleUser?.authentication;
+
+final user = await Koolbase.auth.signInWithGoogle(
+  idToken: googleAuth!.idToken!,
+);
+```
+
+Configure Google Sign-In for your environment with the OAuth client IDs from Google Cloud Console (typically one each for iOS, Android, and web). Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
 
 ### Phone + OTP
 

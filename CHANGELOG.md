@@ -1,4 +1,64 @@
-## 2.10.1 — 2026-05-19
+## 2.11.0 — 2026-05-19
+
+### Added
+
+- **Sign in with Google** — production-ready end-user OAuth via
+  `Koolbase.auth.signInWithGoogle(idToken: ..., nonce: ...)`. Routes to
+  the server endpoint at `/v1/sdk/auth/oauth/google` with RS256-only
+  JWKS verification against Google's certs endpoint, multi-audience
+  support (iOS / Android / web client IDs configured per environment),
+  15-minute replay defense, and optional nonce check.
+- Three new typed exceptions in `auth_exceptions.dart`:
+  `GoogleSignInNotConfiguredException`, `InvalidGoogleTokenException`,
+  `GoogleEmailRequiredException`. Reuses existing `OAuthEmailConflictException`
+  and `UserDisabledException`.
+
+#### Example with the `google_sign_in` package
+
+```dart
+import 'package:google_sign_in/google_sign_in.dart';
+
+final googleUser = await GoogleSignIn().signIn();
+final googleAuth = await googleUser?.authentication;
+
+final user = await Koolbase.auth.signInWithGoogle(
+  idToken: googleAuth!.idToken!,
+);
+```
+
+### Auto-link policy
+
+Same as Apple Sign-In (v2.10.0). A new Google identity attaches to an
+existing user only when BOTH the Google email AND the existing user's
+email are verified, AND emails match (case-insensitive). Otherwise
+sign-in either creates a new user (no email collision) or surfaces
+`OAuthEmailConflictException`.
+
+### Configuration required
+
+Before users can sign in with Google, configure the provider for your
+environment. Run this against your Koolbase project's `project_oauth_configs`
+(dashboard UI for OAuth config lands in a later release):
+
+```sql
+UPDATE project_oauth_configs
+   SET google_client_ids = ARRAY[
+         '<your-ios-client-id>.apps.googleusercontent.com',
+         '<your-android-client-id>.apps.googleusercontent.com',
+         '<your-web-client-id>.apps.googleusercontent.com'
+       ],
+       enabled = true
+ WHERE environment_id = '<your-env-id>'
+   AND provider = 'google';
+```
+
+Get the client IDs from Google Cloud Console under Credentials → OAuth 2.0
+Client IDs. You'll need one per platform (iOS, Android, web).
+
+### Coming next
+
+- **React Native SDK v1.11.0** — same surface
+- **Dashboard UI** for OAuth config — replaces the SQL workflow
 
 ### Documentation
 
