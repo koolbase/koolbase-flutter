@@ -9,7 +9,7 @@ import 'package:uuid/uuid.dart';
 /// SDK version to pub.dev — used in device metadata headers sent on every
 /// authentication request so the server can attribute session activity to
 /// the correct SDK version.
-const koolbaseSdkVersion = '2.9.1';
+const koolbaseSdkVersion = '2.10.1';
 
 const _kDeviceLabelKey = 'koolbase_device_label_v1';
 
@@ -34,7 +34,7 @@ class DeviceMetadata {
   /// Free-form; the server stores as-is for display in session lists.
   final String platformVersion;
 
-  /// Koolbase SDK version (e.g. '2.9.0'). Matches [koolbaseSdkVersion].
+  /// Koolbase SDK version (e.g. '2.10.0'). Matches [koolbaseSdkVersion].
   final String sdkVersion;
 
   /// Consumer app version from package_info_plus in the form

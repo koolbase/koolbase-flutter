@@ -1,4 +1,104 @@
-# 2.9.1
+## 2.10.1 — 2026-05-19
+
+### Documentation
+
+- README rewritten to accurately reflect the v2.10.0 SDK surface. No SDK
+  code changes; this release exists to refresh the README rendered on the
+  pub.dev package page.
+- Removed fictional `Koolbase.auth.signInWithGoogle` reference. Google
+  Sign-In is planned for v2.11.0 — noted explicitly in the OAuth section.
+- Replaced the deprecated `KoolbaseAppleAuth.signIn()` example with the
+  new `Koolbase.auth.signInWithApple(identityToken: ..., nonce: ..., fullName: ...)`
+  v2.10.0 API using the `sign_in_with_apple` package.
+- Added `Koolbase.auth.authStateChanges.listen()` example.
+- Replaced the Firebase/Supabase comparison table with a Koolbase-only
+  feature inventory.
+- Bumped install snippet from `^2.8.0` to `^2.10.0`.
+
+# 2.10.0 — 2026-05-19
+
+## ✨ New features
+
+**Sign in with Apple — production-ready end-user OAuth.**
+
+After being deprecated in v2.5.0 through v2.9.x (the old implementation
+routed to the dashboard OAuth endpoint at `/v1/auth/oauth` and never
+created project-scoped end-user sessions), Apple Sign-In is now properly
+supported via a dedicated server endpoint at
+`/v1/sdk/auth/oauth/apple`.
+
+```dart
+// Get the Apple credential using any native Apple Sign-In library
+// (sign_in_with_apple, etc.) — the SDK is library-agnostic.
+final credential = await SignInWithApple.getAppleIDCredential(
+  scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+);
+
+// Pass the credential to Koolbase.
+final user = await koolbase.auth.signInWithApple(
+  identityToken: credential.identityToken!,
+  nonce: credential.nonce,  // optional but recommended (replay defense)
+  fullName: credential.givenName != null
+      ? AppleFullName(
+          givenName: credential.givenName,
+          familyName: credential.familyName,
+        )
+      : null,
+);
+```
+
+**Server-side verification** runs against the project's configured Bundle
+ID via Apple's JWKS — RS256-only, audience-bound to your project's iOS
+app, with replay defense (iat max-age of 15min) and optional nonce check.
+
+**Auto-link policy:** A new Apple identity attaches to an existing user
+only when BOTH the provider email AND the existing user's email are
+verified, AND emails match (case-insensitive). Otherwise sign-in either
+creates a new user (no email collision) or surfaces
+`OAuthEmailConflictException` (collision but auto-link rule blocked — user
+can sign in with existing method and link from settings).
+
+**Four new typed exceptions** for granular error handling:
+
+| Exception | When |
+|---|---|
+| `AppleSignInNotConfiguredException` | Apple not enabled for this environment in dashboard OAuth config |
+| `InvalidAppleTokenException` | Token signature, audience, expiry, replay, or nonce check failed |
+| `AppleEmailRequiredException` | Apple didn't return email AND no existing identity. Recovery: revoke this app's Apple ID access in iOS Settings → Apple ID → Sign-In & Security → Apps Using Apple ID |
+| `OAuthEmailConflictException` | Email matches existing user but auto-link rule blocked |
+
+### Configuration required
+
+Before users can sign in with Apple, configure the provider for your
+environment via direct DB insert against `project_oauth_configs` (the
+dashboard UI is on its way — landing in v2.10.1 or v2.11.0):
+
+```sql
+INSERT INTO project_oauth_configs (environment_id, provider, bundle_id, enabled)
+VALUES ('<your-environment-id>', 'apple', 'com.yourapp.bundle', true);
+```
+
+You'll need your iOS app's Bundle ID — it's the audience claim in identity
+tokens from native Sign in with Apple, and must match exactly.
+
+### Still deprecated — `KoolbaseAppleAuth.signIn` and `oauthLogin`
+
+These remain deprecated and continue to throw `UnimplementedError`. The
+v2.10.0 surface is `koolbase.auth.signInWithApple(...)` on the auth client
+— same place as all other auth methods. The class-level
+`KoolbaseAppleAuth.signIn(callback)` API from v1.5.0 was a wrong-shape
+design (callback-based, locked consumers to a specific native library) and
+won't be revived.
+
+### Coming next
+
+- **Dashboard UI** for OAuth config (v2.10.1) — minimal Bundle-ID input,
+  enable/disable toggle, validation. Removes the SQL-direct workflow.
+- **Google Sign-In** (v2.11.0) — same endpoint pattern at
+  `/v1/sdk/auth/oauth/google`
+- **GitHub OAuth** (v2.12.0) — code-exchange flow
+
+### 2.9.1
 
 Polish release: configurable HTTP timeout, injectable HTTP client, and a `logout()` that lets you know whether the server-side call succeeded. Also fixes a wiring oversight from v2.9.0: the device metadata headers introduced in that release were not actually being attached to requests — the SDK had the code but no construction site. v2.9.1 wires it through properly.
 

@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
 dependencies:
-  koolbase_flutter: ^2.8.0
+  koolbase_flutter: ^2.10.0
 ```
 
 **4. Initialize before `runApp()`:**
@@ -43,7 +43,7 @@ That's it. Every feature below is now available via `Koolbase.*`.
 
 ## Authentication
 
-Email + password, Google, Apple, and phone + OTP — out of the box.
+Email + password, Apple Sign-In, and phone + OTP — out of the box.
 
 ```dart
 // Register
@@ -60,17 +60,42 @@ await Koolbase.auth.logout();
 
 // Password reset
 await Koolbase.auth.forgotPassword(email: 'user@example.com');
+
+// Listen to auth state changes
+final subscription = Koolbase.auth.authStateChanges.listen((user) {
+  print(user != null ? 'signed in' : 'signed out');
+});
 ```
 
-### OAuth — Google & Apple
+### OAuth — Apple
+
+Apple Sign-In uses the native authentication flow via the `sign_in_with_apple` package:
 
 ```dart
-// Google
-await Koolbase.auth.signInWithGoogle(idToken: googleIdToken);
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
-// Apple
-final session = await KoolbaseAppleAuth.signIn();
+final credential = await SignInWithApple.getAppleIDCredential(
+  scopes: [
+    AppleIDAuthorizationScopes.email,
+    AppleIDAuthorizationScopes.fullName,
+  ],
+);
+
+final user = await Koolbase.auth.signInWithApple(
+  identityToken: credential.identityToken!,
+  nonce: credential.nonce,
+  fullName: credential.givenName != null
+      ? AppleFullName(
+          givenName: credential.givenName,
+          familyName: credential.familyName,
+        )
+      : null,
+);
 ```
+
+Before users can sign in, configure Apple Sign-In for your environment with your iOS app's Bundle ID. Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+
+> **Google Sign-In** — coming in v2.11.0.
 
 ### Phone + OTP
 
@@ -380,22 +405,20 @@ await Koolbase.messaging.send(
 
 ## What's included
 
-| Feature | Koolbase | Firebase | Supabase |
-| --- | --- | --- | --- |
-| Flutter-first SDK | Yes | Yes | — |
-| Feature flags | Yes | — | — |
-| Remote config | Yes | Yes | — |
-| Version enforcement | Yes | — | — |
-| Dart functions runtime | Yes | — | — |
-| Offline-first database | Yes | Yes | — |
-| Code push (OTA) | Yes | — | — |
-| Server-driven UI | Yes | — | — |
-| Logic engine (flows OTA) | Yes | — | — |
-| Analytics | Yes | Yes | — |
-| Cloud Messaging | Yes | Yes | — |
-| Sign in with Apple | Yes | Yes | — |
-| Phone + OTP | Yes | Yes | Yes |
-| Authenticated functions (`ctx.auth`) | Yes | Yes | Yes |
+- Authentication: email + password, Apple Sign-In, phone + OTP
+- Database with offline-first cache (Drift), realtime subscriptions, populate for related records
+- Storage with download URLs and progress callbacks
+- Realtime subscriptions over WebSocket
+- Authenticated Dart functions (`ctx.auth` exposes the caller automatically)
+- Feature flags and remote config
+- Version enforcement (force update, soft update)
+- OTA updates for assets, configs, and JSON
+- Code push (config + flag overrides + directives, no store release)
+- Server-driven UI via Flutter's `rfw` — push new screens OTA
+- Logic engine (conditional flows as data, updatable OTA)
+- Analytics (DAU/WAU/MAU, funnels, retention)
+- Cloud Messaging (FCM token registration, targeted send)
+- Flutter-first SDK with Dart-native APIs
 
 ---
 
