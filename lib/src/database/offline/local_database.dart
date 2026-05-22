@@ -46,7 +46,22 @@ class KoolbaseLocalDatabase extends _$KoolbaseLocalDatabase {
   KoolbaseLocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v2: record shape changed to the flat, $-namespaced format.
+          // Cached query results hold the old envelope shape and would fail
+          // the new KoolbaseRecord.fromJson — clear the read caches so they
+          // refetch fresh. Pending offline writes are user data → preserved.
+          if (from < 2) {
+            await delete(cachedQueries).go();
+            await delete(cachedRecords).go();
+          }
+        },
+      );
 
   static QueryExecutor _openConnection() {
     return driftDatabase(name: 'koolbase_offline');
