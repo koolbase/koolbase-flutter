@@ -85,8 +85,8 @@ class KoolbaseDatabaseClient {
         throw Exception(body['error'] ?? 'Insert failed');
       }
 
-      final record = KoolbaseRecord.fromJson(
-          jsonDecode(res.body) as Map<String, dynamic>);
+      final record =
+          KoolbaseRecord.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
 
       // Save to local cache
       await _cacheStore?.saveRecord(
@@ -119,8 +119,7 @@ class KoolbaseDatabaseClient {
         // Return optimistic record
         return KoolbaseRecord(
           id: tempId,
-          projectId: '',
-          collectionId: '',
+          collection: collection,
           createdBy: _userId,
           data: data,
           createdAt: DateTime.now(),

@@ -32,8 +32,7 @@ class KoolbaseCollection {
 
 class KoolbaseRecord {
   final String id;
-  final String projectId;
-  final String collectionId;
+  final String? collection;
   final String? createdBy;
   final Map<String, dynamic> data;
   final DateTime createdAt;
@@ -41,34 +40,40 @@ class KoolbaseRecord {
 
   const KoolbaseRecord({
     required this.id,
-    required this.projectId,
-    required this.collectionId,
+    this.collection,
     this.createdBy,
     required this.data,
     required this.createdAt,
     required this.updatedAt,
   });
 
+  /// Direct field access: `record['email']` == `record.data['email']`.
+  dynamic operator [](String key) => data[key];
+
   factory KoolbaseRecord.fromJson(Map<String, dynamic> json) {
+    final fields = <String, dynamic>{};
+    for (final entry in json.entries) {
+      if (!entry.key.startsWith(r'$')) {
+        fields[entry.key] = entry.value;
+      }
+    }
     return KoolbaseRecord(
-      id: json['id'] as String,
-      projectId: json['project_id'] as String,
-      collectionId: json['collection_id'] as String,
-      createdBy: json['created_by'] as String?,
-      data: Map<String, dynamic>.from(json['data'] as Map),
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      id: json[r'$id'] as String,
+      collection: json[r'$collection'] as String?,
+      createdBy: json[r'$createdBy'] as String?,
+      data: fields,
+      createdAt: DateTime.parse(json[r'$createdAt'] as String),
+      updatedAt: DateTime.parse(json[r'$updatedAt'] as String),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'project_id': projectId,
-        'collection_id': collectionId,
-        if (createdBy != null) 'created_by': createdBy,
-        'data': data,
-        'created_at': createdAt.toIso8601String(),
-        'updated_at': updatedAt.toIso8601String(),
+        r'$id': id,
+        if (collection != null) r'$collection': collection,
+        if (createdBy != null) r'$createdBy': createdBy,
+        r'$createdAt': createdAt.toIso8601String(),
+        r'$updatedAt': updatedAt.toIso8601String(),
+        ...data,
       };
 }
 
