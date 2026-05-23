@@ -6,7 +6,6 @@ class KoolbaseCollection {
   final String writeRule;
   final String deleteRule;
   final DateTime createdAt;
-
   const KoolbaseCollection({
     required this.id,
     required this.projectId,
@@ -16,7 +15,6 @@ class KoolbaseCollection {
     required this.deleteRule,
     required this.createdAt,
   });
-
   factory KoolbaseCollection.fromJson(Map<String, dynamic> json) {
     return KoolbaseCollection(
       id: json['id'] as String,
@@ -37,7 +35,6 @@ class KoolbaseRecord {
   final Map<String, dynamic> data;
   final DateTime createdAt;
   final DateTime updatedAt;
-
   const KoolbaseRecord({
     required this.id,
     this.collection,
@@ -49,7 +46,6 @@ class KoolbaseRecord {
 
   /// Direct field access: `record['email']` == `record.data['email']`.
   dynamic operator [](String key) => data[key];
-
   factory KoolbaseRecord.fromJson(Map<String, dynamic> json) {
     final fields = <String, dynamic>{};
     for (final entry in json.entries) {
@@ -66,7 +62,6 @@ class KoolbaseRecord {
       updatedAt: DateTime.parse(json[r'$updatedAt'] as String),
     );
   }
-
   Map<String, dynamic> toJson() => {
         r'$id': id,
         if (collection != null) r'$collection': collection,
@@ -81,10 +76,20 @@ class QueryResult {
   final List<KoolbaseRecord> records;
   final int total;
   final bool isFromCache;
-
   const QueryResult({
     required this.records,
     required this.total,
     this.isFromCache = false,
+  });
+}
+
+/// Result of an upsert: the resulting [record], and whether it was newly
+/// [created] (true) or an existing record was updated (false).
+class KoolbaseUpsertResult {
+  final KoolbaseRecord record;
+  final bool created;
+  const KoolbaseUpsertResult({
+    required this.record,
+    required this.created,
   });
 }

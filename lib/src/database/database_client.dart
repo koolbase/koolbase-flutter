@@ -130,6 +130,51 @@ class KoolbaseDatabaseClient {
     }
   }
 
+  /// Insert a record, or update the existing one matching [match].
+  ///
+  /// The server decides the outcome: exactly one match updates that record,
+  /// no match inserts a new one (seeded with the [match] fields), and more
+  /// than one match is an error. The returned [KoolbaseUpsertResult] carries
+  /// the resulting record and a `created` flag (true = inserted, false =
+  /// updated).
+  ///
+  /// Online-only by design. Unlike [insert], an upsert is NOT queued offline:
+  /// the insert-vs-update decision needs the server's authoritative view of
+  /// what already exists, so deferring it could create a duplicate or apply a
+  /// wrong update on later sync. It throws on network failure instead.
+  Future<KoolbaseUpsertResult> upsert({
+    required String collection,
+    required Map<String, dynamic> match,
+    required Map<String, dynamic> data,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/db/upsert'),
+          headers: _headers,
+          body: jsonEncode({
+            'collection': collection,
+            'match': match,
+            'data': data,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Upsert failed');
+    }
+
+    final created = res.statusCode == 201;
+    final record =
+        KoolbaseRecord.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+
+    // Keep the local cache consistent, same as insert.
+    await _cacheStore?.saveRecord(record.id, collection, record.data, _userId);
+    await _cacheStore?.invalidateCollection(collection);
+
+    return KoolbaseUpsertResult(record: record, created: created);
+  }
+
   /// Manually sync all pending offline writes to the server.
   ///
   /// This is called automatically when the network is restored.
