@@ -175,6 +175,40 @@ class KoolbaseDatabaseClient {
     return KoolbaseUpsertResult(record: record, created: created);
   }
 
+  /// Bulk-delete every record in [collection] matching [filters].
+  ///
+  /// The server applies the collection's delete rule (scoping to the caller
+  /// for owner/scoped rules) and returns the number of records deleted.
+  ///
+  /// Online-only by design — like [upsert], this is NOT queued offline. A bulk
+  /// delete needs the server's authoritative view of what matches, so it throws
+  /// on network failure rather than risk deleting the wrong set on later sync.
+  /// The local cache for the collection is invalidated on success.
+  Future<int> deleteWhere({
+    required String collection,
+    required Map<String, dynamic> filters,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/db/delete-where'),
+          headers: _headers,
+          body: jsonEncode({'collection': collection, 'filters': filters}),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['error'] ?? 'Delete failed');
+    }
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final deleted = (body['deleted'] as num?)?.toInt() ?? 0;
+
+    await _cacheStore?.invalidateCollection(collection);
+
+    return deleted;
+  }
+
   /// Manually sync all pending offline writes to the server.
   ///
   /// This is called automatically when the network is restored.
