@@ -1,4 +1,8 @@
-# 3.1.0
+# 3.1.1 - 2026-05-23
+
+     - Docs: document `upsert` and `deleteWhere` in the README (no code changes).
+
+## 3.1.0 - 2026-05-23
 
   - Added `Koolbase.db.upsert(collection:, match:, data:)` — insert-or-update by a match filter; returns `KoolbaseUpsertResult { record, created }`. Online-only.
   - Added `Koolbase.db.deleteWhere(collection:, filters:)` — bulk delete by filter; returns the number of records deleted. Online-only.
