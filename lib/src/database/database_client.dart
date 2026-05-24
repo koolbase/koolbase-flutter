@@ -65,9 +65,12 @@ class KoolbaseDatabaseClient {
 
   /// Insert a new record into a collection.
   ///
-  /// If offline, the write is queued locally and synced when
-  /// the network is restored. The record is optimistically saved
-  /// to the local cache immediately.
+  /// If the network is unreachable, the write is queued locally and synced
+  /// when connectivity is restored (the record is optimistically saved to the
+  /// local cache immediately). A server-side rejection (e.g. a unique-
+  /// constraint conflict, a validation error, or a permission denial) is NOT a
+  /// network failure — it surfaces as the corresponding [KoolbaseDataException]
+  /// rather than being queued.
   Future<KoolbaseRecord> insert({
     required String collection,
     required Map<String, dynamic> data,
@@ -82,13 +85,8 @@ class KoolbaseDatabaseClient {
           .timeout(const Duration(seconds: 10));
 
       if (res.statusCode != 201) {
-        final body = jsonDecode(res.body) as Map<String, dynamic>;
-        if (res.statusCode == 409) {
-          throw KoolbaseConflictException(
-            body['error'] as String? ?? 'Value violates a unique constraint',
-          );
-        }
-        throw Exception(body['error'] ?? 'Insert failed');
+        throw koolbaseDataErrorFromResponse(res,
+            fallbackMessage: 'Insert failed');
       }
 
       final record =
@@ -107,7 +105,11 @@ class KoolbaseDatabaseClient {
 
       return record;
     } catch (e) {
-      // If network fails — queue write for later sync
+      // A server-side rejection (4xx → typed KoolbaseDataException) means the
+      // server was reachable and refused the write — surface it, never queue.
+      if (e is KoolbaseDataException) rethrow;
+
+      // Genuine network/timeout failure — queue the write for later sync.
       if (_writeQueue != null) {
         debugPrint('[Koolbase] Offline insert queued for $collection');
         final tempId = _uuid.v4();
@@ -166,13 +168,8 @@ class KoolbaseDatabaseClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200 && res.statusCode != 201) {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      if (res.statusCode == 409) {
-        throw KoolbaseConflictException(
-          body['error'] as String? ?? 'Value violates a unique constraint',
-        );
-      }
-      throw Exception(body['error'] ?? 'Upsert failed');
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'Upsert failed');
     }
 
     final created = res.statusCode == 201;
@@ -208,8 +205,8 @@ class KoolbaseDatabaseClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Delete failed');
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'Delete failed');
     }
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;

@@ -157,8 +157,7 @@ class KoolbaseQuery {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(data['error'] ?? 'Query failed');
+      throw koolbaseDataErrorFromResponse(res, fallbackMessage: 'Query failed');
     }
 
     final data = jsonDecode(res.body) as Map<String, dynamic>;
@@ -215,8 +214,8 @@ class KoolbaseDocRef {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Record not found');
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'Record not found');
     }
     return KoolbaseRecord.fromJson(
         jsonDecode(res.body) as Map<String, dynamic>);
@@ -232,13 +231,8 @@ class KoolbaseDocRef {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      if (res.statusCode == 409) {
-        throw KoolbaseConflictException(
-          body['error'] as String? ?? 'Value violates a unique constraint',
-        );
-      }
-      throw Exception(body['error'] ?? 'Update failed');
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'Update failed');
     }
 
     final record =
@@ -256,8 +250,8 @@ class KoolbaseDocRef {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Delete failed');
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'Delete failed');
     }
 
     // Remove from local cache
