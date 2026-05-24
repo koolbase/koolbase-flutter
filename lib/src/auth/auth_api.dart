@@ -207,53 +207,75 @@ class AuthApi {
 
   /// Parse a session-returning response (login, signUp, refresh).
   ///
-  /// [isRefresh] controls how 401 is interpreted:
+  /// [isRefresh] controls how a bare 401 (no `code`, older server) is
+  /// interpreted in the fallback path:
   /// - false (default, login/signUp): 401 = invalid credentials
   /// - true (refresh): 401 = session expired (refresh token was rejected)
   AuthSession _parseSession(http.Response res, {bool isRefresh = false}) {
-    if (res.statusCode == 409) throw const EmailAlreadyInUseException();
-    if (res.statusCode == 401) {
-      throw isRefresh
-          ? const SessionExpiredException()
-          : const InvalidCredentialsException();
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      _checkError(res, isRefresh: isRefresh); // never returns
     }
-    if (res.statusCode == 403) throw const UserDisabledException();
-    _checkError(res);
     return AuthSession.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  /// Map a non-2xx response to a typed exception.
+  /// Map a non-2xx credential/session response to a typed exception.
   ///
-  /// Status-based routing:
-  /// - 429 + "account temporarily locked" → [AccountLockedException]
-  /// - 429 (other) → [RateLimitException]
-  ///
-  /// Message-based routing (for status codes too generic on their own):
-  /// - "invalid or expired unlock token" → [UnlockTokenInvalidException]
-  /// - "session revoked" / "token revoked" → [TokenRevokedException]
-  ///   (forward-compatible; server may not yet emit these markers)
-  ///
-  /// Fallback: generic [KoolbaseAuthException] with the server-provided
-  /// message or a default.
-  void _checkError(http.Response res) {
+  /// Code-first: the server now emits a stable `code` on every error
+  /// (contract conformance), so we switch on `body['code']`. The status +
+  /// message logic is retained as a fallback for older servers or any
+  /// response that arrives without a code.
+  void _checkError(http.Response res, {bool isRefresh = false}) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
+
     Map<String, dynamic> body = {};
     try {
       body = jsonDecode(res.body) as Map<String, dynamic>;
     } catch (_) {}
+    final code = (body['code'] as String?) ?? '';
     final msg = (body['error'] as String?) ?? '';
 
-    if (res.statusCode == 429) {
-      if (msg.contains('account temporarily locked')) {
+    // ---- code-first ----
+    switch (code) {
+      case 'invalid_credentials':
+        throw const InvalidCredentialsException();
+      case 'email_in_use':
+        throw const EmailAlreadyInUseException();
+      case 'account_disabled':
+        throw const UserDisabledException();
+      case 'account_locked':
         throw const AccountLockedException();
-      }
-      throw RateLimitException(msg.isEmpty ? null : msg);
+      case 'invalid_refresh_token':
+        // Refresh token rejected — the session is unrecoverable; re-login.
+        throw const SessionExpiredException();
+      case 'token_revoked':
+        throw const TokenRevokedException();
+      case 'invalid_unlock_token':
+        throw const UnlockTokenInvalidException();
+      case 'rate_limit':
+        throw RateLimitException(msg.isEmpty ? null : msg);
     }
 
+    // ---- status fallback (pre-code servers) ----
+    switch (res.statusCode) {
+      case 409:
+        throw const EmailAlreadyInUseException();
+      case 401:
+        throw isRefresh
+            ? const SessionExpiredException()
+            : const InvalidCredentialsException();
+      case 403:
+        throw const UserDisabledException();
+      case 429:
+        if (msg.contains('account temporarily locked')) {
+          throw const AccountLockedException();
+        }
+        throw RateLimitException(msg.isEmpty ? null : msg);
+    }
+
+    // ---- legacy message fallback ----
     if (msg.contains('invalid or expired unlock token')) {
       throw const UnlockTokenInvalidException();
     }
-
     if (msg.contains('session revoked') ||
         msg.contains('token revoked') ||
         msg.contains('session has been revoked')) {
@@ -262,6 +284,7 @@ class AuthApi {
 
     throw KoolbaseAuthException(
       msg.isEmpty ? 'An unexpected error occurred' : msg,
+      code: code.isEmpty ? null : code,
     );
   }
 
@@ -335,17 +358,50 @@ class AuthApi {
     _checkPhoneError(res);
   }
 
+  /// Map a non-2xx phone-auth response to a typed exception.
+  ///
+  /// Code-first, with a phone-specific twist: the server emits the generic
+  /// `rate_limit` code for the phone endpoints (they share the default 429),
+  /// but phone has a dedicated server-side rate-limiter, so we surface the
+  /// phone-specific [OtpRateLimitException] rather than [RateLimitException].
+  /// Status + message logic is kept as a fallback for older servers.
   void _checkPhoneError(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
+
     Map<String, dynamic> body = {};
     try {
       body = jsonDecode(res.body) as Map<String, dynamic>;
     } catch (_) {}
+    final code = (body['code'] as String?) ?? '';
     final msg = (body['error'] as String?) ?? '';
 
-    if (res.statusCode == 429) throw const OtpRateLimitException();
-    if (res.statusCode == 409) throw const PhoneAlreadyLinkedException();
+    // ---- code-first ----
+    switch (code) {
+      case 'invalid_phone':
+        throw const InvalidPhoneNumberException();
+      case 'otp_expired':
+        throw const OtpExpiredException();
+      case 'otp_invalid':
+        throw const OtpInvalidException();
+      case 'otp_max_attempts':
+        throw const OtpMaxAttemptsException();
+      case 'phone_in_use':
+        throw const PhoneAlreadyLinkedException();
+      case 'sms_not_configured':
+        throw const SmsConfigMissingException();
+      case 'rate_limit':
+        throw const OtpRateLimitException();
+    }
 
+    // ---- status fallback (pre-code servers) ----
+    switch (res.statusCode) {
+      case 429:
+        throw const OtpRateLimitException();
+      case 409:
+        throw const PhoneAlreadyLinkedException();
+    }
+
+    // ---- legacy message fallback ----
     if (msg.contains('E.164')) throw const InvalidPhoneNumberException();
     if (msg.contains('OTP has expired')) throw const OtpExpiredException();
     if (msg.contains('too many incorrect attempts')) {
@@ -359,7 +415,9 @@ class AuthApi {
     }
 
     throw KoolbaseAuthException(
-        msg.isEmpty ? 'An unexpected error occurred' : msg);
+      msg.isEmpty ? 'An unexpected error occurred' : msg,
+      code: code.isEmpty ? null : code,
+    );
   }
 
   /// POST /v1/sdk/auth/oauth/apple — server-side Apple Sign-In.
@@ -397,23 +455,42 @@ class AuthApi {
     return _parseAppleSessionResponse(res);
   }
 
-  /// Parses a /v1/sdk/auth/oauth/apple response. Distinct from
-  /// _parseSession because OAuth error semantics differ from credential
-  /// auth — status codes map to a separate exception set.
+  /// Parses a /v1/sdk/auth/oauth/apple response. Code-first: the server
+  /// emits unified OAuth codes (oauth_not_configured, invalid_oauth_token,
+  /// oauth_email_required, oauth_email_conflict) for both Apple and Google;
+  /// the provider distinction is made here at the call site, so Apple codes
+  /// map to Apple-specific exceptions. Status + message logic is retained as
+  /// a fallback for older servers.
   Future<AuthSession> _parseAppleSessionResponse(http.Response response) async {
     if (response.statusCode == 200) {
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       return AuthSession.fromJson(json);
     }
 
-    String errorMessage = '';
+    Map<String, dynamic> body = {};
     try {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
-      errorMessage = (json['error'] as String?) ?? '';
-    } catch (_) {
-      // best-effort error message extraction
+      body = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {}
+    final code = (body['code'] as String?) ?? '';
+    final errorMessage = (body['error'] as String?) ?? '';
+
+    // ---- code-first ----
+    switch (code) {
+      case 'oauth_not_configured':
+        throw const AppleSignInNotConfiguredException();
+      case 'invalid_oauth_token':
+        throw const InvalidAppleTokenException();
+      case 'account_disabled':
+        throw const UserDisabledException();
+      case 'oauth_email_required':
+        throw const AppleEmailRequiredException();
+      case 'oauth_email_conflict':
+        throw const OAuthEmailConflictException();
+      case 'rate_limit':
+        throw RateLimitException(errorMessage.isEmpty ? null : errorMessage);
     }
 
+    // ---- status + message fallback (pre-code servers) ----
     switch (response.statusCode) {
       case 400:
         if (errorMessage.contains('not configured')) {
@@ -430,7 +507,7 @@ class AuthApi {
       case 409:
         throw const OAuthEmailConflictException();
       case 429:
-        throw RateLimitException(errorMessage);
+        throw RateLimitException(errorMessage.isEmpty ? null : errorMessage);
       default:
         throw KoolbaseAuthException(
           'apple sign-in failed: ${response.statusCode} $errorMessage',
@@ -467,9 +544,10 @@ class AuthApi {
     return _parseGoogleSessionResponse(res);
   }
 
-  /// Parses a /v1/sdk/auth/oauth/google response. Distinct from
-  /// _parseSession and _parseAppleSessionResponse because OAuth error
-  /// semantics differ per-provider.
+  /// Parses a /v1/sdk/auth/oauth/google response. Code-first; the provider
+  /// distinction is made here so the server's unified OAuth codes map to
+  /// Google-specific exceptions. Status + message logic is retained as a
+  /// fallback for older servers.
   Future<AuthSession> _parseGoogleSessionResponse(
       http.Response response) async {
     if (response.statusCode == 200) {
@@ -477,14 +555,30 @@ class AuthApi {
       return AuthSession.fromJson(json);
     }
 
-    String errorMessage = '';
+    Map<String, dynamic> body = {};
     try {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
-      errorMessage = (json['error'] as String?) ?? '';
-    } catch (_) {
-      // best-effort error message extraction
+      body = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {}
+    final code = (body['code'] as String?) ?? '';
+    final errorMessage = (body['error'] as String?) ?? '';
+
+    // ---- code-first ----
+    switch (code) {
+      case 'oauth_not_configured':
+        throw const GoogleSignInNotConfiguredException();
+      case 'invalid_oauth_token':
+        throw const InvalidGoogleTokenException();
+      case 'account_disabled':
+        throw const UserDisabledException();
+      case 'oauth_email_required':
+        throw const GoogleEmailRequiredException();
+      case 'oauth_email_conflict':
+        throw const OAuthEmailConflictException();
+      case 'rate_limit':
+        throw RateLimitException(errorMessage.isEmpty ? null : errorMessage);
     }
 
+    // ---- status + message fallback (pre-code servers) ----
     switch (response.statusCode) {
       case 400:
         if (errorMessage.contains('not configured')) {
@@ -501,7 +595,7 @@ class AuthApi {
       case 409:
         throw const OAuthEmailConflictException();
       case 429:
-        throw RateLimitException(errorMessage);
+        throw RateLimitException(errorMessage.isEmpty ? null : errorMessage);
       default:
         throw KoolbaseAuthException(
           'google sign-in failed: ${response.statusCode} $errorMessage',
