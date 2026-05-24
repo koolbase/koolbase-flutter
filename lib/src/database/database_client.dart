@@ -6,6 +6,7 @@ import 'database_models.dart';
 import 'database_query.dart';
 import 'offline/cache_store.dart';
 import 'offline/write_queue.dart';
+import 'database_exceptions.dart';
 
 class KoolbaseDatabaseClient {
   final String baseUrl;
@@ -82,6 +83,11 @@ class KoolbaseDatabaseClient {
 
       if (res.statusCode != 201) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
+        if (res.statusCode == 409) {
+          throw KoolbaseConflictException(
+            body['error'] as String? ?? 'Value violates a unique constraint',
+          );
+        }
         throw Exception(body['error'] ?? 'Insert failed');
       }
 
@@ -161,6 +167,11 @@ class KoolbaseDatabaseClient {
 
     if (res.statusCode != 200 && res.statusCode != 201) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 409) {
+        throw KoolbaseConflictException(
+          body['error'] as String? ?? 'Value violates a unique constraint',
+        );
+      }
       throw Exception(body['error'] ?? 'Upsert failed');
     }
 
