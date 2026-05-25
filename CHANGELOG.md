@@ -7,6 +7,10 @@
   for config/flag/directive overrides, or Koolbase Storage for shipping and
   reading raw files. This consolidates onto a single bundle client — matching the
   React Native SDK and the server, which already use code push exclusively.
+- Dropped the `sign_in_with_apple` dependency — it was only used by the removed
+  `KoolbaseAppleAuth`. The current `signInWithApple({identityToken})` is
+  library-agnostic, so the SDK no longer pulls it. If your app uses Apple
+  Sign-In, declare `sign_in_with_apple` in your own `pubspec.yaml`.
 
 # 3.3.0 - 2026-05-24
 
