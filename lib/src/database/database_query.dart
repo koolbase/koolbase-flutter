@@ -24,6 +24,7 @@ class KoolbaseQuery {
   final String publicKey;
   final String collectionName;
   final String? _userId;
+  final Future<String?> Function()? _accessTokenProvider;
   final CacheStore? _cacheStore;
   final Map<String, dynamic> _filters = {};
   final List<String> _populate = [];
@@ -37,16 +38,24 @@ class KoolbaseQuery {
     required this.publicKey,
     required this.collectionName,
     String? userId,
+    Future<String?> Function()? accessTokenProvider,
     CacheStore? cacheStore,
     WriteQueue? writeQueue,
   })  : _userId = userId,
+        _accessTokenProvider = accessTokenProvider,
         _cacheStore = cacheStore;
 
-  Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        'x-api-key': publicKey,
-        if (_userId != null) 'x-user-id': _userId!,
-      };
+  Future<Map<String, String>> _headers() async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'x-api-key': publicKey,
+    };
+    final token = await _accessTokenProvider?.call();
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
 
   KoolbaseQuery where(String field, {required dynamic isEqualTo}) {
     _filters[field] = isEqualTo;
@@ -149,7 +158,7 @@ class KoolbaseQuery {
     final res = await http
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/query'),
-          headers: _headers,
+          headers: await _headers(),
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 10));
@@ -185,29 +194,35 @@ class KoolbaseDocRef {
   final String baseUrl;
   final String publicKey;
   final String recordId;
-  final String? _userId;
+  final Future<String?> Function()? _accessTokenProvider;
   final CacheStore? _cacheStore;
 
   KoolbaseDocRef({
     required this.baseUrl,
     required this.publicKey,
     required this.recordId,
-    String? userId,
+    Future<String?> Function()? accessTokenProvider,
     CacheStore? cacheStore,
-  })  : _userId = userId,
+  })  : _accessTokenProvider = accessTokenProvider,
         _cacheStore = cacheStore;
 
-  Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        'x-api-key': publicKey,
-        if (_userId != null) 'x-user-id': _userId!,
-      };
+  Future<Map<String, String>> _headers() async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'x-api-key': publicKey,
+    };
+    final token = await _accessTokenProvider?.call();
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
 
   Future<KoolbaseRecord> get() async {
     final res = await http
         .get(
           Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
-          headers: _headers,
+          headers: await _headers(),
         )
         .timeout(const Duration(seconds: 10));
 
@@ -223,7 +238,7 @@ class KoolbaseDocRef {
     final res = await http
         .patch(
           Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
-          headers: _headers,
+          headers: await _headers(),
           body: jsonEncode({'data': data}),
         )
         .timeout(const Duration(seconds: 10));
@@ -243,7 +258,7 @@ class KoolbaseDocRef {
     final res = await http
         .delete(
           Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
-          headers: _headers,
+          headers: await _headers(),
         )
         .timeout(const Duration(seconds: 10));
 

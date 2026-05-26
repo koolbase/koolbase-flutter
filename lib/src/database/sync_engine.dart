@@ -12,6 +12,12 @@ class SyncEngine {
   final String publicKey;
   final CacheStore cacheStore;
   final WriteQueue writeQueue;
+
+  /// Pulls a currently-valid user access token at sync time (refresh-aware) so
+  /// replayed offline writes carry the user's identity instead of going up
+  /// anonymously. Wired to KoolbaseAuthClient.validAccessToken.
+  final Future<String?> Function()? accessTokenProvider;
+
   StreamSubscription? _connectivitySubscription;
 
   SyncEngine({
@@ -19,6 +25,7 @@ class SyncEngine {
     required this.publicKey,
     required this.cacheStore,
     required this.writeQueue,
+    this.accessTokenProvider,
   });
 
   // ─── Start auto-sync on reconnect ─────────────────────────────────────────
@@ -69,10 +76,14 @@ class SyncEngine {
 
   Future<void> _executeWrite(PendingWrite write) async {
     final payload = writeQueue.decodePayload(write);
-    final headers = {
+    final headers = <String, String>{
       'Content-Type': 'application/json',
       'x-api-key': publicKey,
     };
+    final token = await accessTokenProvider?.call();
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
 
     switch (write.operation) {
       case 'insert':
@@ -92,7 +103,9 @@ class SyncEngine {
         break;
 
       case 'update':
-        if (write.recordId == null) { throw Exception('recordId required for update'); }
+        if (write.recordId == null) {
+          throw Exception('recordId required for update');
+        }
         final res = await http
             .patch(
               Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),
@@ -106,7 +119,9 @@ class SyncEngine {
         break;
 
       case 'delete':
-        if (write.recordId == null) { throw Exception('recordId required for delete'); }
+        if (write.recordId == null) {
+          throw Exception('recordId required for delete');
+        }
         final res = await http
             .delete(
               Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),

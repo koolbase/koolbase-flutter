@@ -62,6 +62,22 @@ class KoolbaseAuthClient {
   bool get isAuthenticated => _currentUser != null && _accessToken != null;
   Stream<KoolbaseUser?> get authStateChanges => _authStateController.stream;
 
+  /// Returns a currently-valid access token for data-plane requests, refreshing
+  /// (single-flight) if the cached one is at/near expiry. Returns null when no
+  /// user is authenticated or a refresh fails — callers then send the request
+  /// api-key-only and the server treats it as having no end-user identity.
+  ///
+  /// This is the token source the db/storage/functions clients pull from on
+  /// every request, so identity follows the live session automatically.
+  Future<String?> validAccessToken() async {
+    if (!isAuthenticated) return null;
+    try {
+      return await _ensureValidToken();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Restore a previously saved session on app launch.
   ///
   /// The flow is offline-aware and optimistic:

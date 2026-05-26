@@ -12,6 +12,7 @@ class KoolbaseDatabaseClient {
   final String baseUrl;
   final String publicKey;
   String? _userId;
+  final Future<String?> Function()? _accessTokenProvider;
   CacheStore? _cacheStore;
   WriteQueue? _writeQueue;
   static const _uuid = Uuid();
@@ -19,11 +20,16 @@ class KoolbaseDatabaseClient {
   KoolbaseDatabaseClient({
     required this.baseUrl,
     required this.publicKey,
+    Future<String?> Function()? accessTokenProvider,
     CacheStore? cacheStore,
     WriteQueue? writeQueue,
-  })  : _cacheStore = cacheStore,
+  })  : _accessTokenProvider = accessTokenProvider,
+        _cacheStore = cacheStore,
         _writeQueue = writeQueue;
 
+  /// Set the user id used to tag locally-cached records (offline owner
+  /// metadata only). NOT the auth mechanism — request identity comes from the
+  /// verified access token via [_accessTokenProvider].
   void setUserId(String? userId) => _userId = userId;
 
   void setOfflineSupport({
@@ -34,11 +40,17 @@ class KoolbaseDatabaseClient {
     _writeQueue = writeQueue;
   }
 
-  Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        'x-api-key': publicKey,
-        if (_userId != null) 'x-user-id': _userId!,
-      };
+  Future<Map<String, String>> _headers() async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'x-api-key': publicKey,
+    };
+    final token = await _accessTokenProvider?.call();
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
 
   /// Get a fluent query builder for a collection
   KoolbaseQuery collection(String name) {
@@ -46,6 +58,7 @@ class KoolbaseDatabaseClient {
       baseUrl: baseUrl,
       publicKey: publicKey,
       collectionName: name,
+      accessTokenProvider: _accessTokenProvider,
       userId: _userId,
       cacheStore: _cacheStore,
       writeQueue: _writeQueue,
@@ -58,7 +71,7 @@ class KoolbaseDatabaseClient {
       baseUrl: baseUrl,
       publicKey: publicKey,
       recordId: recordId,
-      userId: _userId,
+      accessTokenProvider: _accessTokenProvider,
       cacheStore: _cacheStore,
     );
   }
@@ -79,7 +92,7 @@ class KoolbaseDatabaseClient {
       final res = await http
           .post(
             Uri.parse('$baseUrl/v1/sdk/db/insert'),
-            headers: _headers,
+            headers: await _headers(),
             body: jsonEncode({'collection': collection, 'data': data}),
           )
           .timeout(const Duration(seconds: 10));
@@ -158,7 +171,7 @@ class KoolbaseDatabaseClient {
     final res = await http
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/upsert'),
-          headers: _headers,
+          headers: await _headers(),
           body: jsonEncode({
             'collection': collection,
             'match': match,
@@ -199,7 +212,7 @@ class KoolbaseDatabaseClient {
     final res = await http
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/delete-where'),
-          headers: _headers,
+          headers: await _headers(),
           body: jsonEncode({'collection': collection, 'filters': filters}),
         )
         .timeout(const Duration(seconds: 10));
@@ -215,6 +228,68 @@ class KoolbaseDatabaseClient {
     await _cacheStore?.invalidateCollection(collection);
 
     return deleted;
+  }
+
+  /// Run multiple writes as a single atomic transaction.
+  ///
+  /// All [operations] commit together or none are applied — the server runs
+  /// them in one database transaction and rolls back entirely on any failure.
+  /// Operations apply in order and may span multiple collections.
+  ///
+  /// Online-only by design (like [upsert] and [deleteWhere]): atomicity needs
+  /// the server's authoritative view, so a batch is never queued offline — it
+  /// throws on network failure. A server-side rejection throws a
+  /// [KoolbaseDataException] whose message identifies which operation failed;
+  /// nothing was persisted.
+  ///
+  /// Returns one [KoolbaseBatchResult] per operation, in order.
+  ///
+  /// Example:
+  /// ```dart
+  /// final results = await Koolbase.db.batch([
+  ///   KoolbaseBatchOp.insert('orders', {'total': 50}),
+  ///   KoolbaseBatchOp.update(inventoryId, {'stock': 9}),
+  ///   KoolbaseBatchOp.upsert('counters', match: {'name': 'orders'}, data: {'value': 1}),
+  ///   KoolbaseBatchOp.delete(cartItemId),
+  /// ]);
+  /// ```
+  Future<List<KoolbaseBatchResult>> batch(
+      List<KoolbaseBatchOp> operations) async {
+    if (operations.isEmpty) {
+      throw ArgumentError('batch requires at least one operation');
+    }
+
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/db/batch'),
+          headers: await _headers(),
+          body: jsonEncode({
+            'operations': operations.map((o) => o.toJson()).toList(),
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
+
+    if (res.statusCode != 200) {
+      throw koolbaseDataErrorFromResponse(res, fallbackMessage: 'Batch failed');
+    }
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final results = (body['results'] as List<dynamic>? ?? [])
+        .map((r) => KoolbaseBatchResult.fromJson(r as Map<String, dynamic>))
+        .toList();
+
+    // Keep the local cache consistent with what committed: save each written
+    // record and invalidate its collection so the next query is fresh.
+    for (final r in results) {
+      final rec = r.record;
+      final col = rec?.collection;
+      if (rec != null && col != null) {
+        await _cacheStore?.saveRecord(rec.id, col, rec.data, _userId);
+        await _cacheStore?.invalidateCollection(col);
+      }
+    }
+
+    return results;
   }
 
   /// Manually sync all pending offline writes to the server.
@@ -250,7 +325,7 @@ class KoolbaseDatabaseClient {
             final res = await http
                 .post(
                   Uri.parse('$baseUrl/v1/sdk/db/insert'),
-                  headers: _headers,
+                  headers: await _headers(),
                   body: jsonEncode({
                     'collection': write.collection,
                     'data': payload,
@@ -267,7 +342,7 @@ class KoolbaseDatabaseClient {
             final res = await http
                 .patch(
                   Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),
-                  headers: _headers,
+                  headers: await _headers(),
                   body: jsonEncode({'data': payload}),
                 )
                 .timeout(const Duration(seconds: 10));
@@ -281,7 +356,7 @@ class KoolbaseDatabaseClient {
             final res = await http
                 .delete(
                   Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),
-                  headers: _headers,
+                  headers: await _headers(),
                 )
                 .timeout(const Duration(seconds: 10));
             if (res.statusCode != 204) {

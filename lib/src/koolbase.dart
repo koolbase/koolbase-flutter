@@ -170,6 +170,8 @@ class Koolbase {
     _database = KoolbaseDatabaseClient(
       baseUrl: config.baseUrl,
       publicKey: config.publicKey,
+      accessTokenProvider: () =>
+          _auth?.validAccessToken() ?? Future<String?>.value(null),
       cacheStore: cacheStore,
       writeQueue: writeQueue,
     );
@@ -180,6 +182,8 @@ class Koolbase {
       publicKey: config.publicKey,
       cacheStore: cacheStore,
       writeQueue: writeQueue,
+      accessTokenProvider: () =>
+          _auth?.validAccessToken() ?? Future<String?>.value(null),
     );
     _syncEngine!.start();
 
@@ -187,13 +191,16 @@ class Koolbase {
     _storage = KoolbaseStorageClient(
       baseUrl: config.baseUrl,
       publicKey: config.publicKey,
+      accessTokenProvider: () =>
+          _auth?.validAccessToken() ?? Future<String?>.value(null),
     );
 
     // Initialize functions client
     _functions = KoolbaseFunctionsClient(
       baseUrl: config.baseUrl,
       publicKey: config.publicKey,
-      userAccessTokenProvider: () => _auth?.accessToken,
+      userAccessTokenProvider: () =>
+          _auth?.validAccessToken() ?? Future<String?>.value(null),
     );
 
     // Initialize code push client

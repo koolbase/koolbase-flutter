@@ -27,23 +27,23 @@ extension FunctionRuntimeExtension on FunctionRuntime {
 class KoolbaseFunctionsClient {
   final String baseUrl;
   final String publicKey;
-  final String? Function()? _userAccessTokenProvider;
+  final Future<String?> Function()? _userAccessTokenProvider;
   String? _authToken;
 
   KoolbaseFunctionsClient({
     required this.baseUrl,
     required this.publicKey,
-    String? Function()? userAccessTokenProvider,
+    Future<String?> Function()? userAccessTokenProvider,
   }) : _userAccessTokenProvider = userAccessTokenProvider;
 
   void setAuthToken(String? token) => _authToken = token;
 
-  Map<String, String> get _sdkHeaders {
+  Future<Map<String, String>> _sdkHeaders() async {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'x-api-key': publicKey,
     };
-    final userToken = _userAccessTokenProvider?.call();
+    final userToken = await _userAccessTokenProvider?.call();
     if (userToken != null && userToken.isNotEmpty) {
       headers['Authorization'] = 'Bearer $userToken';
     }
@@ -66,7 +66,7 @@ class KoolbaseFunctionsClient {
       final response = await http
           .post(
             uri,
-            headers: _sdkHeaders,
+            headers: await _sdkHeaders(),
             body: body != null ? jsonEncode({'body': body}) : '{"body":{}}',
           )
           .timeout(timeout);

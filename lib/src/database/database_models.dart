@@ -93,3 +93,86 @@ class KoolbaseUpsertResult {
     required this.created,
   });
 }
+
+/// One operation in an atomic [KoolbaseDatabaseClient.batch].
+///
+/// Construct with the factory for the op you want — insert/update/delete/upsert.
+class KoolbaseBatchOp {
+  final String type;
+  final String? collection;
+  final String? recordId;
+  final Map<String, dynamic>? data;
+  final Map<String, dynamic>? match;
+
+  const KoolbaseBatchOp._({
+    required this.type,
+    this.collection,
+    this.recordId,
+    this.data,
+    this.match,
+  });
+
+  /// Insert a new record into [collection].
+  factory KoolbaseBatchOp.insert(
+          String collection, Map<String, dynamic> data) =>
+      KoolbaseBatchOp._(type: 'insert', collection: collection, data: data);
+
+  /// Update the record identified by [recordId] with [data].
+  factory KoolbaseBatchOp.update(String recordId, Map<String, dynamic> data) =>
+      KoolbaseBatchOp._(type: 'update', recordId: recordId, data: data);
+
+  /// Delete the record identified by [recordId].
+  factory KoolbaseBatchOp.delete(String recordId) =>
+      KoolbaseBatchOp._(type: 'delete', recordId: recordId);
+
+  /// Insert into [collection], or update the existing record matching [match].
+  factory KoolbaseBatchOp.upsert(
+    String collection, {
+    required Map<String, dynamic> match,
+    required Map<String, dynamic> data,
+  }) =>
+      KoolbaseBatchOp._(
+          type: 'upsert', collection: collection, match: match, data: data);
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        if (collection != null) 'collection': collection,
+        if (recordId != null) 'record_id': recordId,
+        if (data != null) 'data': data,
+        if (match != null) 'match': match,
+      };
+}
+
+/// The result of one operation in a [KoolbaseDatabaseClient.batch], in order.
+class KoolbaseBatchResult {
+  /// The operation type: insert, update, delete, or upsert.
+  final String type;
+
+  /// The resulting record for insert/update/upsert; null for delete.
+  final KoolbaseRecord? record;
+
+  /// For upsert: true if a new record was inserted, false if one was updated.
+  /// Null for non-upsert ops.
+  final bool? created;
+
+  /// True for a successful delete.
+  final bool deleted;
+
+  const KoolbaseBatchResult({
+    required this.type,
+    this.record,
+    this.created,
+    this.deleted = false,
+  });
+
+  factory KoolbaseBatchResult.fromJson(Map<String, dynamic> json) {
+    return KoolbaseBatchResult(
+      type: json['type'] as String? ?? '',
+      record: json['record'] != null
+          ? KoolbaseRecord.fromJson(json['record'] as Map<String, dynamic>)
+          : null,
+      created: json['created'] as bool?,
+      deleted: json['deleted'] as bool? ?? false,
+    );
+  }
+}
