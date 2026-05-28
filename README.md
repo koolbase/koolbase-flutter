@@ -266,34 +266,28 @@ await Koolbase.storage.delete(bucket: 'avatars', path: 'user-123.jpg');
 
 ## Realtime
 
-Subscribe to live changes on a collection. Records arrive in the flat shape — your fields are top-level; system metadata is under `$`-prefixed keys (`$id`, `$createdAt`, …).
+Stream live changes on a collection. Realtime uses the signed-in user's session,
+so subscribe after login. Supports collections whose read rule is `public` or
+`authenticated`.
 
 ```dart
-// New records
-final sub = Koolbase.realtime.onRecordCreated(
-  projectId: 'your-project-id',
-  collection: 'messages',
-).listen((record) {
-  print('New message: ${record['text']}');
+final sub = Koolbase.realtime
+    .on(projectId: yourProjectId, collection: 'messages')
+    .listen((event) {
+  // event.type -> recordCreated | recordUpdated | recordDeleted
+  print('${event.type}: ${event.record}');
 });
 
-// Updated records
-Koolbase.realtime.onRecordUpdated(
-  projectId: 'your-project-id',
-  collection: 'messages',
-).listen((record) => print('Updated: ${record['text']}'));
+// Or filter to one kind:
+Koolbase.realtime
+    .onRecordCreated(projectId: yourProjectId, collection: 'messages')
+    .listen((record) => print(record));
 
-// Deleted records — the stream yields the deleted record's id
-Koolbase.realtime.onRecordDeleted(
-  projectId: 'your-project-id',
-  collection: 'messages',
-).listen((id) => print('Deleted: $id'));
-
-// Stop listening
-sub.cancel();
+await sub.cancel(); // stop listening
 ```
 
-For full event objects (type, channel, timestamp), use the lower-level `Koolbase.realtime.on(projectId: ..., collection: ...)`, which returns a `Stream<RealtimeEvent>`.
+`yourProjectId` is your project's ID from the dashboard. The socket opens lazily,
+is shared across subscriptions, and reconnects automatically.
 
 ---
 

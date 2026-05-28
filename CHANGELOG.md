@@ -1,3 +1,13 @@
+# 5.1.0
+
+### Fixed
+
+- Realtime now connects. The client was protocol-correct but was never handed an access token (the push-based `setToken` was never wired), so it never connected. Switched to the same token-provider model as the other clients; it now authenticates with the user session and streams `created`/`updated`/`deleted` events.
+
+### Removed
+
+- `KoolbaseRealtimeClient.setToken` — dead push-model plumbing that was never wired. The token now flows from the SDK automatically.
+
 # 5.0.0
 
 ### BREAKING — security
