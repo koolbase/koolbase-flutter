@@ -287,17 +287,46 @@ try {
     file: file,
   );
 } on KoolbaseStorageConflictException catch (e) {
-  final ok = await confirmDialog('${e.path} already exists. Overwrite?');
-  if (ok) {
-    await Koolbase.storage.upload(
-      bucket: 'documents',
-      path: filename,
-      file: file,
-      overwrite: true,
-    );
-  }
+final ok = await confirmDialog('${e.path} already exists. Overwrite?');
+if (ok) {
+await Koolbase.storage.upload(
+bucket: 'documents',
+path: filename,
+file: file,
+overwrite: true,
+);
 }
-```
+}
+
+---
+
+### Handling bucket limits
+
+Buckets can be configured at creation time with a total size cap
+(`max_size_bytes`), a per-file cap (`max_file_size_bytes`), and a
+content-type allowlist (`allowed_mime_types`, supports `image/*`-style
+wildcards). The server surfaces violations as typed exceptions:
+
+````dart
+try {
+  await Koolbase.storage.upload(
+    bucket: 'user-photos',
+    path: filename,
+    file: file,
+  );
+} on KoolbaseStorageMimeTypeException {
+  showError('That file type is not allowed in this bucket.');
+} on KoolbaseStorageFileTooLargeException {
+  showError('That file is too big — pick a smaller one.');
+} on KoolbaseStorageQuotaExceededException {
+  showError('This bucket is full — delete some files and try again.');
+}
+````
+
+MIME enforcement runs at presign time — no bytes are transferred before
+rejection. File-size and quota enforcement run at confirm time; the
+server cleans up the underlying R2 object before returning the error,
+so nothing leaks.
 
 See [Error handling](#error-handling) for the full set of storage exceptions.
 
@@ -592,6 +621,9 @@ All storage failures extend `KoolbaseStorageException` (which implements
 | `KoolbaseStorageNotFoundException` | The bucket or object doesn't exist (404). |
 | `KoolbaseStorageValidationException` | The request was rejected as invalid — bad path, missing field (400). |
 | `KoolbaseStoragePermissionException` | The caller is not allowed to perform the operation (403). |
+| `KoolbaseStorageQuotaExceededException` | An upload would push the bucket past its `max_size_bytes` cap (409, code `QUOTA_EXCEEDED`). |
+| `KoolbaseStorageFileTooLargeException` | A single file exceeds the bucket's `max_file_size_bytes` cap (413, code `FILE_TOO_LARGE`). |
+| `KoolbaseStorageMimeTypeException` | The upload's content-type isn't in the bucket's `allowed_mime_types` allowlist (415, code `MIME_NOT_ALLOWED`). |
 
 ```dart
 try {

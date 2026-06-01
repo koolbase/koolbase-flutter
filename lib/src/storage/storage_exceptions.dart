@@ -98,6 +98,56 @@ class KoolbaseStoragePermissionException extends KoolbaseStorageException {
   String toString() => 'KoolbaseStoragePermissionException: $message';
 }
 
+/// Thrown when an upload would push the bucket past its configured
+/// `max_size_bytes` quota — the server responds with 409 Conflict and code
+/// `QUOTA_EXCEEDED`. The server cleans up the underlying R2 object before
+/// returning; nothing leaks. Catch this to surface a "bucket is full"
+/// message or prompt the caller to delete older files. The per-bucket
+/// quota is set at bucket creation time and is currently immutable.
+///
+/// Distinct from [KoolbaseStorageConflictException] (which also uses 409
+/// but means "path collides"); branch on the exception type, not status.
+class KoolbaseStorageQuotaExceededException extends KoolbaseStorageException {
+  const KoolbaseStorageQuotaExceededException([
+    super.message = 'Bucket quota exceeded',
+  ]) : super(code: 'QUOTA_EXCEEDED');
+
+  @override
+  String toString() => 'KoolbaseStorageQuotaExceededException: $message';
+}
+
+/// Thrown when a single file exceeds the bucket's configured
+/// `max_file_size_bytes` — the server responds with 413 Payload Too Large
+/// and code `FILE_TOO_LARGE`. The server cleans up the underlying R2
+/// object before returning. The configured per-file limit lives on the
+/// bucket record; check `Bucket.maxFileSizeBytes` to surface a clear
+/// "files must be under X MB" message at the call site.
+class KoolbaseStorageFileTooLargeException extends KoolbaseStorageException {
+  const KoolbaseStorageFileTooLargeException([
+    super.message = 'File exceeds the bucket maximum file size',
+  ]) : super(code: 'FILE_TOO_LARGE');
+
+  @override
+  String toString() => 'KoolbaseStorageFileTooLargeException: $message';
+}
+
+/// Thrown when an upload's content-type isn't in the bucket's configured
+/// `allowed_mime_types` allowlist — the server responds with 415
+/// Unsupported Media Type and code `MIME_NOT_ALLOWED`. The check runs at
+/// presign time, so no bytes are transferred before rejection.
+///
+/// Allowlists support `type/*` wildcards (e.g. `image/*` matches every
+/// image content-type). A bucket with no allowlist configured accepts
+/// every type.
+class KoolbaseStorageMimeTypeException extends KoolbaseStorageException {
+  const KoolbaseStorageMimeTypeException([
+    super.message = 'Content-type not allowed for this bucket',
+  ]) : super(code: 'MIME_NOT_ALLOWED');
+
+  @override
+  String toString() => 'KoolbaseStorageMimeTypeException: $message';
+}
+
 /// Maps a non-2xx storage-layer response to a typed
 /// [KoolbaseStorageException], preferring the server's stable `code` and
 /// falling back to the HTTP status for older or uncoded responses. The
@@ -106,6 +156,12 @@ class KoolbaseStoragePermissionException extends KoolbaseStorageException {
 /// [koolbaseStorageErrorFromResponse] offers a convenience wrapper.
 ///
 /// Always returns an exception to throw — never null.
+///
+/// Status-fallback note: HTTP 409 covers both PATH_CONFLICT and
+/// QUOTA_EXCEEDED. Without a `code` field, the mapper defaults 409 to
+/// [KoolbaseStorageConflictException] since path collisions are the more
+/// common case. Modern Koolbase servers always emit `code`, so this only
+/// matters for very old API responses or non-Koolbase 409s.
 KoolbaseStorageException koolbaseStorageError(
   int statusCode,
   Map<String, dynamic> body, {
@@ -121,12 +177,22 @@ KoolbaseStorageException koolbaseStorageError(
         message,
         body['path'] as String?,
       );
+    case 'QUOTA_EXCEEDED':
+      return KoolbaseStorageQuotaExceededException(message);
+    case 'FILE_TOO_LARGE':
+      return KoolbaseStorageFileTooLargeException(message);
+    case 'MIME_NOT_ALLOWED':
+      return KoolbaseStorageMimeTypeException(message);
   }
 
   // ---- status fallback (pre-code servers or uncoded paths) ----
   switch (statusCode) {
     case 409:
       return KoolbaseStorageConflictException(message);
+    case 413:
+      return KoolbaseStorageFileTooLargeException(message);
+    case 415:
+      return KoolbaseStorageMimeTypeException(message);
     case 404:
       return KoolbaseStorageNotFoundException(message);
     case 403:
