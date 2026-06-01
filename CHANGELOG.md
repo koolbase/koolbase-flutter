@@ -1,4 +1,26 @@
-# 6.0.0
+# 6.1.0
+
+* feat(storage): three new typed exceptions for bucket-limit failures
+  introduced server-side in Storage #2. All extend
+  `KoolbaseStorageException` so existing catch-all blocks continue to
+  work; catch the specifics to branch on the kind of limit hit.
+  - `KoolbaseStorageQuotaExceededException` — 409 + `QUOTA_EXCEEDED`,
+    thrown when an upload would push the bucket past its
+    `max_size_bytes` cap.
+  - `KoolbaseStorageFileTooLargeException` — 413 + `FILE_TOO_LARGE`,
+    thrown when a single file exceeds the bucket's
+    `max_file_size_bytes` cap.
+  - `KoolbaseStorageMimeTypeException` — 415 + `MIME_NOT_ALLOWED`,
+    thrown when an upload's content-type isn't in the bucket's
+    `allowed_mime_types` allowlist (supports `type/*` wildcards).
+* Mapper (`koolbaseStorageError` / `koolbaseStorageErrorFromResponse`)
+  recognizes the new codes and the new HTTP statuses (413, 415).
+* Backwards-compatible: existing callers using
+  `on KoolbaseStorageException` keep working; the new types let callers
+  surface clearer messages or prompt the user to delete files / pick a
+  smaller file / pick a different file type.
+
+## 6.0.0
 
 ### Breaking — realtime
 
