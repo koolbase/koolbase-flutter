@@ -12,3 +12,4 @@ export 'src/storage/storage_models.dart';
 export 'src/functions/functions_client.dart';
 export 'src/functions/functions_models.dart';
 export 'src/database/database_exceptions.dart';
+export 'src/storage/storage_exceptions.dart';

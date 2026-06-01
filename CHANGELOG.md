@@ -1,3 +1,100 @@
+# 7.0.0
+
+### Breaking — storage upload conflict safety
+
+- `KoolbaseStorageClient.upload()` is now **safe-by-default**. Uploads to a
+  path where an object already exists are **rejected** with a new
+  `KoolbaseStorageConflictException` instead of silently overwriting the
+  existing object. Pass `overwrite: true` to opt into the previous
+  replacing behavior.
+- Storage operations now throw typed `KoolbaseStorageException` subtypes
+  instead of generic `Exception` — catching `Exception` still works but
+  catching the specific subtypes (or the `KoolbaseStorageException` base)
+  gives you cleaner branching.
+
+### Added
+
+- `KoolbaseStorageException` — base class for all storage failures,
+  mirroring the `KoolbaseDataException` pattern from the database layer.
+- `KoolbaseStorageConflictException` (`code: PATH_CONFLICT`) — thrown when
+  an upload would replace an existing object and `overwrite: false`.
+  Exposes the colliding `path` from the server response.
+- `KoolbaseStorageNotFoundException`, `KoolbaseStorageValidationException`,
+  `KoolbaseStoragePermissionException` — typed exceptions for the other
+  storage error classes (404, 400, 403). Storage operations now throw
+  these instead of a generic `Exception`.
+- `koolbaseStorageError(statusCode, body)` and
+  `koolbaseStorageErrorFromResponse(res)` — code-first response-to-exception
+  mappers, matching the database layer's pattern.
+
+### Migration
+
+**If your app uploads to deterministic paths** (e.g. `avatars/{user_id}.png`)
+**and relied on the upload silently replacing the previous file:**
+
+```dart
+// Before — silent overwrite
+await Koolbase.storage.upload(
+  bucket: 'avatars',
+  path: 'me.png',
+  file: file,
+);
+
+// After — explicit overwrite
+await Koolbase.storage.upload(
+  bucket: 'avatars',
+  path: 'me.png',
+  file: file,
+  overwrite: true,
+);
+```
+
+**If you want a conflict prompt** (recommended for user-supplied filenames):
+
+```dart
+try {
+  await Koolbase.storage.upload(
+    bucket: 'documents',
+    path: filename,
+    file: file,
+  );
+} on KoolbaseStorageConflictException catch (e) {
+  final ok = await showConfirm('${e.path} already exists. Overwrite?');
+  if (ok) {
+    await Koolbase.storage.upload(
+      bucket: 'documents',
+      path: filename,
+      file: file,
+      overwrite: true,
+    );
+  }
+}
+```
+
+**If you catch generic exceptions from storage operations**, consider
+catching `KoolbaseStorageException` (or specific subtypes) for cleaner
+error handling:
+
+```dart
+try {
+  await Koolbase.storage.upload(...);
+} on KoolbaseStorageConflictException {
+  // Path already exists — prompt user
+} on KoolbaseStorageNotFoundException {
+  // Bucket missing or deleted
+} on KoolbaseStoragePermissionException {
+  // Caller not authorized
+} on KoolbaseStorageException catch (e) {
+  // Any other storage error
+  showError(e.message);
+}
+```
+
+### Server requirements
+
+- Requires a Koolbase server build with `PATH_CONFLICT` 409 support
+  (shipped alongside this release).
+
 ## 6.0.0
 
 ### Breaking

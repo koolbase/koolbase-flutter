@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'storage_exceptions.dart';
 import 'storage_models.dart';
 
 class KoolbaseStorageClient {
@@ -30,11 +31,25 @@ class KoolbaseStorageClient {
   }
 
   /// Upload a file to a bucket. Returns the object metadata and a download URL.
+  ///
+  /// By default (`overwrite: false`), uploads to a path where an object
+  /// already exists are **rejected** with a [KoolbaseStorageConflictException].
+  /// Catch it to prompt the user, then retry with `overwrite: true` to
+  /// replace the existing object — or with a different `path`.
+  ///
+  /// Set `overwrite: true` for true upsert semantics — silently replace
+  /// any existing object at this path.
+  ///
+  /// **Breaking change in v7.0.0**: the default flipped from silent
+  /// overwrite (legacy behavior in v6.x and earlier) to safe-by-default
+  /// (reject on conflict). If you previously relied on uploads overwriting
+  /// silently, pass `overwrite: true` explicitly.
   Future<UploadResult> upload({
     required String bucket,
     required String path,
     required File file,
     String? contentType,
+    bool overwrite = false,
   }) async {
     final mimeType = contentType ?? _inferContentType(path);
     final fileBytes = await file.readAsBytes();
@@ -49,13 +64,14 @@ class KoolbaseStorageClient {
             'bucket': bucket,
             'path': path,
             'content_type': mimeType,
+            'overwrite': overwrite,
           }),
         )
         .timeout(const Duration(seconds: 10));
 
     if (urlRes.statusCode != 200) {
-      final body = jsonDecode(urlRes.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Failed to get upload URL');
+      throw koolbaseStorageErrorFromResponse(urlRes,
+          fallbackMessage: 'Failed to get upload URL');
     }
 
     final urlData = jsonDecode(urlRes.body) as Map<String, dynamic>;
@@ -71,7 +87,12 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 60));
 
     if (uploadRes.statusCode != 200) {
-      throw Exception('Upload to storage failed: ${uploadRes.statusCode}');
+      // R2 PUT errors don't follow the Koolbase error shape — surface
+      // as a generic storage error rather than trying to decode a
+      // Koolbase-shaped body that isn't there.
+      throw KoolbaseStorageException(
+        'Upload to storage failed: ${uploadRes.statusCode}',
+      );
     }
 
     final etag = uploadRes.headers['etag'] ?? '';
@@ -87,13 +108,14 @@ class KoolbaseStorageClient {
             'size': fileSize,
             'content_type': mimeType,
             'etag': etag,
+            'overwrite': overwrite,
           }),
         )
         .timeout(const Duration(seconds: 10));
 
     if (confirmRes.statusCode != 201) {
-      final body = jsonDecode(confirmRes.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Failed to confirm upload');
+      throw koolbaseStorageErrorFromResponse(confirmRes,
+          fallbackMessage: 'Failed to confirm upload');
     }
 
     final object = KoolbaseObject.fromJson(
@@ -119,7 +141,8 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw Exception('Failed to get download URL');
+      throw koolbaseStorageErrorFromResponse(res,
+          fallbackMessage: 'Failed to get download URL');
     }
 
     final data = jsonDecode(res.body) as Map<String, dynamic>;
@@ -140,8 +163,8 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      throw Exception(body['error'] ?? 'Failed to delete file');
+      throw koolbaseStorageErrorFromResponse(res,
+          fallbackMessage: 'Failed to delete file');
     }
   }
 
