@@ -148,6 +148,51 @@ class KoolbaseStorageMimeTypeException extends KoolbaseStorageException {
   String toString() => 'KoolbaseStorageMimeTypeException: $message';
 }
 
+/// Thrown when an object metadata payload (either at upload-confirm time
+/// or via `updateMetadata`) fails server-side validation — the server
+/// responds with 400 and code `metadata_invalid`.
+///
+/// [detail] carries the specific reason from the server — e.g.
+/// `'key "foo bar": must match [a-z0-9_]+'`, `'exceeds 50 keys (got 53)'`,
+/// or `'exceeds 8192 bytes total (sum of all key + value lengths)'`. The
+/// detail names the failing key and rule so callers can fix the offending
+/// entry without guessing what shape rule was violated.
+///
+/// Validation rules (enforced server-side):
+///   - At most 50 keys per object.
+///   - At most 8KB total (sum of byte lengths across all keys + values).
+///   - Keys: 1–64 chars, must match `[a-z0-9_]+`.
+///   - Keys with a leading underscore are reserved for system use.
+///   - Values: at most 1024 chars each.
+///
+/// ```dart
+/// try {
+///   await Koolbase.storage.updateMetadata(
+///     bucket: 'photos',
+///     path: 'sunset.jpg',
+///     metadata: {'tag': 'sunset', 'BAD KEY': 'oops'},
+///   );
+/// } on KoolbaseStorageMetadataInvalidException catch (e) {
+///   debugPrint('Metadata rejected: ${e.detail}');
+///   // -> 'Metadata rejected: key "BAD KEY": must match [a-z0-9_]+'
+/// }
+/// ```
+class KoolbaseStorageMetadataInvalidException extends KoolbaseStorageException {
+  /// The specific validation failure reported by the server. Names the
+  /// failing key (if applicable) and the rule that was violated. Surface
+  /// this directly to the developer or to the user via UI.
+  final String? detail;
+
+  const KoolbaseStorageMetadataInvalidException([
+    super.message = 'Metadata payload is invalid',
+    this.detail,
+  ]) : super(code: 'metadata_invalid');
+
+  @override
+  String toString() =>
+      'KoolbaseStorageMetadataInvalidException${detail != null ? '($detail)' : ''}: $message';
+}
+
 /// Maps a non-2xx storage-layer response to a typed
 /// [KoolbaseStorageException], preferring the server's stable `code` and
 /// falling back to the HTTP status for older or uncoded responses. The
@@ -183,6 +228,11 @@ KoolbaseStorageException koolbaseStorageError(
       return KoolbaseStorageFileTooLargeException(message);
     case 'mime_not_allowed':
       return KoolbaseStorageMimeTypeException(message);
+    case 'metadata_invalid':
+      return KoolbaseStorageMetadataInvalidException(
+        message,
+        body['detail'] as String?,
+      );
   }
 
   // ---- status fallback (pre-code servers or uncoded paths) ----

@@ -40,6 +40,15 @@ class KoolbaseStorageClient {
   /// Set `overwrite: true` for true upsert semantics — silently replace
   /// any existing object at this path.
   ///
+  /// Pass [metadata] to attach arbitrary user-defined key/value pairs to
+  /// the object at confirm time. Subject to the limits documented on
+  /// [KoolbaseObject.metadata]; violations throw
+  /// [KoolbaseStorageMetadataInvalidException]. On the overwrite path the
+  /// metadata REPLACES any prior metadata at this path (matches GCS
+  /// semantics — a new upload at a path produces a new object, not a
+  /// patch of the old). Use [updateMetadata] for post-upload merge
+  /// changes.
+  ///
   /// **Breaking change in v7.0.0**: the default flipped from silent
   /// overwrite (legacy behavior in v6.x and earlier) to safe-by-default
   /// (reject on conflict). If you previously relied on uploads overwriting
@@ -49,6 +58,7 @@ class KoolbaseStorageClient {
     required String path,
     required File file,
     String? contentType,
+    Map<String, String>? metadata,
     bool overwrite = false,
   }) async {
     final mimeType = contentType ?? _inferContentType(path);
@@ -97,19 +107,27 @@ class KoolbaseStorageClient {
 
     final etag = uploadRes.headers['etag'] ?? '';
 
-    // Step 3: Confirm upload
+    // Step 3: Confirm upload. Build the body conditionally so the
+    // `metadata` field is only sent when the caller passed it — keeps
+    // the wire shape clean for callers that don't care, and lets the
+    // server's omitempty path treat absent as "no metadata."
+    final confirmBody = <String, dynamic>{
+      'bucket': bucket,
+      'path': path,
+      'size': fileSize,
+      'content_type': mimeType,
+      'etag': etag,
+      'overwrite': overwrite,
+    };
+    if (metadata != null) {
+      confirmBody['metadata'] = metadata;
+    }
+
     final confirmRes = await http
         .post(
           Uri.parse('$baseUrl/v1/sdk/storage/confirm'),
           headers: await _headers(),
-          body: jsonEncode({
-            'bucket': bucket,
-            'path': path,
-            'size': fileSize,
-            'content_type': mimeType,
-            'etag': etag,
-            'overwrite': overwrite,
-          }),
+          body: jsonEncode(confirmBody),
         )
         .timeout(const Duration(seconds: 10));
 
@@ -125,6 +143,63 @@ class KoolbaseStorageClient {
     final downloadUrl = await getDownloadUrl(bucket: bucket, path: path);
 
     return UploadResult(object: object, downloadUrl: downloadUrl);
+  }
+
+  /// Apply a partial metadata update to an existing object. Returns the
+  /// post-update [KoolbaseObject] with the merged metadata.
+  ///
+  /// **Merge semantics** (mirrors the server's JSONB merge):
+  ///
+  ///   - Keys with a non-null string value are SET — added if missing,
+  ///     replacing any existing value at the key otherwise.
+  ///   - Keys with `null` are DELETED from the stored metadata.
+  ///   - Keys ABSENT from [metadata] are untouched — pre-existing entries
+  ///     for those keys remain unchanged.
+  ///
+  /// Validation runs server-side against the same rules as upload-time
+  /// metadata; violations throw [KoolbaseStorageMetadataInvalidException]
+  /// whose `detail` field names the failing key and rule. The check is
+  /// performed against the projected post-merge state, so adding a key
+  /// that would push the object past the 50-key or 8KB ceiling is
+  /// rejected before the row is mutated.
+  ///
+  /// ```dart
+  /// // Add a tag, update an existing key, and drop another in one call:
+  /// final updated = await Koolbase.storage.updateMetadata(
+  ///   bucket: 'photos',
+  ///   path: 'sunset.jpg',
+  ///   metadata: {
+  ///     'category': 'landscape',  // SET or UPDATE
+  ///     'tag':      'sunset',     // SET or UPDATE
+  ///     'owner':    null,         // DELETE
+  ///   },
+  /// );
+  /// print(updated.metadata);  // -> {category: landscape, tag: sunset}
+  /// ```
+  Future<KoolbaseObject> updateMetadata({
+    required String bucket,
+    required String path,
+    required Map<String, String?> metadata,
+  }) async {
+    final res = await http
+        .patch(
+          Uri.parse('$baseUrl/v1/sdk/storage/objects/metadata'),
+          headers: await _headers(),
+          body: jsonEncode({
+            'bucket': bucket,
+            'path': path,
+            'metadata': metadata,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode != 200) {
+      throw koolbaseStorageErrorFromResponse(res,
+          fallbackMessage: 'Failed to update metadata');
+    }
+
+    return KoolbaseObject.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   /// Get a signed download URL for a file

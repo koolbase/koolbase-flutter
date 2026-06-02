@@ -1,4 +1,31 @@
-# 6.1.1
+# 6.2.0
+
+* feat(storage): custom object metadata. Attach arbitrary key/value
+  pairs to stored objects at upload time, mutate via merge semantics
+  post-upload, read alongside any `KoolbaseObject`.
+  - `KoolbaseStorageClient.upload()` gains an optional
+    `metadata: Map<String, String>` named param. Set at confirm time;
+    REPLACES prior metadata on the `overwrite: true` path (matches
+    GCS semantics — a new upload at a path produces a new object,
+    not a patch of the old).
+  - New `KoolbaseStorageClient.updateMetadata()` method with merge
+    semantics: keys with a non-null value are set/updated, keys with
+    `null` are deleted, keys absent from the payload are untouched.
+    One call handles add, update, and delete atomically.
+  - `KoolbaseObject` gains a `metadata: Map<String, String>` field.
+    Always non-null — `{}` when empty, never `null` — so callers can
+    treat it as a guaranteed map without nil checks.
+  - New `KoolbaseStorageMetadataInvalidException` (extends
+    `KoolbaseStorageException`) thrown for server-side validation
+    failures. Its `detail` field names the failing key and rule
+    (e.g. `key "bad key": must match [a-z0-9_]+`,
+    `exceeds 50 keys (got 53)`) so callers can surface actionable
+    errors without guessing what shape rule was violated.
+* Validation rules (server-side, recreated for SDK doc convenience):
+  ≤50 keys, ≤8KB total, keys 1–64 chars `[a-z0-9_]+`, values ≤1024
+  chars, leading underscore reserved for system keys.
+
+## 6.1.1
 
 ### Fixed
 
