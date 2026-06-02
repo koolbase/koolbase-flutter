@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^6.2.0
+     koolbase_flutter: ^6.3.0
 ```
 
 4. Initialize before `runApp()`:
@@ -274,6 +274,39 @@ final url = await Koolbase.storage.getDownloadUrl(
 // Delete
 await Koolbase.storage.delete(bucket: 'avatars', path: 'user-123.jpg');
 ```
+
+---
+
+### Public bucket URLs
+
+For files in public buckets, you can construct the stable CDN URL directly — no
+network call, no expiry, embeddable anywhere a browser fetches a URL.
+
+```dart
+// From a KoolbaseObject you already have (e.g. from upload() or another read)
+final obj = result.object;
+final url = obj.publicUrl('avatars');
+// url is null for private-bucket objects; the CDN URL for public-bucket ones.
+
+if (url != null) {
+  // Safe to use — file lives in the public R2 bucket
+  return Image.network(url);
+}
+
+// For build-time URL construction (no Object on hand)
+final url = KoolbaseStorageClient.publicUrl(
+  projectId: 'proj_abc',
+  bucket: 'avatars',
+  path: 'user-123.jpg',
+);
+// Always returns the URL pattern; caller is responsible for knowing
+// the file lives in a public bucket. For files in private buckets,
+// the resulting URL will 404.
+```
+
+URLs follow the pattern `https://cdn.koolbase.com/{project_id}/{bucket}/{path}` — long-lived, edge-cached, no authentication. For files in private buckets, use `getDownloadUrl` instead, which returns a 1-hour presigned URL.
+
+---
 
 ### Handling upload conflicts
 

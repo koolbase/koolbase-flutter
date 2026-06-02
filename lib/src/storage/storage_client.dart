@@ -224,6 +224,29 @@ class KoolbaseStorageClient {
     return data['url'] as String;
   }
 
+  /// Build the stable public CDN URL for a file in a public bucket.
+  ///
+  /// Returns the URL unconditionally — no check on whether the file
+  /// exists or whether the bucket is actually public. Use when you
+  /// know the file is in a public bucket and want the URL without a
+  /// network round-trip (build-time URL generation, server-side
+  /// rendering, batch image processing, etc.).
+  ///
+  /// For safer construction from an Object you already have, use
+  /// [KoolbaseObject.publicUrl] — it checks the stored `r2_bucket`
+  /// value and returns `null` when the object isn't actually in the
+  /// public R2 bucket.
+  static String publicUrl({
+    required String projectId,
+    required String bucket,
+    required String path,
+  }) {
+    // Encode each path segment individually so slashes are preserved
+    // while spaces, parens, hashes, and query characters are escaped.
+    final encoded = path.split('/').map(Uri.encodeComponent).join('/');
+    return 'https://cdn.koolbase.com/$projectId/$bucket/$encoded';
+  }
+
   /// Delete a file from a bucket
   Future<void> delete({
     required String bucket,

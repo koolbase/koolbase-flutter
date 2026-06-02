@@ -28,6 +28,15 @@ class KoolbaseObject {
   final String id;
   final String projectId;
   final String bucketId;
+
+  /// Name of the physical R2 bucket holding this object's bytes
+  /// (Gap #2). `koolbase-storage-public` means the object has a stable
+  /// CDN URL accessible via [publicUrl]; anything else (typically
+  /// `koolbase-storage`) means the object is in private storage and
+  /// must be fetched via [KoolbaseStorageClient.getDownloadUrl], which
+  /// returns a short-lived presigned URL.
+  final String r2Bucket;
+
   final String? userId;
   final String path;
   final int size;
@@ -52,6 +61,7 @@ class KoolbaseObject {
     required this.id,
     required this.projectId,
     required this.bucketId,
+    required this.r2Bucket,
     this.userId,
     required this.path,
     required this.size,
@@ -62,10 +72,6 @@ class KoolbaseObject {
   });
 
   factory KoolbaseObject.fromJson(Map<String, dynamic> json) {
-    // Defensive decode: the server always emits `metadata` as a (possibly
-    // empty) object, but older / cached responses or non-Koolbase JSON
-    // might be missing it or send null. Either way we want a typed empty
-    // map rather than a runtime cast failure.
     final rawMetadata = json['metadata'] as Map<String, dynamic>?;
     final metadata = rawMetadata == null
         ? const <String, String>{}
@@ -75,6 +81,11 @@ class KoolbaseObject {
       id: json['id'] as String,
       projectId: json['project_id'] as String,
       bucketId: json['bucket_id'] as String,
+      // Default to 'koolbase-storage' so older cached responses (or
+      // any non-Koolbase JSON missing the field) decode to a safe
+      // value rather than crashing. Matches the server's migration
+      // default for the column.
+      r2Bucket: json['r2_bucket'] as String? ?? 'koolbase-storage',
       userId: json['user_id'] as String?,
       path: json['path'] as String,
       size: json['size'] as int? ?? 0,
@@ -83,6 +94,28 @@ class KoolbaseObject {
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
+  }
+
+  /// Returns the stable CDN URL for this object if its bytes physically
+  /// live in the public R2 bucket, `null` otherwise.
+  ///
+  /// Returns `null` for:
+  ///   - Files in private buckets (no public URL ever)
+  ///   - Legacy files in public buckets whose bytes still live in the
+  ///     private R2 bucket from before Gap #2 (no permanent URL until
+  ///     they're re-uploaded)
+  ///
+  /// The bucket name must be supplied because [KoolbaseObject] carries
+  /// only the bucket ID, not its name. Typically the caller already
+  /// knows which bucket they queried.
+  ///
+  /// For unchecked URL construction (build-time scenarios where you
+  /// have a project ID + bucket + path and want the URL pattern
+  /// regardless), see [KoolbaseStorageClient.publicUrl].
+  String? publicUrl(String bucketName) {
+    if (r2Bucket != 'koolbase-storage-public') return null;
+    final encoded = path.split('/').map(Uri.encodeComponent).join('/');
+    return 'https://cdn.koolbase.com/$projectId/$bucketName/$encoded';
   }
 }
 

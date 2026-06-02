@@ -1,4 +1,29 @@
-# 6.2.0
+# 6.3.0
+
+* feat(storage): public bucket CDN URLs (Gap #2 SDK polish).
+  - `KoolbaseObject` gains an `r2Bucket: String` field identifying
+    which physical R2 bucket holds the object's bytes. Always
+    populated. `'koolbase-storage-public'` means the object has a
+    stable CDN URL; anything else (typically `'koolbase-storage'`)
+    means it's in private storage and reads go through a presigned
+    URL via `getDownloadUrl`.
+  - `KoolbaseObject.publicUrl(String bucketName)` returns the stable
+    `https://cdn.koolbase.com/...` URL for the object when it lives
+    in the public R2 bucket, `null` otherwise. Use this when you
+    have an object instance and want a safe URL — returns `null`
+    rather than a URL that 404s for private or legacy public-bucket
+    files.
+  - `KoolbaseStorageClient.publicUrl({projectId, bucket, path})` —
+    static helper that builds the CDN URL pattern unconditionally.
+    Use for build-time URL generation where you have the inputs but
+    don't need (or want) a check that the file is actually in a
+    public bucket.
+* No breaking changes. `getDownloadUrl` already returns the CDN URL
+  for objects in public buckets since the server-side Gap #2 deploy
+  on Jun 2 2026 — this release just makes that URL constructible
+  without a network round-trip.
+
+## 6.2.0
 
 * feat(storage): custom object metadata. Attach arbitrary key/value
   pairs to stored objects at upload time, mutate via merge semantics
