@@ -259,6 +259,29 @@ class KoolbaseStorageClient {
     return 'https://cdn.koolbase.com/cdn-cgi/image/$opts/$projectId/$bucket/$encoded';
   }
 
+  /// Builds a named-preset CDN URL. The preset is resolved at the Cloudflare
+  /// edge by the koolbase-cdn-worker, which looks up
+  /// `preset:{project_id}:{preset_name}` in Workers KV and applies the
+  /// stored transformation options. Presets are managed in the dashboard
+  /// under Storage → Presets.
+  ///
+  /// Unknown preset names yield a 404 at the edge — the URL itself always
+  /// constructs successfully without a network round-trip.
+  ///
+  /// For safer construction from an Object you already have, use
+  /// [KoolbaseObject.publicUrlWithPreset] — it checks the stored `r2_bucket`
+  /// value and returns `null` when the object isn't actually in the public
+  /// R2 bucket.
+  static String publicUrlWithPreset({
+    required String projectId,
+    required String presetName,
+    required String bucket,
+    required String path,
+  }) {
+    final encoded = path.split('/').map(Uri.encodeComponent).join('/');
+    return 'https://cdn.koolbase.com/p/$projectId/$presetName/$bucket/$encoded';
+  }
+
   /// Delete a file from a bucket
   Future<void> delete({
     required String bucket,

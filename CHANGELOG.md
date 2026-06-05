@@ -1,3 +1,33 @@
+# 6.4.0
+
+* feat(storage): edge image transforms (Gap #8).
+  - New `KoolbaseImageTransform` value class — width, height,
+    format, quality, fit, dpr, gravity. Pair with the new
+    `KoolbaseImageFormat`, `KoolbaseImageFit`, and
+    `KoolbaseImageGravity` enums for type-safe option construction.
+    Out-of-range numeric values clamp silently to Cloudflare's
+    valid ranges (width/height 1–2000, quality 1–100, dpr 1–3).
+  - `KoolbaseStorageClient.publicUrl({transform})` and
+    `KoolbaseObject.publicUrl(bucket, {transform})` accept an
+    optional transform; the resulting URL hits Cloudflare's image
+    pipeline at `cdn.koolbase.com/cdn-cgi/image/<opts>/...` and
+    serves a resized, re-encoded copy of the source. Original URL
+    behavior unchanged when `transform` is omitted.
+  - `KoolbaseStorageClient.publicUrlWithPreset({projectId,
+    presetName, bucket, path})` and
+    `KoolbaseObject.publicUrlWithPreset(bucket, presetName)`
+    resolve a named preset stored server-side (managed via the
+    dashboard or REST API) at `cdn.koolbase.com/p/{project_id}/
+    {preset_name}/{bucket}/{path}`. Edit the preset once on the
+    server and every URL using it updates as the edge cache rolls
+    over.
+* Cloudflare bills unique transformations per calendar month;
+  every Koolbase account includes 5,000 free. Transformed
+  responses are edge-cached for 4 hours.
+* No breaking changes. All new APIs are additive; existing
+  `publicUrl` calls without `transform` produce the exact same
+  URL they did in 6.3.0.
+
 # 6.3.0
 
 * feat(storage): public bucket CDN URLs (Gap #2 SDK polish).

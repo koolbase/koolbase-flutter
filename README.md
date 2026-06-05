@@ -308,6 +308,56 @@ URLs follow the pattern `https://cdn.koolbase.com/{project_id}/{bucket}/{path}` 
 
 ---
 
+### Image transforms
+
+Public bucket URLs can be transformed at the edge — resize, reformat,
+optimize — without any preprocessing. Two ways:
+
+**Direct transforms** — pass a `KoolbaseImageTransform` to `publicUrl`:
+
+```dart
+final url = KoolbaseStorageClient.publicUrl(
+  projectId: 'proj_abc',
+  bucket: 'avatars',
+  path: 'user-123.jpg',
+  transform: const KoolbaseImageTransform(
+    width: 200,
+    height: 200,
+    fit: KoolbaseImageFit.cover,
+    format: KoolbaseImageFormat.auto,
+    quality: 85,
+  ),
+);
+```
+
+**Named presets** — store an option set server-side (via the dashboard or
+REST API), reference it by name:
+
+```dart
+final url = KoolbaseStorageClient.publicUrlWithPreset(
+  projectId: 'proj_abc',
+  presetName: 'thumbnail',
+  bucket: 'avatars',
+  path: 'user-123.jpg',
+);
+
+// Or from a KoolbaseObject instance:
+final url = obj.publicUrlWithPreset('avatars', 'thumbnail');
+```
+
+Available options: `width` and `height` (1–2000), `format`
+(`auto`/`webp`/`avif`/`jpeg`/`png`), `quality` (1–100), `fit`
+(`scaleDown`/`contain`/`cover`/`crop`/`pad`), `dpr` (1–3), `gravity`
+(`auto`/`center`/`top`/`bottom`/`left`/`right`/`topLeft`/`topRight`/
+`bottomLeft`/`bottomRight`). Transformed responses are edge-cached for 4
+hours; Cloudflare includes 5,000 unique transformations/month free per
+account.
+
+See [Image Transforms docs](https://docs.koolbase.com/storage/image-transforms)
+for the full reference.
+
+---
+
 ### Handling upload conflicts
 
 For user-supplied filenames, prompt the user before overwriting:

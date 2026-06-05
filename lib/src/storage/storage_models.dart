@@ -126,6 +126,23 @@ class KoolbaseObject {
     }
     return 'https://cdn.koolbase.com/cdn-cgi/image/$opts/$projectId/$bucketName/$encoded';
   }
+
+  /// Returns the named-preset CDN URL for this object, or `null` if the
+  /// object isn't in the public R2 bucket.
+  ///
+  /// The named preset is resolved at the Cloudflare edge by the
+  /// koolbase-cdn-worker: it looks up `preset:{project_id}:{preset_name}`
+  /// in Workers KV, applies the stored transformation options, and serves
+  /// the transformed image. Presets are managed in the dashboard under
+  /// Storage → Presets.
+  ///
+  /// Unknown preset names yield a 404 at the edge — the URL itself always
+  /// constructs successfully.
+  String? publicUrlWithPreset(String bucketName, String presetName) {
+    if (r2Bucket != 'koolbase-storage-public') return null;
+    final encoded = path.split('/').map(Uri.encodeComponent).join('/');
+    return 'https://cdn.koolbase.com/p/$projectId/$presetName/$bucketName/$encoded';
+  }
 }
 
 class UploadResult {
