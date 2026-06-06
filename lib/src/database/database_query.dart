@@ -187,6 +187,74 @@ class KoolbaseQuery {
       isFromCache: false,
     );
   }
+
+  /// Semantic search via HNSW vector similarity.
+  ///
+  /// Ranks records in this collection by cosine distance between the
+  /// supplied [queryVector] and each record's stored vector on [field].
+  /// Returns up to [limit] nearest hits, with the collection's read rule
+  /// applied (owner / scoped / conditional records are filtered to the
+  /// caller).
+  ///
+  /// [where] is an optional equality-filter map on record `data` fields —
+  /// applied AFTER the HNSW lookup, so very strict filters may return
+  /// fewer than [limit] results.
+  ///
+  /// Online-only (no offline cache for semantic search).
+  ///
+  /// ```dart
+  /// final result = await Koolbase.db.collection('articles').searchSemantic(
+  ///   field: 'embedding',
+  ///   queryVector: queryEmbedding,
+  ///   limit: 10,
+  ///   where: {'category': 'tech'},
+  /// );
+  /// for (final hit in result.hits) {
+  ///   print('${hit.record['title']}  (distance: ${hit.distance})');
+  /// }
+  /// ```
+  ///
+  /// Throws [KoolbaseNotFoundException] if [field] is not declared on
+  /// this collection. Throws [KoolbaseVectorDimensionMismatchException]
+  /// if [queryVector]'s length does not match the field's declared
+  /// dimension.
+  Future<KoolbaseSemanticSearchResult> searchSemantic({
+    required String field,
+    required List<double> queryVector,
+    int limit = 20,
+    Map<String, dynamic>? where,
+  }) async {
+    final body = <String, dynamic>{
+      'collection': collectionName,
+      'field': field,
+      'query_vector': queryVector,
+      'limit': limit,
+      if (where != null && where.isNotEmpty) 'where': where,
+    };
+
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/db/search-semantic'),
+          headers: await _headers(),
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode != 200) {
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'Semantic search failed');
+    }
+
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final hits = (data['results'] as List<dynamic>? ?? [])
+        .map((e) => KoolbaseSemanticHit.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false);
+
+    return KoolbaseSemanticSearchResult(
+      hits: hits,
+      total: (data['total'] as num?)?.toInt() ?? hits.length,
+    );
+  }
 }
 
 /// Document reference for single record operations
@@ -269,5 +337,103 @@ class KoolbaseDocRef {
 
     // Remove from local cache
     await _cacheStore?.deleteRecord(recordId);
+  }
+
+  /// Write (or replace) a vector for this record on the named [field].
+  ///
+  /// The field must already be declared on the collection (dashboard or
+  /// CLI). [vector]'s length must match the field's declared dimension;
+  /// otherwise throws [KoolbaseVectorDimensionMismatchException].
+  ///
+  /// Online-only (no offline cache for vectors).
+  ///
+  /// ```dart
+  /// await Koolbase.db.doc(articleId).setVector(
+  ///   'embedding',
+  ///   await myEmbeddingModel.encode(article.content),
+  /// );
+  /// ```
+  ///
+  /// Throws [KoolbaseNotFoundException] if the record or vector field
+  /// does not exist; throws [KoolbasePermissionException] if the caller
+  /// is not allowed to write this record per the collection's write rule.
+  Future<void> setVector(String field, List<double> vector) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/db/set-vector'),
+          headers: await _headers(),
+          body: jsonEncode({
+            'record_id': recordId,
+            'field': field,
+            'vector': vector,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode != 204) {
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'Set vector failed');
+    }
+  }
+
+  /// Read this record's stored vector on the named [field].
+  ///
+  /// Returns the full [KoolbaseVector] including the float values plus
+  /// timestamps. Throws [KoolbaseNotFoundException] if either the
+  /// field is not declared, or no vector has been set for this record
+  /// on this field. Throws [KoolbasePermissionException] if the caller
+  /// cannot read this record per the collection's read rule.
+  ///
+  /// Online-only.
+  ///
+  /// ```dart
+  /// final v = await Koolbase.db.doc(articleId).getVector('embedding');
+  /// print('${v.vector.length}-dim vector, updated ${v.updatedAt}');
+  /// ```
+  Future<KoolbaseVector> getVector(String field) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/db/get-vector'),
+          headers: await _headers(),
+          body: jsonEncode({
+            'record_id': recordId,
+            'field': field,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode != 200) {
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'Get vector failed');
+    }
+    return KoolbaseVector.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// Remove this record's stored vector on the named [field].
+  ///
+  /// Online-only. Throws [KoolbaseNotFoundException] if no vector is
+  /// set for (record, field); throws [KoolbasePermissionException] if
+  /// the caller cannot write this record per the collection's write rule.
+  ///
+  /// Note: this removes the vector from the dimension table but does NOT
+  /// remove the field declaration itself — the field stays on the
+  /// collection and is still settable on other records.
+  Future<void> deleteVector(String field) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/db/delete-vector'),
+          headers: await _headers(),
+          body: jsonEncode({
+            'record_id': recordId,
+            'field': field,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode != 204) {
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'Delete vector failed');
+    }
   }
 }

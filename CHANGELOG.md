@@ -1,5 +1,28 @@
 # Changelog
 
+## 7.0.0
+
+### Added
+
+- **Semantic search via vector similarity** — query records by meaning, not just by field equality. New methods on the database namespace mirror the server-side vector primitive shipped in Koolbase Phase 1 AI:
+  - `Koolbase.db.doc(id).setVector(field, vector)` — store a vector for a record
+  - `Koolbase.db.doc(id).getVector(field)` — read a stored vector
+  - `Koolbase.db.doc(id).deleteVector(field)` — remove a vector
+  - `Koolbase.db.collection(name).searchSemantic(field:, queryVector:, limit:, where:)` — HNSW similarity search with optional filter scoping, returning ranked hits with cosine distance
+- New types: `KoolbaseVector`, `KoolbaseSemanticHit`, `KoolbaseSemanticSearchResult`
+- New typed exception: `KoolbaseVectorDimensionMismatchException` for length-mismatch errors
+
+### Notes
+
+- Vector fields must be declared on a collection ahead of time via the Koolbase dashboard or CLI; the mobile SDK does not declare schema.
+- Supported dimensions in this release: 384, 768, 1024, 1536. Higher dimensions (e.g. OpenAI text-embedding-3-large at 3072) will be supported in a future release once pgvector is upgraded — in the meantime, use the model's `dimensions=1536` parameter (Matryoshka truncation).
+- Vector operations are online-only — they're not cached locally or queued offline because HNSW search has no useful offline semantics.
+- Semantic search respects the collection's read rule the same way `.get()` does: owner/scoped/conditional rules are applied after the HNSW lookup, so strict rules may return fewer than `limit` results in this version.
+
+### Migration
+
+Purely additive — no existing methods or types changed. Upgrading from 6.x requires only `flutter pub upgrade koolbase_flutter` and a re-run of `flutter pub get`.
+
 ## 6.5.0
 
 Object versioning support — full read + write surface against versioned

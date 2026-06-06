@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^6.5.0
+     koolbase_flutter: ^6.7.0
 ```
 
 4. Initialize before `runApp()`:
@@ -228,6 +228,61 @@ final deleted = await Koolbase.db.deleteWhere(
 > A non-empty filter is required — Koolbase won't delete an entire collection.
 > The collection's delete rule applies; for `owner`/`scoped` rules the delete
 > is scoped to your own records. Online-only.
+
+### Semantic search
+
+Find records by meaning, not just by field equality. Store an embedding
+vector on a record, then search the collection for nearest neighbors to a
+query vector — useful for similarity search over user-supplied embeddings.
+
+Declare a vector field on the collection from the dashboard or CLI first
+(picking a dimension; v1 supports 384, 768, 1024, and 1536). Then write
+and search from the SDK:
+
+```dart
+// Set a vector for one record
+await Koolbase.db.doc(articleId).setVector(
+  'embedding',
+  await myEmbeddingModel.encode(article.content),
+);
+
+// Read it back
+final v = await Koolbase.db.doc(articleId).getVector('embedding');
+print('${v.vector.length}-dim, updated ${v.updatedAt}');
+
+// Search the collection for nearest neighbors
+final result = await Koolbase.db.collection('articles').searchSemantic(
+  field: 'embedding',
+  queryVector: await myEmbeddingModel.encode(userQuery),
+  limit: 10,
+);
+
+for (final hit in result.hits) {
+  // hit.distance is cosine distance: lower = more similar
+  // (0 = identical direction, 1 ≈ orthogonal, 2 = opposite)
+  print('${hit.record['title']}  (${hit.distance.toStringAsFixed(3)})');
+}
+
+// Optionally scope the search with an equality filter
+final scoped = await Koolbase.db.collection('articles').searchSemantic(
+  field: 'embedding',
+  queryVector: queryEmbedding,
+  limit: 10,
+  where: {'category': 'tech'},
+);
+
+// Remove a record's vector when you no longer need it
+await Koolbase.db.doc(articleId).deleteVector('embedding');
+```
+
+A few behaviors worth knowing:
+
+- **Vector length must match the declared dimension.** Mismatches throw `KoolbaseVectorDimensionMismatchException` with the expected and actual dimensions in the message.
+- **Online-only.** Vector operations are not cached locally or queued offline — HNSW similarity search has no useful offline semantics, so deferred writes could corrupt your view of what's stored.
+- **Read rule applies post-search.** Semantic search respects the collection's read rule the same way `.get()` does: `owner`/`scoped`/`conditional` records are filtered to the caller after the HNSW lookup, so strict rules may return fewer than `limit` results.
+- **Higher dimensions coming.** OpenAI's `text-embedding-3-large` ships at 3072 dimensions, supported in a future release once pgvector is upgraded. In the meantime, use your model's `dimensions=1536` parameter (Matryoshka truncation) for full compatibility.
+
+See [Semantic search docs](https://docs.koolbase.com/database/vectors) for setup, dimension guidance, and embedding model recommendations.
 
 ### Offline-first
 
@@ -736,6 +791,7 @@ All data-layer failures extend `KoolbaseDataException` (which implements
 | `KoolbaseValidationException` | The request was rejected as invalid (400). |
 | `KoolbasePermissionException` | An access rule denied the operation (403). |
 | `KoolbaseRateLimitException` | The caller is being rate-limited (429). |
+| `KoolbaseVectorDimensionMismatchException` | A vector's length doesn't match the field's declared dimension (400, code `vector_dimension_mismatch`). |
 
 ```dart
 try {
@@ -802,7 +858,7 @@ and so on — also selected from the server's error `code`.
 ## What's included
 
 - Authentication: email + password, Apple Sign-In, Google Sign-In, phone + OTP
-- Database with offline-first cache (Drift), realtime subscriptions, populate for related records
+- Database with offline-first cache (Drift), realtime subscriptions, populate for related records, semantic search over vectors
 - Storage with presigned uploads and downloads, safe-by-default conflict handling, image transforms, object versioning (history + restore + soft-delete)
 - Realtime subscriptions over WebSocket
 - Authenticated Dart functions (`ctx.auth` exposes the caller automatically)

@@ -176,3 +176,70 @@ class KoolbaseBatchResult {
     );
   }
 }
+
+/// A stored vector retrieved by [KoolbaseDocRef.getVector]. The [vector]
+/// field carries the float values exactly as stored on the server, and
+/// the field-name + record-id pair identifies which slot they came from.
+class KoolbaseVector {
+  final String recordId;
+  final String fieldName;
+  final List<double> vector;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const KoolbaseVector({
+    required this.recordId,
+    required this.fieldName,
+    required this.vector,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory KoolbaseVector.fromJson(Map<String, dynamic> json) {
+    return KoolbaseVector(
+      recordId: json['record_id'] as String,
+      fieldName: json['field_name'] as String,
+      vector: (json['vector'] as List)
+          .map((e) => (e as num).toDouble())
+          .toList(growable: false),
+      createdAt: DateTime.parse(json['created_at'] as String),
+      updatedAt: DateTime.parse(json['updated_at'] as String),
+    );
+  }
+}
+
+/// One ranked hit from a semantic search. [record] carries the full
+/// record (same wire shape as a record returned by query/get), and
+/// [distance] is the cosine distance between the query vector and the
+/// stored vector — lower means more similar. Range: 0 (identical
+/// direction) to 2 (opposite direction).
+class KoolbaseSemanticHit {
+  final KoolbaseRecord record;
+  final double distance;
+
+  const KoolbaseSemanticHit({
+    required this.record,
+    required this.distance,
+  });
+
+  factory KoolbaseSemanticHit.fromJson(Map<String, dynamic> json) {
+    return KoolbaseSemanticHit(
+      record: KoolbaseRecord.fromJson(json['record'] as Map<String, dynamic>),
+      distance: (json['distance'] as num).toDouble(),
+    );
+  }
+}
+
+/// Result of [KoolbaseQuery.searchSemantic]. [hits] is the ranked list
+/// of nearest neighbors (best match first); [total] is the count of
+/// hits returned (matches `hits.length` in v1 — preserved as a separate
+/// field for future pagination).
+class KoolbaseSemanticSearchResult {
+  final List<KoolbaseSemanticHit> hits;
+  final int total;
+
+  const KoolbaseSemanticSearchResult({
+    required this.hits,
+    required this.total,
+  });
+}
