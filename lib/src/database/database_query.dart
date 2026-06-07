@@ -188,47 +188,53 @@ class KoolbaseQuery {
     );
   }
 
-  /// Semantic search via HNSW vector similarity.
-  ///
-  /// Ranks records in this collection by cosine distance between the
-  /// supplied [queryVector] and each record's stored vector on [field].
-  /// Returns up to [limit] nearest hits, with the collection's read rule
-  /// applied (owner / scoped / conditional records are filtered to the
-  /// caller).
-  ///
-  /// [where] is an optional equality-filter map on record `data` fields —
-  /// applied AFTER the HNSW lookup, so very strict filters may return
-  /// fewer than [limit] results.
-  ///
-  /// Online-only (no offline cache for semantic search).
+  /// Semantic search over a vector field. Supply EITHER a precomputed
+  /// `queryVector` OR a `queryText` string — the server will embed text
+  /// inline using the vector field's configured provider.
   ///
   /// ```dart
+  /// // Server-side embedding (most common — set up an AI provider on the project):
   /// final result = await Koolbase.db.collection('articles').searchSemantic(
-  ///   field: 'embedding',
-  ///   queryVector: queryEmbedding,
+  ///   field: 'content_embedding',
+  ///   queryText: 'how do I configure CI/CD?',
   ///   limit: 10,
-  ///   where: {'category': 'tech'},
   /// );
-  /// for (final hit in result.hits) {
-  ///   print('${hit.record['title']}  (distance: ${hit.distance})');
-  /// }
+  ///
+  /// // Client-side embedding (when you've already encoded the query):
+  /// final result = await Koolbase.db.collection('articles').searchSemantic(
+  ///   field: 'content_embedding',
+  ///   queryVector: precomputed,
+  ///   limit: 10,
+  /// );
   /// ```
   ///
   /// Throws [KoolbaseNotFoundException] if [field] is not declared on
   /// this collection. Throws [KoolbaseVectorDimensionMismatchException]
-  /// if [queryVector]'s length does not match the field's declared
-  /// dimension.
+  /// if [queryVector]'s length does not match the field's dimension.
+  /// Throws [ArgumentError] if both or neither of [queryVector] / [queryText]
+  /// are supplied.
   Future<KoolbaseSemanticSearchResult> searchSemantic({
     required String field,
-    required List<double> queryVector,
+    List<double>? queryVector,
+    String? queryText,
     int limit = 20,
     Map<String, dynamic>? where,
   }) async {
+    final hasVector = queryVector != null && queryVector.isNotEmpty;
+    final hasText = queryText != null && queryText.trim().isNotEmpty;
+    if (!hasVector && !hasText) {
+      throw ArgumentError('Provide either queryVector or queryText.');
+    }
+    if (hasVector && hasText) {
+      throw ArgumentError('Provide only one of queryVector or queryText.');
+    }
+
     final body = <String, dynamic>{
       'collection': collectionName,
       'field': field,
-      'query_vector': queryVector,
       'limit': limit,
+      if (hasVector) 'query_vector': queryVector,
+      if (hasText) 'query_text': queryText,
       if (where != null && where.isNotEmpty) 'where': where,
     };
 
@@ -249,11 +255,59 @@ class KoolbaseQuery {
     final hits = (data['results'] as List<dynamic>? ?? [])
         .map((e) => KoolbaseSemanticHit.fromJson(e as Map<String, dynamic>))
         .toList(growable: false);
+    return KoolbaseSemanticSearchResult(hits: hits, total: hits.length);
+  }
 
-    return KoolbaseSemanticSearchResult(
-      hits: hits,
-      total: (data['total'] as num?)?.toInt() ?? hits.length,
-    );
+  /// Queue an embedding job for a record on this collection. The server's
+  /// embedding worker picks it up within ~1 second, calls the configured
+  /// provider, and writes the resulting vector to the record.
+  ///
+  /// If [text] is omitted, the value of the vector field's configured
+  /// `source_field` on the record is used. Pass [text] explicitly for
+  /// backfills, A/B comparisons, or when you want to embed something other
+  /// than the record's source field.
+  ///
+  /// ```dart
+  /// // Re-embed using the record's content field (the configured source):
+  /// await Koolbase.db.collection('articles').embedText(
+  ///   recordId: article.id,
+  ///   vectorField: 'content_embedding',
+  /// );
+  ///
+  /// // Embed a custom string for this record:
+  /// await Koolbase.db.collection('articles').embedText(
+  ///   recordId: article.id,
+  ///   vectorField: 'content_embedding',
+  ///   text: '${article.title}\n\n${article.summary}',
+  /// );
+  /// ```
+  ///
+  /// Returns when the job is queued — not when the vector lands. Poll the
+  /// vector via [KoolbaseDocRef.getVector] if you need to wait for it.
+  Future<void> embedText({
+    required String recordId,
+    required String vectorField,
+    String? text,
+  }) async {
+    final body = <String, dynamic>{
+      'collection': collectionName,
+      'record_id': recordId,
+      'vector_field': vectorField,
+      if (text != null && text.isNotEmpty) 'text': text,
+    };
+
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/db/embed-text'),
+          headers: await _headers(),
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode != 200) {
+      throw koolbaseDataErrorFromResponse(res,
+          fallbackMessage: 'embedText failed');
+    }
   }
 }
 
