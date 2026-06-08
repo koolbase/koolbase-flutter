@@ -229,35 +229,87 @@ final deleted = await Koolbase.db.deleteWhere(
 > The collection's delete rule applies; for `owner`/`scoped` rules the delete
 > is scoped to your own records. Online-only.
 
+---
+
 ### Semantic search
 
-Find records by meaning, not just field equality. Two paths: let Koolbase
-embed text for you on the server (the recommended path — no client-side
-model needed), or pass a precomputed vector (still supported for cases
-where you want to control the embedding model yourself).
+Find records by meaning, not just field equality. Koolbase ships three
+retrieval modes from a single API — pick the one that matches your
+query characteristics, or use `hybrid` as a strong production default.
 
 Declare a vector field on the collection from the dashboard or CLI first
 (picking a dimension; v1 supports 384, 768, 1024, and 1536).
 
-**Server-side embedding (recommended).** Configure an AI provider on the
-project once (Gemini's free tier works; OpenAI also supported), tag the
-vector field with the provider/model/source_field, and Koolbase
-auto-embeds records as they're inserted or updated:
+#### The three search modes
 
 ```dart
-// One-time setup: configure provider + tag the vector field via the
-// dashboard. Then just write records normally — vectors land within ~1s.
-await Koolbase.db.collection('articles').create({
-  'title': 'How to ship faster',
-  'content': 'Cut scope ruthlessly. Ship the smallest useful slice...',
-});
-
-// Query by text — server embeds inline using the same provider/model:
+// Semantic (default) — pure vector search via HNSW + cosine. Best for
+// fuzzy or conceptual queries where exact words don't have to match.
 final result = await Koolbase.db.collection('articles').searchSemantic(
   field: 'content_embedding',
   queryText: 'how do I move quicker?',
   limit: 10,
 );
+
+// Lexical — pure BM25 over the field's source text (Postgres
+// ts_rank_cd). Best for exact terms, product codes, names, acronyms.
+final result = await Koolbase.db.collection('articles').searchSemantic(
+  field: 'content_embedding',
+  queryText: 'CVE-2024-1234',
+  mode: KoolbaseSearchMode.lexical,
+  limit: 10,
+);
+
+// Hybrid — vector + lexical fused with reciprocal rank fusion (k=60).
+// Generally the strongest default; both rankers vote and the fusion
+// score promotes records that score well on either signal.
+final result = await Koolbase.db.collection('articles').searchSemantic(
+  field: 'content_embedding',
+  queryText: 'production deploy pipeline',
+  mode: KoolbaseSearchMode.hybrid,
+  limit: 10,
+);
+```
+
+#### Filtering weak matches
+
+For `semantic` and `hybrid` modes, pass `minSimilarity` (0..100) to drop
+results below a similarity threshold server-side — saves bandwidth on
+weak matches:
+
+```dart
+final result = await Koolbase.db.collection('articles').searchSemantic(
+  field: 'content_embedding',
+  queryText: 'how do I move quicker?',
+  mode: KoolbaseSearchMode.hybrid,
+  minSimilarity: 70, // only matches at least 70% similar
+  limit: 10,
+);
+```
+
+`minSimilarity` is rejected by the server when used with
+`KoolbaseSearchMode.lexical` — BM25 rank scores aren't comparable to
+cosine similarity, and silently ignoring the parameter would produce
+confusing "I set 80, why did weak results return?" behavior.
+
+#### Server-side embedding (recommended)
+
+Configure an AI provider on the project once (Gemini's free tier works;
+OpenAI also supported), tag the vector field with the
+provider/model/source_field, and Koolbase auto-embeds records as they're
+inserted or updated. Lexical indexing happens automatically on the same
+write, so all three search modes work without extra setup:
+
+```dart
+// One-time setup: configure provider + tag the vector field via the
+// dashboard. Then just write records normally — vectors AND lexical
+// rows land within ~1s.
+await Koolbase.db.collection('articles').create({
+  'title': 'How to ship faster',
+  'content': 'Cut scope ruthlessly. Ship the smallest useful slice...',
+});
+
+// Iterate over hits the same way regardless of mode:
 for (final hit in result.hits) {
   print('${hit.record['title']}  (${hit.distance.toStringAsFixed(3)})');
 }
@@ -276,8 +328,11 @@ await Koolbase.db.collection('articles').embedText(
 );
 ```
 
-**Client-side embedding (advanced).** If you'd rather control the
-embedding model yourself, pass a vector instead of text:
+#### Client-side embedding (advanced)
+
+If you'd rather control the embedding model yourself, pass a vector
+instead of text. Note that lexical and hybrid modes require text, since
+BM25 has no notion of "vector queries":
 
 ```dart
 // Set a vector you've encoded yourself
@@ -290,7 +345,7 @@ await Koolbase.db.doc(articleId).setVector(
 final v = await Koolbase.db.doc(articleId).getVector('embedding');
 print('${v.vector.length}-dim, updated ${v.updatedAt}');
 
-// Search with a precomputed query vector
+// Search with a precomputed query vector — semantic mode only.
 final result = await Koolbase.db.collection('articles').searchSemantic(
   field: 'embedding',
   queryVector: await myEmbeddingModel.encode(userQuery),
@@ -302,19 +357,25 @@ final result = await Koolbase.db.collection('articles').searchSemantic(
 await Koolbase.db.doc(articleId).deleteVector('embedding');
 ```
 
-A few behaviors worth knowing:
+#### Behaviors worth knowing
 
 - **Pass exactly one of `queryVector` or `queryText`.** Supplying both or
   neither throws `ArgumentError`.
+- **`queryVector` is for semantic mode only.** Lexical and hybrid modes
+  need raw text — the server uses it for BM25 ranking (and embeds it
+  inline for the vector half of hybrid).
 - **Vector length must match the declared dimension.** Mismatches throw
   `KoolbaseVectorDimensionMismatchException` with expected and actual
   dimensions in the message.
+- **`minSimilarity` must be 0..100.** Values outside that range throw
+  `ArgumentError` client-side before the request is sent.
 - **Online-only.** Vector operations are not cached locally or queued
-  offline — HNSW similarity search has no useful offline semantics.
+  offline — HNSW similarity and BM25 ranking have no useful offline
+  semantics.
 - **Read rule applies post-search.** Semantic search respects the
   collection's read rule the same way `.get()` does: `owner`/`scoped`/
-  `conditional` records are filtered to the caller after the HNSW lookup,
-  so strict rules may return fewer than `limit` results.
+  `conditional` records are filtered to the caller after retrieval, so
+  strict rules may return fewer than `limit` results.
 - **`embedText` is async.** Returns when the job is queued (~100ms). The
   vector typically lands within 1 second once the worker picks it up.
 - **Higher dimensions coming.** OpenAI's `text-embedding-3-large` ships
@@ -323,18 +384,8 @@ A few behaviors worth knowing:
   (Matryoshka truncation) for full compatibility.
 
 See [Semantic search docs](https://docs.koolbase.com/database/vectors)
-for setup, provider configuration, and embedding model recommendations.
-
-### Offline-first
-
-The SDK caches all reads locally using Drift. Queries return instantly from cache and refresh in the background. Writes are queued and synced automatically when online.
-
-```dart
-final result = await Koolbase.db.collection('posts').get();
-print(result.isFromCache); // true if served from local cache
-
-await Koolbase.db.syncPendingWrites();
-```
+for setup, provider configuration, embedding model recommendations, and
+when to pick each mode.
 
 ---
 

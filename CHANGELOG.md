@@ -1,8 +1,45 @@
 # Changelog
 
-## 8.0.0
+## 9.0.0
 
 ### Breaking changes
+
+- None. `mode` and `minSimilarity` are both optional; existing
+  `searchSemantic` callers continue to work unchanged. Major bump reflects
+  the conceptual expansion of the search contract (three retrieval modes
+  instead of one), not API-breaking removals.
+
+### Added
+
+- `KoolbaseQuery.searchSemantic` accepts a new `mode` parameter of type
+  `KoolbaseSearchMode`. Three retrieval strategies are supported:
+  - `KoolbaseSearchMode.semantic` (default) — pure vector search via HNSW
+    on cosine distance. Best for fuzzy / conceptual queries.
+  - `KoolbaseSearchMode.lexical` — pure BM25 over the field's source text
+    via Postgres `ts_rank_cd`. Best for exact terms, codes, names.
+  - `KoolbaseSearchMode.hybrid` — vector + lexical fused with reciprocal
+    rank fusion (k=60). Generally the strongest default for production
+    search.
+- `KoolbaseQuery.searchSemantic` accepts a new `minSimilarity` parameter
+  (0..100, optional). Server-side filter that drops results below the
+  given similarity percentage before they cross the wire. Saves bandwidth
+  on weak matches. Only valid for semantic and hybrid modes; the server
+  rejects it on lexical mode (BM25 ranks aren't comparable to cosine
+  similarity).
+- New `KoolbaseSearchMode` enum exported from
+  `package:koolbase_flutter/koolbase_flutter.dart`.
+
+### Server requirements
+
+- Requires Koolbase API release with hybrid search shipped (June 8 2026
+  or later).
+- Lexical and hybrid modes require the vector field to have a
+  `source_field` configured. The lexical sidecar table populates
+  automatically on record write via the same hook that drives auto-embed.
+
+## 8.0.0
+
+## Breaking changes
 
 - `KoolbaseQuery.searchSemantic`: the `queryVector` parameter is now optional.
   Existing callers continue to work unchanged — the breaking aspect is that

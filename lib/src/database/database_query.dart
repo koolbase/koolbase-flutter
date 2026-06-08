@@ -188,12 +188,6 @@ class KoolbaseQuery {
     );
   }
 
-  /// Semantic search over a vector field. Supply EITHER a precomputed
-  /// `queryVector` OR a `queryText` string — the server will embed text
-  /// inline using the vector field's configured provider.
-  ///
-  /// ```dart
-  /// // Server-side embedding (most common — set up an AI provider on the project):
   /// final result = await Koolbase.db.collection('articles').searchSemantic(
   ///   field: 'content_embedding',
   ///   queryText: 'how do I configure CI/CD?',
@@ -206,19 +200,41 @@ class KoolbaseQuery {
   ///   queryVector: precomputed,
   ///   limit: 10,
   /// );
+  ///
+  /// // Hybrid search (vector + BM25, RRF-fused):
+  /// final result = await Koolbase.db.collection('articles').searchSemantic(
+  ///   field: 'content_embedding',
+  ///   queryText: 'how do I configure CI/CD?',
+  ///   mode: KoolbaseSearchMode.hybrid,
+  ///   minSimilarity: 70,
+  /// );
   /// ```
+  ///
+  /// [mode] selects the retrieval strategy:
+  /// - [KoolbaseSearchMode.semantic] (default) — pure vector search via HNSW
+  /// - [KoolbaseSearchMode.lexical] — pure BM25 over the field's source text
+  /// - [KoolbaseSearchMode.hybrid] — vector + lexical fused with reciprocal
+  ///   rank fusion (k=60). Generally the strongest default for production.
+  ///
+  /// [minSimilarity], if set (0..100), filters out results below the given
+  /// similarity percentage. Server-side filter — saves bandwidth on weak
+  /// matches. Only valid for semantic and hybrid; setting it on lexical
+  /// throws a server-side validation error (BM25 ranks aren't comparable
+  /// to cosine similarity).
   ///
   /// Throws [KoolbaseNotFoundException] if [field] is not declared on
   /// this collection. Throws [KoolbaseVectorDimensionMismatchException]
   /// if [queryVector]'s length does not match the field's dimension.
   /// Throws [ArgumentError] if both or neither of [queryVector] / [queryText]
-  /// are supplied.
+  /// are supplied, or if [minSimilarity] is outside 0..100.
   Future<KoolbaseSemanticSearchResult> searchSemantic({
     required String field,
     List<double>? queryVector,
     String? queryText,
     int limit = 20,
     Map<String, dynamic>? where,
+    KoolbaseSearchMode mode = KoolbaseSearchMode.semantic,
+    double? minSimilarity,
   }) async {
     final hasVector = queryVector != null && queryVector.isNotEmpty;
     final hasText = queryText != null && queryText.trim().isNotEmpty;
@@ -228,7 +244,10 @@ class KoolbaseQuery {
     if (hasVector && hasText) {
       throw ArgumentError('Provide only one of queryVector or queryText.');
     }
-
+    if (minSimilarity != null && (minSimilarity < 0 || minSimilarity > 100)) {
+      throw ArgumentError(
+          'minSimilarity must be between 0 and 100, got $minSimilarity.');
+    }
     final body = <String, dynamic>{
       'collection': collectionName,
       'field': field,
@@ -236,8 +255,12 @@ class KoolbaseQuery {
       if (hasVector) 'query_vector': queryVector,
       if (hasText) 'query_text': queryText,
       if (where != null && where.isNotEmpty) 'where': where,
+      // Always send mode so the server uses the SDK's intent rather than
+      // its own default. Omitting for `semantic` would also work (server
+      // defaults to semantic) but explicit is safer if defaults ever shift.
+      'mode': mode.wireValue,
+      if (minSimilarity != null) 'min_similarity': minSimilarity,
     };
-
     final res = await http
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/search-semantic'),
@@ -245,12 +268,10 @@ class KoolbaseQuery {
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 10));
-
     if (res.statusCode != 200) {
       throw koolbaseDataErrorFromResponse(res,
           fallbackMessage: 'Semantic search failed');
     }
-
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final hits = (data['results'] as List<dynamic>? ?? [])
         .map((e) => KoolbaseSemanticHit.fromJson(e as Map<String, dynamic>))

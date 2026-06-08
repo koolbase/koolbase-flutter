@@ -208,6 +208,32 @@ class KoolbaseVector {
   }
 }
 
+/// Retrieval strategy for [KoolbaseCollectionQuery.searchSemantic].
+///
+/// - [semantic] — pure vector search via HNSW on cosine distance. Best for
+///   fuzzy / conceptual queries where exact term match isn't required.
+/// - [lexical] — pure BM25 over the field's source text (Postgres
+///   `ts_rank_cd`). Best for exact terms, codes, names, acronyms.
+/// - [hybrid] — vector + lexical fused with reciprocal rank fusion
+///   (k=60). Generally the strongest default for production search.
+enum KoolbaseSearchMode {
+  semantic,
+  lexical,
+  hybrid;
+
+  /// Wire format expected by the Koolbase API.
+  String get wireValue {
+    switch (this) {
+      case KoolbaseSearchMode.semantic:
+        return 'semantic';
+      case KoolbaseSearchMode.lexical:
+        return 'lexical';
+      case KoolbaseSearchMode.hybrid:
+        return 'hybrid';
+    }
+  }
+}
+
 /// One ranked hit from a semantic search. [record] carries the full
 /// record (same wire shape as a record returned by query/get), and
 /// [distance] is the cosine distance between the query vector and the
