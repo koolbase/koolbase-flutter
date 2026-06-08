@@ -517,16 +517,17 @@ try {
     file: file,
   );
 } on KoolbaseStorageConflictException catch (e) {
-final ok = await confirmDialog('${e.path} already exists. Overwrite?');
-if (ok) {
-await Koolbase.storage.upload(
-bucket: 'documents',
-path: filename,
-file: file,
-overwrite: true,
-);
+  final ok = await confirmDialog('${e.path} already exists. Overwrite?');
+  if (ok) {
+    await Koolbase.storage.upload(
+      bucket: 'documents',
+      path: filename,
+      file: file,
+      overwrite: true,
+    );
+  }
 }
-}
+```
 
 ---
 
