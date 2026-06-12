@@ -62,8 +62,28 @@ class KoolbaseVmPatchClient {
   /// lets a test inject a known build_id before the engine wires it up.
   Future<String?> runtimeBuildId({String? override}) async {
     if (override != null && override.isNotEmpty) return override;
+    // 1. CLI-stamped build_id in the app bundle (production path).
+    final stamped = await _stampedBuildId();
+    if (stamped != null && stamped.isNotEmpty) return stamped;
+    // 2. Fallback: a file in the shared vm dir (tests / pre-seed).
     try {
       final f = _buildIdFile(await _vmDir());
+      if (!await f.exists()) return null;
+      return (await f.readAsString()).trim();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Reads the build_id the CLI stamped into the app bundle. macOS only for
+  /// `now: <X.app>/Contents/Resources/koolbase_build_id, derived from the`
+  /// `running executable (<X.app>/Contents/MacOS/<exe>). iOS/Android later.`
+  Future<String?> _stampedBuildId() async {
+    try {
+      if (!Platform.isMacOS) return null;
+      final exe = Platform.resolvedExecutable;
+      final contents = File(exe).parent.parent.path; // <X.app>/Contents
+      final f = File('$contents/Resources/koolbase_build_id');
       if (!await f.exists()) return null;
       return (await f.readAsString()).trim();
     } catch (_) {
