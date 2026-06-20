@@ -1,3 +1,11 @@
+## 9.1.0
+
+- **Code Push (VM-level):** `KoolbaseVmPatchClient` — over-the-air Dart code updates for Android.
+  - Self-contained: no MainActivity or platform-channel wiring required.
+  - Checks in with the Koolbase resolver, downloads and stages patches; the Koolbase engine applies them on next launch with signature + build_id verification and automatic crash-revert.
+  - Per-ABI build_id resolution for multi-ABI app bundles (arm64-v8a / armeabi-v7a).
+  - Reports the running build's build_id and current patch number on check-in.
+
 # Changelog
 
 ## 9.0.0

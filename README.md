@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^6.7.0
+     koolbase_flutter: ^9.1.0
 ```
 
 4. Initialize before `runApp()`:
@@ -743,6 +743,23 @@ Koolbase.codePush.onDirective('force_logout_all', (value) {
 });
 ```
 
+### VM-level code push (Dart)
+
+Ship actual Dart code changes over the air — no store release — on Android builds compiled with the Koolbase engine via the Koolbase CLI (`koolbase release android`). The SDK checks in, downloads, and stages a patch; the Koolbase engine applies it on the next launch, verifying the signature and build_id and reconstructing the new snapshot at boot, with automatic crash-revert if the patched build fails to start.
+
+```dart
+final patcher = KoolbaseVmPatchClient(
+  baseUrl: 'https://api.koolbase.com',
+  apiKey: 'pk_live_xxxx',
+  channel: 'stable',
+);
+
+// Check in, download, and stage any available patch. Applies on next launch.
+await patcher.init();
+```
+
+> VM-level push requires an app built with the Koolbase engine. A standard Flutter build can still use bundle push above, but not Dart code push.
+
 ### Mandatory updates
 
 Mark a bundle **mandatory** in the dashboard (or via `PATCH /mandatory`) when every device must apply it before continuing. The SDK surfaces it two ways — a push callback and a pollable flag:
@@ -957,7 +974,7 @@ and so on — also selected from the server's error `code`.
 - Authenticated Dart functions (`ctx.auth` exposes the caller automatically)
 - Feature flags and remote config
 - Version enforcement (force update, soft update)
-- Code push (config + flag overrides + directives, no store release)
+- Code push — bundle (config + flag overrides + directives + UI) and VM-level Dart code, no store release
 - Server-driven UI via Flutter's `rfw` — push new screens OTA
 - Logic engine (conditional flows as data, updatable OTA)
 - Analytics (DAU/WAU/MAU, funnels, retention)

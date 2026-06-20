@@ -161,7 +161,7 @@ class KoolbaseVmPatchClient {
   }
 
   /// Reads the CLI-stamped build_id from the app bundle (self-distributed mode).
-  /// macOS: <X.app>/Contents/Resources/koolbase_build_id. Android stamping is
+  /// macOS: `<X.app>/Contents/Resources/koolbase_build_id`. Android stamping is
   /// CLI-asset based and read by the platform layer; returns null here so the
   /// runtimeBuildId fallback (engine-written file) or release_version is used.
   Future<String?> _stampedBuildId() async {
@@ -277,8 +277,9 @@ class KoolbaseVmPatchClient {
   /// number — the patch file itself stays durable.
   Future<void> _reconcileApplied(SharedPreferences prefs, Directory d) async {
     final staged = prefs.getInt(_kStagedPatch);
-    if (staged == null)
+    if (staged == null) {
       return; // nothing staged → durable patch persists untouched
+    }
     final applied = _appliedFile(d);
     if (await applied.exists()) {
       // Engine promoted staged → applied: the new patch booted.
