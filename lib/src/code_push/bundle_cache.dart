@@ -67,6 +67,29 @@ class BundleCache {
   String bundleIdFromFile(File file) =>
       file.uri.pathSegments.last.replaceAll('.zip', '');
 
+  // Pending-revert marker. Written when the server tells this device to roll
+  // back (kill-switch); consumed at the start of the next cold launch so the
+  // loader reverts BEFORE applying any stored bundle. A plain file so it
+  // survives process death the same way the slot zips do.
+  File get _revertMarker => File('${_root.path}/revert.marker');
+
+  Future<void> setPendingRevert(int revertTo) async {
+    await _revertMarker.writeAsString(revertTo.toString(), flush: true);
+  }
+
+  // Reads and clears the pending-revert marker. Returns null when none is set.
+  Future<int?> takePendingRevert() async {
+    if (!await _revertMarker.exists()) return null;
+    try {
+      final raw = (await _revertMarker.readAsString()).trim();
+      await _revertMarker.delete();
+      return int.tryParse(raw);
+    } catch (_) {
+      if (await _revertMarker.exists()) await _revertMarker.delete();
+      return null;
+    }
+  }
+
   // Clear all slots — used for testing
   Future<void> clearAll() async {
     for (final slot in CacheSlot.values) {
@@ -76,5 +99,6 @@ class BundleCache {
         await dir.create();
       }
     }
+    if (await _revertMarker.exists()) await _revertMarker.delete();
   }
 }

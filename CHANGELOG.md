@@ -1,3 +1,10 @@
+## 9.2.0
+
+- **Code Push (bundle):** recall/rollback now actually reverts a recalled bundle on device.
+  - The runtime resolver persists a pending-revert marker when the server issues a rollback and consumes it at the start of the next cold launch, before re-applying any stored bundle. Previously the rollback was logged but never persisted, so a recalled bundle kept re-applying on every launch.
+  - Pairs with the server-side resolver fix returning rollback/revert_to:0 when a device runs a bundle that has been recalled with no published replacement.
+  - Affects iOS and Android bundle recall.
+
 ## 9.1.0
 
 - **Code Push (VM-level):** `KoolbaseVmPatchClient` — over-the-air Dart code updates for Android.

@@ -64,7 +64,11 @@ class KoolbaseCodePushClient implements KoolbaseScreenClient {
     _loader = BundleLoader(cache: _cache, updater: _updater);
 
     final currentVersion = await _loader.activeVersion();
-    _activeManifest = await _loader.load();
+    // Consume any rollback the server issued on a previous run BEFORE applying
+    // a stored bundle. Without this the recalled bundle is re-applied on every
+    // launch and the rollback never takes effect.
+    final pendingRevert = await _cache.takePendingRevert();
+    _activeManifest = await _loader.load(revertTo: pendingRevert);
 
     if (_activeManifest != null) {
       _override.apply(
@@ -130,6 +134,7 @@ class KoolbaseCodePushClient implements KoolbaseScreenClient {
           }
           break;
         case UpdaterStatus.rollback:
+          await _cache.setPendingRevert(result.revertTo ?? 0);
           debugPrint('$_tag rollback to v${result.revertTo} on next launch');
           break;
         case UpdaterStatus.noUpdate:

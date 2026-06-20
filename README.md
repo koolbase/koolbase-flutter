@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^9.1.0
+     koolbase_flutter: ^9.2.0
 ```
 
 4. Initialize before `runApp()`:
@@ -742,6 +742,8 @@ Koolbase.codePush.onDirective('force_logout_all', (value) {
   if (value == true) Koolbase.auth.logout();
 });
 ```
+
+Recall a bundle at any time (`koolbase bundle recall`) to pull it from a channel. Devices on the recalled bundle revert to the previous published bundle — or to the app's built-in defaults if there is none — on their next cold launch.
 
 ### VM-level code push (Dart)
 
