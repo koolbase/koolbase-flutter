@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../device_id.dart';
@@ -34,11 +35,6 @@ class KoolbaseVmPatchClient {
   static const _kCurrentPatch = 'koolbase_vm_current_patch';
   static const _kStagedPatch = 'koolbase_vm_staged_patch_number';
 
-  /// Platform channel to resolve the engine-shared vm dir on Android. Returns
-  /// getCodeCacheDir() — the exact path PathUtils.getCacheDirectory feeds into
-  /// the engine as settings.temp_directory_path. Kotlin owns path resolution.
-  static const _platformChannel = MethodChannel('koolbase/vm_patch');
-
   Directory? _dir;
   bool _initialized = false;
 
@@ -51,22 +47,22 @@ class KoolbaseVmPatchClient {
   /// Shared directory both this client and the engine compute independently:
   /// `<platform-cache>/koolbase/vm/`. Must match the engine's path EXACTLY.
   ///
-  /// - Android: getCodeCacheDir() via the platform channel — the same dir the
-  ///   engine receives as temp_directory_path (PathUtils.getCacheDirectory ->
-  ///   --cache-dir-path -> Settings). NOT path_provider's getTemporaryDirectory
-  ///   (that returns getCacheDir()/`cache`, not `code_cache`, and would miss).
+  /// - Android: <data>/code_cache/koolbase/vm. The engine receives
+  ///   getCodeCacheDir() as temp_directory_path; path_provider's temp dir is
+  ///   getCacheDir() (<data>/cache), so code_cache is its sibling — derived
+  ///   here so the SDK needs no native MethodChannel.
   /// - macOS: HOME/Library/Application Support/koolbase/vm — matches the
   ///   engine's pure-C getenv("HOME")-based path (no bundle id).
   Future<Directory> _vmDir() async {
     if (_dir != null) return _dir!;
     String base;
     if (Platform.isAndroid) {
-      final codeCache =
-          await _platformChannel.invokeMethod<String>('getCodeCacheDir');
-      if (codeCache == null || codeCache.isEmpty) {
-        throw StateError('getCodeCacheDir returned empty');
-      }
-      base = codeCache;
+      // The engine reads patches from getCodeCacheDir() (<data>/code_cache),
+      // which it receives as settings.temp_directory_path. path_provider's temp
+      // dir is getCacheDir() (<data>/cache); code_cache is its sibling. Deriving
+      // it here keeps the SDK pure-Dart — no app-side MethodChannel wiring.
+      final cache = await getTemporaryDirectory();
+      base = '${cache.parent.path}/code_cache';
     } else {
       // macOS (and fallback): HOME-based app support dir.
       final home = Platform.environment['HOME'];
@@ -77,6 +73,7 @@ class KoolbaseVmPatchClient {
     final dir = Directory('$base/koolbase/vm');
     await dir.create(recursive: true);
     _dir = dir;
+    debugPrint('$_tag vmDir=${dir.path}');
     return dir;
   }
 
@@ -187,10 +184,9 @@ class KoolbaseVmPatchClient {
   Future<String?> releaseVersion() async {
     try {
       if (!Platform.isAndroid) return null;
-      final v =
-          await _platformChannel.invokeMethod<String>('getReleaseVersion');
-      if (v == null || v.isEmpty) return null;
-      return v;
+      final info = await PackageInfo.fromPlatform();
+      final name = info.version.isNotEmpty ? info.version : '0.0.0';
+      return '$name+${info.buildNumber}';
     } catch (_) {
       return null;
     }
