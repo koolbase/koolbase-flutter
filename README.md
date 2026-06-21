@@ -750,6 +750,8 @@ Recall a bundle at any time (`koolbase bundle recall`) to pull it from a channel
 Ship actual Dart code changes over the air — no store release — on Android builds compiled with the Koolbase engine via the Koolbase CLI (`koolbase release android`). The SDK checks in, downloads, and stages a patch; the Koolbase engine applies it on the next launch, verifying the signature and build_id and reconstructing the new snapshot at boot, with automatic crash-revert if the patched build fails to start.
 
 ```dart
+import 'package:koolbase_flutter/koolbase_flutter.dart';
+
 final patcher = KoolbaseVmPatchClient(
   baseUrl: 'https://api.koolbase.com',
   apiKey: 'pk_live_xxxx',
@@ -981,7 +983,6 @@ and so on — also selected from the server's error `code`.
 - Logic engine (conditional flows as data, updatable OTA)
 - Analytics (DAU/WAU/MAU, funnels, retention)
 - Cloud Messaging (FCM token registration, targeted send)
-- Flutter-first SDK with Dart-native APIs
 
 ---
 
@@ -995,7 +996,7 @@ Manage your projects at [app.koolbase.com](https://app.koolbase.com)
 
 ## Support
 
-- [GitHub Issues](https://github.com/kennedyowusu/koolbase_flutter/issues)
+- [GitHub Issues](https://github.com/koolbase/koolbase-flutter/issues)
 - [docs.koolbase.com](https://docs.koolbase.com)
 - Email: <hello@koolbase.com>
 

@@ -1,4 +1,8 @@
-## 9.2.0
+## 9.2.1
+
+- Widen `package_info_plus` to `>=8.0.0 <10.0.0` and `flutter_secure_storage` to `>=9.0.0 <11.0.0`. The SDK only uses the stable surface of both (PackageInfo version/buildNumber; SecureStorage read/write/delete with default AndroidOptions and standard KeychainAccessibility), so the previous latest-major pins needlessly blocked — and for secure_storage risked force-migrating — host apps on the prior major.
+
+# 9.2.0
 
 - **Code Push (bundle):** recall/rollback now actually reverts a recalled bundle on device.
   - The runtime resolver persists a pending-revert marker when the server issues a rollback and consumes it at the start of the next cold launch, before re-applying any stored bundle. Previously the rollback was logged but never persisted, so a recalled bundle kept re-applying on every launch.
