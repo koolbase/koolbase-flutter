@@ -749,6 +749,8 @@ Recall a bundle at any time (`koolbase bundle recall`) to pull it from a channel
 
 Ship actual Dart code changes over the air — no store release — on Android builds compiled with the Koolbase engine via the Koolbase CLI (`koolbase release android`). The SDK checks in, downloads, and stages a patch; the Koolbase engine applies it on the next launch, verifying the signature and build_id and reconstructing the new snapshot at boot, with automatic crash-revert if the patched build fails to start.
 
+The SDK also reports the build's Flutter engine version on check-in, so the resolver only serves a patch built for the **same** engine. This is automatic — `koolbase build` / `koolbase release` stamp the version into the build and the SDK sends it; there is nothing to configure. It prevents a patch built on one Flutter version from reaching a device running another (whose deterministic `build_id` or store version could otherwise collide). Apps built before this was added simply omit the version and fall back to the prior matching behavior.
+
 ```dart
 import 'package:koolbase_flutter/koolbase_flutter.dart';
 

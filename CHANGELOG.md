@@ -1,3 +1,9 @@
+## 9.3.0
+- **Code Push (VM-level):** the client now reports `flutter_version` on patch-check so the resolver can refuse a patch built on a different Flutter engine version.
+  - Reads the CLI-stamped `assets/koolbase_flutter_version` asset (written by `koolbase build` / `koolbase release`) and sends it alongside `build_id` / `release_version`.
+  - Pairs with the server-side resolver guard that constrains matching on `flutter_version`, closing two cross-engine mis-serve cases (colliding `build_id` across engine versions; `release_version` matching on app version alone).
+  - Fully backward-compatible: an app built without the asset sends no `flutter_version` and the server falls back to legacy matching — no change for apps already in the field.
+
 ## 9.2.1
 
 - Widen `package_info_plus` to `>=8.0.0 <10.0.0` and `flutter_secure_storage` to `>=9.0.0 <11.0.0`. The SDK only uses the stable surface of both (PackageInfo version/buildNumber; SecureStorage read/write/delete with default AndroidOptions and standard KeychainAccessibility), so the previous latest-major pins needlessly blocked — and for secure_storage risked force-migrating — host apps on the prior major.

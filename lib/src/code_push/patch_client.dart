@@ -230,6 +230,7 @@ class KoolbaseVmPatchClient {
         // (stricter); release_version is the Play-Store-compatible fallback.
         final buildId = await runtimeBuildId(override: buildIdOverride);
         final relVersion = await releaseVersion();
+        final fVersion = await runtimeFlutterVersion();
         if ((buildId == null || buildId.isEmpty) &&
             (relVersion == null || relVersion.isEmpty)) {
           debugPrint('$_tag no build_id and no release_version — skipping');
@@ -241,6 +242,7 @@ class KoolbaseVmPatchClient {
           d,
           buildId: buildId ?? '',
           releaseVersion: relVersion ?? '',
+          flutterVersion: fVersion ?? '',
           currentPatch: current,
         );
       } catch (e) {
@@ -295,9 +297,30 @@ class KoolbaseVmPatchClient {
     }
   }
 
+  /// The Flutter version this binary was built against, for the resolver's
+  /// engine guard. CLI-stamped into assets/koolbase_flutter_version by
+  /// `koolbase build` / `koolbase release` (a bare string, identical across
+  /// ABIs — unlike build_id there is no per-ABI map). Null when the asset is
+  /// absent (older builds, or apps built before the stamping CLI shipped), in
+  /// which case no flutter_version is sent and the server falls back to legacy
+  /// matching — so this is fully backward-compatible.
+  Future<String?> runtimeFlutterVersion() async {
+    try {
+      final v =
+          (await rootBundle.loadString('assets/koolbase_flutter_version')).trim();
+      if (v.isEmpty) return null;
+      debugPrint('$_tag flutter_version resolved=$v');
+      return v;
+    } catch (_) {
+      // asset absent — fall back to legacy (no flutter_version sent)
+      return null;
+    }
+  }
+
   Future<void> _check(SharedPreferences prefs, Directory d,
       {required String buildId,
       required String releaseVersion,
+      required String flutterVersion,
       required int currentPatch}) async {
     final query = <String, String>{
       'platform': _platform(),
@@ -307,6 +330,7 @@ class KoolbaseVmPatchClient {
     };
     if (buildId.isNotEmpty) query['build_id'] = buildId;
     if (releaseVersion.isNotEmpty) query['release_version'] = releaseVersion;
+    if (flutterVersion.isNotEmpty) query['flutter_version'] = flutterVersion;
 
     final uri = Uri.parse('$baseUrl/v1/code-push/patch-check')
         .replace(queryParameters: query);
