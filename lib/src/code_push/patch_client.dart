@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../device_id.dart';
+import 'vm_patch_bindings.dart' as vm;
 
 /// System B (VM-level) code-push client — companion to [KoolbaseCodePushClient]
 /// (System A runtime bundles). This one ships compiled-Dart patches: it checks
@@ -63,6 +64,12 @@ class KoolbaseVmPatchClient {
       // it here keeps the SDK pure-Dart — no app-side MethodChannel wiring.
       final cache = await getTemporaryDirectory();
       base = '${cache.parent.path}/code_cache';
+    } else if (Platform.isIOS) {
+      // iOS: Platform.environment['HOME'] is NULL on release builds
+      // (device-proven), so derive Application Support via path_provider — the
+      // per-app container's own dir, writable and not system-purged. This is
+      // where iOS stages/applies .kbc patches from Dart at boot.
+      base = (await getApplicationSupportDirectory()).path;
     } else {
       // macOS (and fallback): HOME-based app support dir.
       final home = Platform.environment['HOME'];
@@ -77,8 +84,15 @@ class KoolbaseVmPatchClient {
     return dir;
   }
 
-  File _stagedFile(Directory d) => File('${d.path}/staged.kbpatch');
-  File _appliedFile(Directory d) => File('${d.path}/applied.kbpatch');
+  // iOS applies patches from Dart (this client), so it uses distinct .kbc names.
+  // The engine's Android whole-blob hook reads staged.kbpatch/applied.kbpatch at
+  // snapshot load; keeping iOS on .kbc leaves that (iOS-forbidden, exec-copy)
+  // hook dormant. Android/macOS keep .kbpatch so the engine handshake works.
+  File _stagedFile(Directory d) =>
+      File('${d.path}/${Platform.isIOS ? "staged.kbc" : "staged.kbpatch"}');
+  File _appliedFile(Directory d) =>
+      File('${d.path}/${Platform.isIOS ? "applied.kbc" : "applied.kbpatch"}');
+
   File _buildIdFile(Directory d) => File('${d.path}/runtime_build_id');
   File _bootPendingFile(Directory d) => File('${d.path}/boot_pending');
 
@@ -87,6 +101,21 @@ class KoolbaseVmPatchClient {
   /// engine is unpatched. [override] lets a test inject a known build_id.
   Future<String?> runtimeBuildId({String? override}) async {
     if (override != null && override.isNotEmpty) return override;
+    // iOS: read the build_id live from the engine (SHA-256(instr)[0:8] via the
+    // Internal_koolbaseBuildId native). No CLI stamping, no asset — the engine
+    // is the authority and computes it at snapshot load. Device-proven to equal
+    // the CLI's analyzeMachO derivation, so build_id-mode matching resolves.
+    if (Platform.isIOS) {
+      try {
+        final id = vm.koolbaseBuildId();
+        if (id.isNotEmpty) {
+          debugPrint('$_tag ios build_id (engine native)=$id');
+          return id;
+        }
+      } catch (e) {
+        debugPrint('$_tag ios koolbaseBuildId failed: $e');
+      }
+    }
     // 1. CLI-stamped build_id in the app bundle (production self-distributed).
     final stamped = await _stampedBuildId();
     if (stamped != null && stamped.isNotEmpty) return stamped;
@@ -223,6 +252,13 @@ class KoolbaseVmPatchClient {
       try {
         final prefs = await SharedPreferences.getInstance();
         final d = await _vmDir();
+        // iOS has no engine apply step (Android patches in the engine at
+        // snapshot load). On iOS this client applies staged.kbc from Dart at
+        // boot — promoting staged→applied — so the reconcile below sees the
+        // same disk state Android's engine produces.
+        if (Platform.isIOS) {
+          await _applyPendingPatchIOS(d);
+        }
         await _reconcileApplied(prefs, d);
         _scheduleHealthyMarkerClear(d);
 
@@ -249,6 +285,72 @@ class KoolbaseVmPatchClient {
         debugPrint('$_tag init failed silently: $e');
       }
     });
+  }
+
+  /// iOS boot-time apply. Reads staged.kbc (a fresh download) or, failing that,
+  /// re-applies the durable applied.kbc, via the engine's dart:_internal
+  /// applyKoolbasePatch native. Mirrors the Android engine hook in Dart:
+  ///   - boot_pending present at entry => the last patched boot crashed before
+  ///     the healthy marker cleared => quarantine the active patch, boot base.
+  ///   - staged wins over applied (fresh download beats durable).
+  ///   - success promotes staged→applied (durable re-apply next boot).
+  ///   - a rejected staged (n<0) is quarantined to bad.kbc, then we fall back
+  ///     to applied.kbc in the SAME boot so a bad download never costs the user
+  ///     their working patch.
+  /// The KBPM signature + build_id checks happen inside the native; a negative
+  /// return is a clean rejection, never a crash.
+  Future<void> _applyPendingPatchIOS(Directory d) async {
+    final staged = _stagedFile(d);
+    final applied = _appliedFile(d);
+    final bad = File('${d.path}/bad.kbc');
+    final bootPending = _bootPendingFile(d);
+
+    try {
+      // Crash quarantine: marker still present => previous patched boot died.
+      if (await bootPending.exists()) {
+        if (await staged.exists()) {
+          await staged.rename(bad.path);
+        } else if (await applied.exists()) {
+          await applied.rename(bad.path);
+        }
+        await bootPending.delete();
+        debugPrint(
+            '$_tag ios CRASH-REVERT: quarantined active patch, base boot');
+        return;
+      }
+
+      Future<bool> tryApply(File f, {required bool fromStaged}) async {
+        final bytes = await f.readAsBytes();
+        await bootPending.writeAsBytes(const [1], flush: true);
+        final n = vm.applyKoolbasePatch(bytes);
+        if (n >= 0) {
+          if (fromStaged) await staged.rename(applied.path); // promote
+          debugPrint('$_tag ios boot-applied n=$n '
+              '(${fromStaged ? "staged->applied" : "applied"}, ${bytes.length}b)');
+          return true;
+        }
+        // Rejected (bad sig -405 / wrong build_id -400 / malformed): no crash.
+        await bootPending.delete();
+        if (fromStaged) await staged.rename(bad.path);
+        debugPrint('$_tag ios apply REJECT n=$n '
+            '(${fromStaged ? "staged->bad.kbc" : "applied left in place"})');
+        return false;
+      }
+
+      if (await staged.exists()) {
+        if (await tryApply(staged, fromStaged: true)) return;
+        // staged rejected → same-boot fallback to durable applied.
+        if (await applied.exists()) {
+          await tryApply(applied, fromStaged: false);
+        }
+        return;
+      }
+      if (await applied.exists()) {
+        await tryApply(applied, fromStaged: false);
+      }
+    } catch (e) {
+      debugPrint('$_tag ios boot-apply error: $e');
+    }
   }
 
   /// Clears the engine's boot_pending marker once the app has demonstrably
@@ -306,8 +408,8 @@ class KoolbaseVmPatchClient {
   /// matching — so this is fully backward-compatible.
   Future<String?> runtimeFlutterVersion() async {
     try {
-      final v =
-          (await rootBundle.loadString('assets/koolbase_flutter_version')).trim();
+      final v = (await rootBundle.loadString('assets/koolbase_flutter_version'))
+          .trim();
       if (v.isEmpty) return null;
       debugPrint('$_tag flutter_version resolved=$v');
       return v;
