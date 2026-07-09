@@ -1,4 +1,12 @@
+## 9.3.1
+
+- Added `Koolbase.auth.deleteAccount()` — permanent end-user self-deletion.
+  Deletes all sessions and the auth record server-side, fires the
+  `auth.user.deleted` trigger for app-data cleanup, then clears local
+  session state. Requires Koolbase API ≥ Jul 9 2026.
+
 ## 9.3.0
+
 - **Code Push (VM-level):** the client now reports `flutter_version` on patch-check so the resolver can refuse a patch built on a different Flutter engine version.
   - Reads the CLI-stamped `assets/koolbase_flutter_version` asset (written by `koolbase build` / `koolbase release`) and sends it alongside `build_id` / `release_version`.
   - Pairs with the server-side resolver guard that constrains matching on `flutter_version`, closing two cross-engine mis-serve cases (colliding `build_id` across engine versions; `release_version` matching on app version alone).
