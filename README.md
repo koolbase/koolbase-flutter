@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^9.2.1
+     koolbase_flutter: ^9.3.1
 ```
 
 4. Initialize before `runApp()`:
@@ -57,6 +57,9 @@ final user = Koolbase.auth.currentUser;
 
 // Logout
 await Koolbase.auth.logout();
+
+// Permanently delete the signed-in user's account
+await Koolbase.auth.deleteAccount();
 
 // Password reset
 await Koolbase.auth.forgotPassword(email: 'user@example.com');
