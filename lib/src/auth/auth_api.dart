@@ -125,6 +125,16 @@ class AuthApi {
     _checkError(res);
   }
 
+  Future<void> deleteMe(String accessToken) async {
+    final res = await _client
+        .delete(
+          Uri.parse('$baseUrl/v1/sdk/auth/me'),
+          headers: _authHeaders(accessToken),
+        )
+        .timeout(timeout);
+    _checkError(res);
+  }
+
   Future<KoolbaseUser> getMe(String accessToken) async {
     final res = await _client
         .get(
