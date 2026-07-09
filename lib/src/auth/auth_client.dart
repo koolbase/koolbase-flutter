@@ -254,6 +254,18 @@ class KoolbaseAuthClient {
     return serverLogoutSucceeded;
   }
 
+  /// Permanently deletes the signed-in user's account: the server removes
+  /// every session and the auth record, then fires `auth.user.deleted`
+  /// (subscribe a Function to it for app-data cleanup). Unlike [logout],
+  /// a server failure here rethrows — the account still existing is a
+  /// state the app must know about. Local session state is cleared only
+  /// after the server confirms.
+  Future<void> deleteAccount() async {
+    final token = await _ensureValidToken();
+    await _api.deleteMe(token);
+    await _clearSession();
+  }
+
   Future<KoolbaseUser> getCurrentUser() async {
     final token = await _ensureValidToken();
     final user = await _api.getMe(token);
