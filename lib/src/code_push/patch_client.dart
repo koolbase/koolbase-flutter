@@ -38,6 +38,13 @@ class KoolbaseVmPatchClient {
 
   Directory? _dir;
   bool _initialized = false;
+  bool _newPatchThisLaunch = false;
+
+  /// True when a NEWLY downloaded patch (staged.kbc) was applied on this
+  /// cold launch — i.e. the user just received an update. The routine
+  /// re-apply of the durable applied.kbc does NOT set this. Flips shortly
+  /// after init() (the apply runs async); sample it, don't read once.
+  bool get appliedThisLaunch => _newPatchThisLaunch;
 
   KoolbaseVmPatchClient({
     required this.baseUrl,
@@ -325,6 +332,7 @@ class KoolbaseVmPatchClient {
         final n = vm.applyKoolbasePatch(bytes);
         if (n >= 0) {
           if (fromStaged) await staged.rename(applied.path); // promote
+          if (fromStaged) _newPatchThisLaunch = true;
           debugPrint('$_tag ios boot-applied n=$n '
               '(${fromStaged ? "staged->applied" : "applied"}, ${bytes.length}b)');
           return true;
