@@ -40,6 +40,11 @@ class KoolbaseVmPatchClient {
   bool _initialized = false;
   bool _newPatchThisLaunch = false;
 
+  // iOS boot-apply outcome, consumed by _reconcileApplied so bookkeeping
+  // reflects what ACTUALLY applied this boot instead of inferring from the
+  // presence of applied.kbc (which lies after a staged-reject fallback).
+  _IosBootOutcome _iosBootOutcome = _IosBootOutcome.none;
+
   /// True when a NEWLY downloaded patch (staged.kbc) was applied on this
   /// cold launch — i.e. the user just received an update. The routine
   /// re-apply of the durable applied.kbc does NOT set this. Flips shortly
@@ -321,6 +326,7 @@ class KoolbaseVmPatchClient {
           await applied.rename(bad.path);
         }
         await bootPending.delete();
+        _iosBootOutcome = _IosBootOutcome.baseBoot;
         debugPrint(
             '$_tag ios CRASH-REVERT: quarantined active patch, base boot');
         return;
@@ -333,6 +339,9 @@ class KoolbaseVmPatchClient {
         if (n >= 0) {
           if (fromStaged) await staged.rename(applied.path); // promote
           if (fromStaged) _newPatchThisLaunch = true;
+          _iosBootOutcome = fromStaged
+              ? _IosBootOutcome.stagedApplied
+              : _IosBootOutcome.durableApplied;
           debugPrint('$_tag ios boot-applied n=$n '
               '(${fromStaged ? "staged->applied" : "applied"}, ${bytes.length}b)');
           return true;
@@ -348,13 +357,18 @@ class KoolbaseVmPatchClient {
       if (await staged.exists()) {
         if (await tryApply(staged, fromStaged: true)) return;
         // staged rejected → same-boot fallback to durable applied.
-        if (await applied.exists()) {
-          await tryApply(applied, fromStaged: false);
+        if (!(await applied.exists()) ||
+            !(await tryApply(applied, fromStaged: false))) {
+          _iosBootOutcome = _IosBootOutcome.baseBoot;
         }
         return;
       }
       if (await applied.exists()) {
-        await tryApply(applied, fromStaged: false);
+        if (!(await tryApply(applied, fromStaged: false))) {
+          _iosBootOutcome = _IosBootOutcome.baseBoot;
+        }
+      } else {
+        _iosBootOutcome = _IosBootOutcome.baseBoot;
       }
     } catch (e) {
       debugPrint('$_tag ios boot-apply error: $e');
@@ -388,6 +402,41 @@ class KoolbaseVmPatchClient {
   /// applied.kbpatch. We bump current_patch once and clear only the staged
   /// number — the patch file itself stays durable.
   Future<void> _reconcileApplied(SharedPreferences prefs, Directory d) async {
+    // iOS: the boot-apply above knows the real outcome — use it instead of
+    // inferring from applied.kbc's presence (which lies after a staged-reject
+    // same-boot fallback: the file holds the PRIOR patch's bytes, not the
+    // staged one's) and also handles crash-revert/stale-patch base boots by
+    // resetting current_patch so the device never reports a patch it isn't
+    // running.
+    if (Platform.isIOS && _iosBootOutcome != _IosBootOutcome.none) {
+      final marker = prefs.getInt(_kStagedPatch);
+      switch (_iosBootOutcome) {
+        case _IosBootOutcome.stagedApplied:
+          if (marker != null) {
+            await prefs.setInt(_kCurrentPatch, marker);
+            await prefs.remove(_kStagedPatch);
+            debugPrint(
+                '$_tag ios boot applied patch #$marker — current_patch=$marker');
+          }
+          return;
+        case _IosBootOutcome.durableApplied:
+          if (marker != null) {
+            await prefs.remove(_kStagedPatch);
+            debugPrint(
+                '$_tag ios staged #$marker rejected — current_patch unchanged');
+          }
+          return;
+        case _IosBootOutcome.baseBoot:
+          if (marker != null) await prefs.remove(_kStagedPatch);
+          if ((prefs.getInt(_kCurrentPatch) ?? 0) != 0) {
+            await prefs.setInt(_kCurrentPatch, 0);
+            debugPrint('$_tag ios base boot — current_patch=0');
+          }
+          return;
+        case _IosBootOutcome.none:
+          break; // unreachable (guarded above); fall through to legacy
+      }
+    }
     final staged = prefs.getInt(_kStagedPatch);
     if (staged == null) {
       return; // nothing staged → durable patch persists untouched
@@ -548,3 +597,7 @@ class KoolbaseVmPatchClient {
     return 'macos';
   }
 }
+
+/// What the iOS boot-apply actually did this launch. Set by
+/// _applyPendingPatchIOS, consumed by _reconcileApplied (iOS branch only).
+enum _IosBootOutcome { none, stagedApplied, durableApplied, baseBoot }
