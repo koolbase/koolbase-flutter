@@ -348,9 +348,12 @@ class KoolbaseVmPatchClient {
         }
         // Rejected (bad sig -405 / wrong build_id -400 / malformed): no crash.
         await bootPending.delete();
-        if (fromStaged) await staged.rename(bad.path);
+        // Quarantine the rejected file either way: a rejected durable (stale
+        // build_id after an app update, or disk corruption) would otherwise be
+        // re-read and re-rejected on every boot forever.
+        await f.rename(bad.path);
         debugPrint('$_tag ios apply REJECT n=$n '
-            '(${fromStaged ? "staged->bad.kbc" : "applied left in place"})');
+            '(${fromStaged ? "staged" : "applied"}->bad.kbc)');
         return false;
       }
 
