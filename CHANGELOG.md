@@ -1,10 +1,12 @@
 ## 9.4.0
+
 - **Code Push (VM-level, iOS): flash-free boot apply.** `Koolbase.initialize` now completes the iOS boot-time patch apply (local disk only, ~5ms measured on device) before returning, so the app's first frame already runs the patched code — the brief v1→v2 flash on cold launch is gone, with zero configuration. The network check/download remains fully asynchronous and can never block startup.
 - **Code Push (VM-level): device outcome events.** The client reports `patch_downloaded` (on successful stage), `patch_activated` (on the boot that promotes a new patch, with `patch_number`), and `patch_failed` (on rejection, with the rejection code and whether the artifact was newly staged or the durable copy) to `/v1/code-push/patch-events`. Dashboards and rollout decisions can now count real device activations instead of inferring installs from patch-check serves. Fire-and-forget: event reporting never delays boot and failures are silent.
 - **Code Push (VM-level, iOS): correct patch bookkeeping after rejections.** The boot apply now records what actually happened (new patch applied / durable re-applied / clean base boot) and reconciliation consumes that record. Previously, a rejected download that fell back to the existing patch could mark the rejected patch as current — the device then reported a patch it wasn't running, suppressing future update offers. A clean base boot (e.g. after an app-store update invalidates a persisted patch) now also resets the reported patch to 0.
 - **Code Push (VM-level, iOS): rejected patches are quarantined, not retried.** A persisted patch that fails verification (for example, stale after an app update) is moved aside on first rejection instead of being re-read and re-rejected on every subsequent launch. Quarantined artifacts are removed once a healthy boot completes.
 
 ## 9.3.0
+
 - **Code Push (VM-level):** the client now reports `flutter_version` on patch-check so the resolver can refuse a patch built on a different Flutter engine version.
   - Reads the CLI-stamped `assets/koolbase_flutter_version` asset (written by `koolbase build` / `koolbase release`) and sends it alongside `build_id` / `release_version`.
   - Pairs with the server-side resolver guard that constrains matching on `flutter_version`, closing two cross-engine mis-serve cases (colliding `build_id` across engine versions; `release_version` matching on app version alone).
@@ -77,7 +79,7 @@
   the SDK now validates that exactly one of `queryVector` / `queryText` is
   supplied, and throws `ArgumentError` otherwise.
 
-### Added
+## Added
 
 - `KoolbaseQuery.searchSemantic` accepts a new `queryText` parameter. When
   supplied, the server embeds it inline using the vector field's configured
