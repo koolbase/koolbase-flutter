@@ -260,19 +260,32 @@ class KoolbaseVmPatchClient {
   Future<void> init({String? buildIdOverride}) async {
     if (_initialized) return;
     _initialized = true;
+    // AWAITED phase — local disk only, no network. On iOS the boot-apply
+    // runs to completion here, BEFORE the caller proceeds to runApp: the
+    // first frame is already patched, so users never see a v1→v2 flash.
+    // Device-measured cost ~5ms (Phase 8, Kobby). Failures degrade to a
+    // clean base boot; they never block startup.
+    SharedPreferences? prefs;
+    Directory? d;
+    try {
+      prefs = await SharedPreferences.getInstance();
+      d = await _vmDir();
+      // iOS has no engine apply step (Android patches in the engine at
+      // snapshot load). On iOS this client applies staged.kbc from Dart at
+      // boot — promoting staged→applied — so the reconcile below sees the
+      // same disk state Android's engine produces.
+      if (Platform.isIOS) {
+        await _applyPendingPatchIOS(d);
+      }
+      await _reconcileApplied(prefs, d);
+      _scheduleHealthyMarkerClear(d);
+    } catch (e) {
+      debugPrint('$_tag boot phase failed silently: $e');
+      return;
+    }
+    // BACKGROUND phase — network check/download, never blocks startup.
     Future(() async {
       try {
-        final prefs = await SharedPreferences.getInstance();
-        final d = await _vmDir();
-        // iOS has no engine apply step (Android patches in the engine at
-        // snapshot load). On iOS this client applies staged.kbc from Dart at
-        // boot — promoting staged→applied — so the reconcile below sees the
-        // same disk state Android's engine produces.
-        if (Platform.isIOS) {
-          await _applyPendingPatchIOS(d);
-        }
-        await _reconcileApplied(prefs, d);
-        _scheduleHealthyMarkerClear(d);
 
         // Resolve the release identity we'll send. build_id takes precedence
         // (stricter); release_version is the Play-Store-compatible fallback.
@@ -284,10 +297,10 @@ class KoolbaseVmPatchClient {
           debugPrint('$_tag no build_id and no release_version — skipping');
           return;
         }
-        final current = prefs.getInt(_kCurrentPatch) ?? 0;
+        final current = prefs!.getInt(_kCurrentPatch) ?? 0;
         await _check(
           prefs,
-          d,
+          d!,
           buildId: buildId ?? '',
           releaseVersion: relVersion ?? '',
           flutterVersion: fVersion ?? '',
@@ -352,6 +365,7 @@ class KoolbaseVmPatchClient {
         // build_id after an app update, or disk corruption) would otherwise be
         // re-read and re-rejected on every boot forever.
         await f.rename(bad.path);
+        _postEvent('patch_failed', metadata: {'code': n, 'from': fromStaged ? 'staged' : 'applied'});
         debugPrint('$_tag ios apply REJECT n=$n '
             '(${fromStaged ? "staged" : "applied"}->bad.kbc)');
         return false;
@@ -392,6 +406,13 @@ class KoolbaseVmPatchClient {
           await f.delete();
           debugPrint('$_tag healthy boot — cleared boot_pending');
         }
+        // A healthy boot also means any quarantined patch is dead history:
+        // remove bad.kbc so rejected artifacts don't linger on disk.
+        final bad = File('${d.path}/bad.kbc');
+        if (await bad.exists()) {
+          await bad.delete();
+          debugPrint('$_tag healthy boot — removed quarantined bad.kbc');
+        }
       } catch (e) {
         debugPrint('$_tag could not clear boot_pending: $e');
       }
@@ -418,6 +439,7 @@ class KoolbaseVmPatchClient {
           if (marker != null) {
             await prefs.setInt(_kCurrentPatch, marker);
             await prefs.remove(_kStagedPatch);
+            _postEvent('patch_activated', patchNumber: marker);
             debugPrint(
                 '$_tag ios boot applied patch #$marker — current_patch=$marker');
           }
@@ -579,6 +601,7 @@ class KoolbaseVmPatchClient {
     await tmp.writeAsBytes(bytes, flush: true);
     await tmp.rename(_stagedFile(d).path);
     await prefs.setInt(_kStagedPatch, patchNumber);
+    _postEvent('patch_downloaded', patchNumber: patchNumber);
     debugPrint(
         '$_tag patch #$patchNumber staged (${bytes.length} bytes) — applies next launch');
   }
@@ -589,6 +612,36 @@ class KoolbaseVmPatchClient {
     final expected =
         checksum.startsWith('sha256:') ? checksum.substring(7) : checksum;
     return hex == expected;
+  }
+
+  /// Fire-and-forget event report so the resolver/dashboard sees real
+  /// device outcomes (patch_downloaded / patch_activated / patch_failed)
+  /// instead of inferring installs from patch_check_served. Never awaited
+  /// on the boot path; failures are silent.
+  void _postEvent(String eventType, {int? patchNumber, Map<String, dynamic>? metadata}) {
+    Future(() async {
+      try {
+        final body = <String, dynamic>{
+          'device_id': await _deviceId(),
+          'app_version': '',
+          'platform': _platform(),
+          'channel': channel,
+          'event_type': eventType,
+          if (metadata != null || patchNumber != null)
+            'metadata': {
+              if (patchNumber != null) 'patch_number': patchNumber,
+              ...?metadata,
+            },
+        };
+        await http
+            .post(Uri.parse('$baseUrl/v1/code-push/patch-events'),
+                headers: {'x-api-key': apiKey, 'Content-Type': 'application/json'},
+                body: jsonEncode(body))
+            .timeout(const Duration(seconds: 10));
+      } catch (e) {
+        debugPrint('$_tag event $eventType not recorded: $e');
+      }
+    });
   }
 
   String _platform() {
