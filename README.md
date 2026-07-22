@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^9.2.1
+     koolbase_flutter: ^9.4.1
 ```
 
 4. Initialize before `runApp()`:
@@ -764,7 +764,7 @@ final patcher = KoolbaseVmPatchClient(
 await patcher.init();
 ```
 
-> VM-level push requires an app built with the Koolbase engine. A standard Flutter build can still use bundle push above, but not Dart code push.
+> VM-level push requires an app built with the Koolbase engine. A standard Flutter build can still use bundle push above, but not Dart code push. On a standard build the VM-patch surface degrades gracefully — patch application reports "engine not present" and the app runs normally; the package compiles on stock Flutter with no configuration. (9.4.0 broke stock compilation entirely; fixed in 9.4.1.)
 
 ### Mandatory updates
 

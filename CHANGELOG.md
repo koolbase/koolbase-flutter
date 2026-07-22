@@ -1,3 +1,15 @@
+# 9.4.1
+
+**Fix: package failed to compile on stock Flutter (all platforms).**
+9.4.0 unconditionally imported `dart:_internal` (VM code-push bindings that
+resolve only against the Koolbase-patched engine). The stock Dart frontend
+rejects platform-private imports at kernel compile, so every build failed with
+"Can't access platform private library" — analyzer-clean, caught only at build
+time. The bindings are now a stock-safe stub: on a stock engine, code push
+reports "engine not present" through existing failure paths
+(`koolbaseBuildId()` returns `''`, `applyKoolbasePatch` returns sentinel
+`-990`). No API changes; upgrading from 9.4.0 requires no code changes.
+
 ## 9.4.0
 
 - **Code Push (VM-level, iOS): flash-free boot apply.** `Koolbase.initialize` now completes the iOS boot-time patch apply (local disk only, ~5ms measured on device) before returning, so the app's first frame already runs the patched code — the brief v1→v2 flash on cold launch is gone, with zero configuration. The network check/download remains fully asynchronous and can never block startup.
@@ -16,7 +28,7 @@
 
 - Widen `package_info_plus` to `>=8.0.0 <10.0.0` and `flutter_secure_storage` to `>=9.0.0 <11.0.0`. The SDK only uses the stable surface of both (PackageInfo version/buildNumber; SecureStorage read/write/delete with default AndroidOptions and standard KeychainAccessibility), so the previous latest-major pins needlessly blocked — and for secure_storage risked force-migrating — host apps on the prior major.
 
-# 9.2.0
+## 9.2.0
 
 - **Code Push (bundle):** recall/rollback now actually reverts a recalled bundle on device.
   - The runtime resolver persists a pending-revert marker when the server issues a rollback and consumes it at the start of the next cold launch, before re-applying any stored bundle. Previously the rollback was logged but never persisted, so a recalled bundle kept re-applying on every launch.
@@ -31,7 +43,7 @@
   - Per-ABI build_id resolution for multi-ABI app bundles (arm64-v8a / armeabi-v7a).
   - Reports the running build's build_id and current patch number on check-in.
 
-# Changelog
+## Changelog
 
 ## 9.0.0
 
@@ -90,7 +102,7 @@
   auto-embed hook, or for embedding text other than the record's
   configured source field.
 
-### Server requirements
+## Server requirements
 
 - Requires Koolbase API release `771728d` or later (Phase 2 Stage A3a).
 - Auto-embed on record write is automatic once a vector field has its
@@ -99,7 +111,7 @@
 
 ## 7.0.0
 
-### Added
+## Added
 
 - **Semantic search via vector similarity** — query records by meaning, not just by field equality. New methods on the database namespace mirror the server-side vector primitive shipped in Koolbase Phase 1 AI:
   - `Koolbase.db.doc(id).setVector(field, vector)` — store a vector for a record
@@ -149,7 +161,7 @@ buckets. None of this changes existing behavior on non-versioned buckets.
   — `true` wipes the entire timeline for the path (all history rows,
   all `.versions/` R2 keys, canonical, and the current row).
 
-# 6.4.0
+## 6.4.0
 
 * feat(storage): edge image transforms (Gap #8).
   - New `KoolbaseImageTransform` value class — width, height,
@@ -179,7 +191,7 @@ buckets. None of this changes existing behavior on non-versioned buckets.
   `publicUrl` calls without `transform` produce the exact same
   URL they did in 6.3.0.
 
-# 6.3.0
+## 6.3.0
 
 * feat(storage): public bucket CDN URLs (Gap #2 SDK polish).
   - `KoolbaseObject` gains an `r2Bucket: String` field identifying
