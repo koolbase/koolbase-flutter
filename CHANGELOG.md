@@ -1,14 +1,20 @@
-# 9.4.1
+# 9.5.0
 
-**Fix: package failed to compile on stock Flutter (all platforms).**
-9.4.0 unconditionally imported `dart:_internal` (VM code-push bindings that
-resolve only against the Koolbase-patched engine). The stock Dart frontend
-rejects platform-private imports at kernel compile, so every build failed with
-"Can't access platform private library" — analyzer-clean, caught only at build
-time. The bindings are now a stock-safe stub: on a stock engine, code push
-reports "engine not present" through existing failure paths
-(`koolbaseBuildId()` returns `''`, `applyKoolbasePatch` returns sentinel
-`-990`). No API changes; upgrading from 9.4.0 requires no code changes.
+**Breaking: `Koolbase.messaging.send()` removed.** Sending push notifications is server-initiated only — it requires a secret `kb_live_` key and must run on
+your backend or in a Koolbase Function, never in the app. The publishable key the SDK holds ships inside your app binary; allowing it to send would let
+anyone who extracts it push to your users. The API already rejects publishable-key sends with 401. Device registration
+(`Koolbase.messaging.registerToken`) is unchanged. See docs: /sdk/messaging.
+
+**Fixed: in-app `functions.deploy()` now uses the auto-refreshing session token.** It previously read a manually-set static token that expired after 15
+minutes while `invoke()` (which already auto-refreshed) kept working — so a long-lived app could see deploys fail while invocations succeeded. `deploy()`
+now shares `invoke()`'s token path. The removed `setAuthToken()` method is no longer needed; the SDK manages the session token itself.
+
+## 9.4.1
+
+**Fix: package failed to compile on stock Flutter (all platforms).** 9.4.0 unconditionally imported `dart:_internal` (VM code-push bindings that
+resolve only against the Koolbase-patched engine). The stock Dart frontend rejects platform-private imports at kernel compile, so every build failed with
+"Can't access platform private library" — analyzer-clean, caught only at build time. The bindings are now a stock-safe stub: on a stock engine, code push
+reports "engine not present" through existing failure paths (`koolbaseBuildId()` returns `''`, `applyKoolbasePatch` returns sentinel `-990`). No API changes; upgrading from 9.4.0 requires no code changes.
 
 ## 9.4.0
 

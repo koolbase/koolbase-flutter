@@ -18,6 +18,11 @@ class KoolbaseMessage {
 
 // ─── KoolbaseMessaging ────────────────────────────────────────────────────────
 
+// NOTE: there is deliberately no send() here. Sending requires a secret
+// kb_live_ key and is server-initiated only (backend or Koolbase Function) —
+// the publishable key this client holds ships inside the app binary and must
+// not be able to push to other devices. The API answers 401 to publishable-key
+// sends by design. See docs: /sdk/messaging.
 class KoolbaseMessaging {
   static const _tag = '[KoolbaseMessaging]';
 
@@ -82,46 +87,6 @@ class KoolbaseMessaging {
       return false;
     } catch (e) {
       debugPrint('$_tag registerToken error: $e');
-      return false;
-    }
-  }
-
-  // ─── Send notification ────────────────────────────────────────────────────
-
-  /// Send a push notification to a specific device token.
-  /// Requires FCM_SERVER_KEY to be set in project secrets.
-  Future<bool> send({
-    required String to,
-    required String title,
-    required String body,
-    Map<String, dynamic> data = const {},
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/v1/messaging/send'),
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey,
-            },
-            body: jsonEncode({
-              'token': to,
-              'title': title,
-              'body': body,
-              'data': data,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        debugPrint('$_tag notification sent successfully');
-        return true;
-      }
-
-      debugPrint('$_tag failed to send notification: ${response.statusCode}');
-      return false;
-    } catch (e) {
-      debugPrint('$_tag send error: $e');
       return false;
     }
   }

@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^9.4.1
+     koolbase_flutter: ^9.5.0
 ```
 
 4. Initialize before `runApp()`:
@@ -877,14 +877,17 @@ await Koolbase.messaging.registerToken(
   token: fcmToken!,
   platform: 'android', // or 'ios'
 );
+```
 
-// Send to a specific device
-await Koolbase.messaging.send(
-  to: deviceToken,
-  title: 'Your order is ready',
-  body: 'Pick up at counter 3',
-  data: {'order_id': '123'},
-);
+Sending is server-initiated — from your backend or a Koolbase Function with a
+secret `kb_live_` key, never the app (the publishable key ships in your binary
+and can't send). See the [Cloud Messaging docs](https://docs.koolbase.com/sdk/messaging).
+
+```bash
+curl -X POST https://api.koolbase.com/v1/messaging/send \
+  -H "Authorization: Bearer kb_live_..." \
+  -H "Content-Type: application/json" \
+  --data '{"project_id":"...","token":"...","title":"Your order is ready","body":"Pick up at counter 3"}'
 ```
 
 ---
@@ -984,7 +987,7 @@ and so on — also selected from the server's error `code`.
 - Server-driven UI via Flutter's `rfw` — push new screens OTA
 - Logic engine (conditional flows as data, updatable OTA)
 - Analytics (DAU/WAU/MAU, funnels, retention)
-- Cloud Messaging (FCM token registration, targeted send)
+- Cloud Messaging (FCM token registration; server-initiated send)
 
 ---
 

@@ -28,15 +28,12 @@ class KoolbaseFunctionsClient {
   final String baseUrl;
   final String publicKey;
   final Future<String?> Function()? _userAccessTokenProvider;
-  String? _authToken;
 
   KoolbaseFunctionsClient({
     required this.baseUrl,
     required this.publicKey,
     Future<String?> Function()? userAccessTokenProvider,
   }) : _userAccessTokenProvider = userAccessTokenProvider;
-
-  void setAuthToken(String? token) => _authToken = token;
 
   Future<Map<String, String>> _sdkHeaders() async {
     final headers = <String, String>{
@@ -49,11 +46,6 @@ class KoolbaseFunctionsClient {
     }
     return headers;
   }
-
-  Map<String, String> get _authHeaders => {
-        'Content-Type': 'application/json',
-        if (_authToken != null) 'Authorization': 'Bearer $_authToken',
-      };
 
   /// Invoke a deployed function by name.
   Future<FunctionInvokeResult> invoke(
@@ -131,7 +123,11 @@ class KoolbaseFunctionsClient {
     int timeoutMs = 10000,
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    if (_authToken == null) {
+    // Session token comes from the auth provider — the same auto-refreshing
+    // path invoke() uses — rather than a manually pushed static token, which
+    // silently expired after 15 minutes while invokes kept working.
+    final headers = await _sdkHeaders();
+    if (!headers.containsKey('Authorization')) {
       throw const FunctionInvokeException(
           'Auth token required — call Koolbase.auth.login() first');
     }
@@ -141,7 +137,7 @@ class KoolbaseFunctionsClient {
       final response = await http
           .post(
             uri,
-            headers: _authHeaders,
+            headers: headers,
             body: jsonEncode({
               'name': name,
               'code': code,
