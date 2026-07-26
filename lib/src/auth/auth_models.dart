@@ -132,6 +132,37 @@ class OtpSendResult {
   }
 }
 
+/// Result of [KoolbaseAuthClient.resendVerificationEmail].
+///
+/// [alreadyVerified] is true when the account is already verified — nothing
+/// was sent, and [expiresAt]/[cooldownUntil] are null. Otherwise the
+/// verification email was re-sent: [expiresAt] is the new link's expiry and
+/// [cooldownUntil] is when another resend becomes allowed, for a
+/// "resend in N seconds" countdown (mirrors [OtpSendResult]).
+class ResendVerificationResult {
+  final bool alreadyVerified;
+  final DateTime? expiresAt;
+  final DateTime? cooldownUntil;
+
+  const ResendVerificationResult({
+    required this.alreadyVerified,
+    this.expiresAt,
+    this.cooldownUntil,
+  });
+
+  factory ResendVerificationResult.fromJson(Map<String, dynamic> json) {
+    return ResendVerificationResult(
+      alreadyVerified: json['already_verified'] as bool? ?? false,
+      expiresAt: json['expires_at'] != null
+          ? DateTime.parse(json['expires_at'] as String)
+          : null,
+      cooldownUntil: json['cooldown_until'] != null
+          ? DateTime.parse(json['cooldown_until'] as String)
+          : null,
+    );
+  }
+}
+
 /// Result of [KoolbaseAuthClient.verifyOtp] — wraps the issued [AuthSession]
 /// with [isNewUser] so apps can route first-time users to onboarding.
 class PhoneVerifyResult {

@@ -201,6 +201,19 @@ class AuthApi {
     _checkError(res);
   }
 
+  Future<ResendVerificationResult> resendVerificationEmail(
+      String accessToken) async {
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/auth/resend-verification'),
+          headers: _authHeaders(accessToken),
+        )
+        .timeout(timeout);
+    _checkError(res);
+    return ResendVerificationResult.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   /// Consume an unlock token from a brute-force unlock email. Returns
   /// nothing on success (204). Throws [UnlockTokenInvalidException] if
   /// the token is invalid, expired, or already consumed.
@@ -263,6 +276,10 @@ class AuthApi {
         throw const UnlockTokenInvalidException();
       case 'rate_limit':
         throw RateLimitException(msg.isEmpty ? null : msg);
+      case 'resend_cooldown':
+        throw ResendCooldownException(msg.isEmpty ? null : msg);
+      case 'resend_daily_cap':
+        throw ResendDailyCapException(msg.isEmpty ? null : msg);
     }
 
     // ---- status fallback (pre-code servers) ----

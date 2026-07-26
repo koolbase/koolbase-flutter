@@ -302,6 +302,17 @@ class KoolbaseAuthClient {
     await _api.verifyEmail(token);
   }
 
+  /// Re-send the email-verification link to the current (authenticated but
+  /// unverified) user. No-op-safe: if the account is already verified, the
+  /// result's [ResendVerificationResult.alreadyVerified] is true and nothing
+  /// is sent. Server-throttled — a 60s cooldown between sends and a daily
+  /// cap; the result carries [ResendVerificationResult.cooldownUntil] so you
+  /// can show a countdown. Throws if the cooldown or daily cap is exceeded.
+  Future<ResendVerificationResult> resendVerificationEmail() async {
+    final token = await _ensureValidToken();
+    return _api.resendVerificationEmail(token);
+  }
+
   /// Consume an unlock token from a brute-force unlock email. Apps typically
   /// extract this token from a deep link parameter when the user clicks the
   /// unlock link in their email.

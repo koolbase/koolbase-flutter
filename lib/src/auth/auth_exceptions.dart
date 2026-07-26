@@ -106,6 +106,29 @@ class RateLimitException extends KoolbaseAuthException {
             code: 'rate_limit');
 }
 
+/// Thrown by [KoolbaseAuthClient.resendVerificationEmail] when a resend is
+/// requested during the cooldown window. Recoverable — retry after the
+/// cooldown (see [ResendVerificationResult.cooldownUntil] from a successful
+/// send for the countdown).
+class ResendCooldownException extends KoolbaseAuthException {
+  const ResendCooldownException([String? message])
+      : super(
+            message ??
+                'Please wait before requesting another verification email',
+            code: 'resend_cooldown');
+}
+
+/// Thrown by [KoolbaseAuthClient.resendVerificationEmail] when the daily
+/// verification-email limit has been reached. Not recoverable until the
+/// 24-hour window rolls over.
+class ResendDailyCapException extends KoolbaseAuthException {
+  const ResendDailyCapException([String? message])
+      : super(
+            message ??
+                'Daily verification-email limit reached, try again tomorrow',
+            code: 'resend_daily_cap');
+}
+
 /// Thrown when the unlock token (from a brute-force unlock email) is
 /// invalid or expired. Unlock tokens are one-shot — once consumed, the
 /// same token can't be reused.

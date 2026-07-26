@@ -1,4 +1,18 @@
-# 9.5.0
+# 9.6.0
+
+## Added
+
+- **`auth.resendVerificationEmail()`** — re-send the email-verification link
+  to the current authenticated-but-unverified user. Returns
+  `ResendVerificationResult` with `expiresAt` and `cooldownUntil` (for a
+  "resend in N seconds" countdown), or `alreadyVerified: true` when the
+  account is already verified (nothing is sent). Server-throttled: a 60s
+  cooldown between resends and a daily cap. Throws `ResendCooldownException`
+  (recoverable — retry after cooldown) or `ResendDailyCapException`. The
+  automatic verification email sent at sign-up does not count against the
+  cooldown, so the first manual resend is always allowed.
+
+## 9.5.0
 
 **Breaking: `Koolbase.messaging.send()` removed.** Sending push notifications is server-initiated only — it requires a secret `kb_live_` key and must run on
 your backend or in a Koolbase Function, never in the app. The publishable key the SDK holds ships inside your app binary; allowing it to send would let
