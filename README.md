@@ -61,6 +61,16 @@ await Koolbase.auth.logout();
 // Password reset
 await Koolbase.auth.forgotPassword(email: 'user@example.com');
 
+// Resend the email-verification link (authenticated, unverified user)
+final result = await Koolbase.auth.resendVerificationEmail();
+if (result.alreadyVerified) {
+  // nothing sent — the account is already verified
+} else {
+  // email re-sent; result.cooldownUntil powers a "resend in N seconds" countdown
+}
+// Throws ResendCooldownException (retry after cooldown) or
+// ResendDailyCapException if throttled.
+
 // Listen to auth state changes
 final subscription = Koolbase.auth.authStateChanges.listen((user) {
   print(user != null ? 'signed in' : 'signed out');
