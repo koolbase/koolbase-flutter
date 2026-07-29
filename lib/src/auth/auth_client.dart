@@ -240,6 +240,20 @@ class KoolbaseAuthClient {
   /// server-side failure explicitly — for example, prompting the user to
   /// re-sign-in from a shared device once network returns — can branch on
   /// this; apps that don't care can ignore the return value.
+  /// Discards the stored session without contacting the server.
+  ///
+  /// For when the session is already known to be unusable — the server rejected
+  /// the token, or a build was pointed at a different project and the persisted
+  /// session belongs to the old one. Unlike [logout] there is no server call: the
+  /// token has already been refused, and asking it to be revoked would only add a
+  /// round trip that cannot succeed.
+  ///
+  /// Safe to call in any state, including with no session at all. The SDK calls
+  /// this itself when a request is rejected as unauthenticated, so most apps will
+  /// not need to — it is public for the case where an app knows the stored
+  /// session is stale before making a request.
+  Future<void> clearStoredSession() => _clearSession();
+
   Future<bool> logout() async {
     bool serverLogoutSucceeded = true;
     try {

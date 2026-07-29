@@ -176,6 +176,10 @@ class Koolbase {
       publicKey: config.publicKey,
       accessTokenProvider: () =>
           _auth?.validAccessToken() ?? Future<String?>.value(null),
+      // A session the server refuses is not a session. Clearing it here means
+      // an app that catches KoolbaseSessionExpiredException is already signed
+      // out and can route to login, rather than looping on a dead token.
+      onSessionExpired: () async => _auth?.clearStoredSession(),
       cacheStore: cacheStore,
       writeQueue: writeQueue,
     );
@@ -188,8 +192,16 @@ class Koolbase {
       writeQueue: writeQueue,
       accessTokenProvider: () =>
           _auth?.validAccessToken() ?? Future<String?>.value(null),
+      currentUserId: () => _auth?.currentUser?.id,
     );
     _syncEngine!.start();
+
+    // Keep the database client's notion of the current user in step with auth,
+    // so queued offline writes are attributed without the app having to
+    // remember. A missed setUserId would queue writes with no owner, and those
+    // are never replayed.
+    _auth?.authStateChanges.listen((user) => _database?.setUserId(user?.id));
+    _database?.setUserId(_auth?.currentUser?.id);
 
     // Initialize storage client
     _storage = KoolbaseStorageClient(

@@ -623,6 +623,11 @@ class $PendingWritesTable extends PendingWrites
   late final GeneratedColumn<String> recordId = GeneratedColumn<String>(
       'record_id', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _retryCountMeta =
       const VerificationMeta('retryCount');
   @override
@@ -638,8 +643,16 @@ class $PendingWritesTable extends PendingWrites
       'created_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, collection, operation, payload, recordId, retryCount, createdAt];
+  List<GeneratedColumn> get $columns => [
+        id,
+        collection,
+        operation,
+        payload,
+        recordId,
+        userId,
+        retryCount,
+        createdAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -679,6 +692,10 @@ class $PendingWritesTable extends PendingWrites
       context.handle(_recordIdMeta,
           recordId.isAcceptableOrUnknown(data['record_id']!, _recordIdMeta));
     }
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
+    }
     if (data.containsKey('retry_count')) {
       context.handle(
           _retryCountMeta,
@@ -710,6 +727,8 @@ class $PendingWritesTable extends PendingWrites
           .read(DriftSqlType.string, data['${effectivePrefix}payload'])!,
       recordId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}record_id']),
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id']),
       retryCount: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
       createdAt: attachedDatabase.typeMapping
@@ -729,6 +748,17 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
   final String operation;
   final String payload;
   final String? recordId;
+
+  /// The user who made this write.
+  ///
+  /// The queue is per-device, not per-session: a write made offline can
+  /// outlive the session that created it, and be replayed after someone else
+  /// has signed in on the same device. Without this, their record would be
+  /// written under the new user's identity.
+  ///
+  /// Nullable because writes queued before schema v3 have no owner recorded.
+  /// Those are never replayed — see [SyncEngine.syncPendingWrites].
+  final String? userId;
   final int retryCount;
   final DateTime createdAt;
   const PendingWrite(
@@ -737,6 +767,7 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
       required this.operation,
       required this.payload,
       this.recordId,
+      this.userId,
       required this.retryCount,
       required this.createdAt});
   @override
@@ -748,6 +779,9 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
     map['payload'] = Variable<String>(payload);
     if (!nullToAbsent || recordId != null) {
       map['record_id'] = Variable<String>(recordId);
+    }
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
     }
     map['retry_count'] = Variable<int>(retryCount);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -763,6 +797,8 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
       recordId: recordId == null && nullToAbsent
           ? const Value.absent()
           : Value(recordId),
+      userId:
+          userId == null && nullToAbsent ? const Value.absent() : Value(userId),
       retryCount: Value(retryCount),
       createdAt: Value(createdAt),
     );
@@ -777,6 +813,7 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
       operation: serializer.fromJson<String>(json['operation']),
       payload: serializer.fromJson<String>(json['payload']),
       recordId: serializer.fromJson<String?>(json['recordId']),
+      userId: serializer.fromJson<String?>(json['userId']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
@@ -790,6 +827,7 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
       'operation': serializer.toJson<String>(operation),
       'payload': serializer.toJson<String>(payload),
       'recordId': serializer.toJson<String?>(recordId),
+      'userId': serializer.toJson<String?>(userId),
       'retryCount': serializer.toJson<int>(retryCount),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
@@ -801,6 +839,7 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
           String? operation,
           String? payload,
           Value<String?> recordId = const Value.absent(),
+          Value<String?> userId = const Value.absent(),
           int? retryCount,
           DateTime? createdAt}) =>
       PendingWrite(
@@ -809,6 +848,7 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
         operation: operation ?? this.operation,
         payload: payload ?? this.payload,
         recordId: recordId.present ? recordId.value : this.recordId,
+        userId: userId.present ? userId.value : this.userId,
         retryCount: retryCount ?? this.retryCount,
         createdAt: createdAt ?? this.createdAt,
       );
@@ -820,6 +860,7 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
       operation: data.operation.present ? data.operation.value : this.operation,
       payload: data.payload.present ? data.payload.value : this.payload,
       recordId: data.recordId.present ? data.recordId.value : this.recordId,
+      userId: data.userId.present ? data.userId.value : this.userId,
       retryCount:
           data.retryCount.present ? data.retryCount.value : this.retryCount,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -834,6 +875,7 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
           ..write('operation: $operation, ')
           ..write('payload: $payload, ')
           ..write('recordId: $recordId, ')
+          ..write('userId: $userId, ')
           ..write('retryCount: $retryCount, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -841,8 +883,8 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, collection, operation, payload, recordId, retryCount, createdAt);
+  int get hashCode => Object.hash(id, collection, operation, payload, recordId,
+      userId, retryCount, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -852,6 +894,7 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
           other.operation == this.operation &&
           other.payload == this.payload &&
           other.recordId == this.recordId &&
+          other.userId == this.userId &&
           other.retryCount == this.retryCount &&
           other.createdAt == this.createdAt);
 }
@@ -862,6 +905,7 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
   final Value<String> operation;
   final Value<String> payload;
   final Value<String?> recordId;
+  final Value<String?> userId;
   final Value<int> retryCount;
   final Value<DateTime> createdAt;
   final Value<int> rowid;
@@ -871,6 +915,7 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
     this.operation = const Value.absent(),
     this.payload = const Value.absent(),
     this.recordId = const Value.absent(),
+    this.userId = const Value.absent(),
     this.retryCount = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -881,6 +926,7 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
     required String operation,
     required String payload,
     this.recordId = const Value.absent(),
+    this.userId = const Value.absent(),
     this.retryCount = const Value.absent(),
     required DateTime createdAt,
     this.rowid = const Value.absent(),
@@ -895,6 +941,7 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
     Expression<String>? operation,
     Expression<String>? payload,
     Expression<String>? recordId,
+    Expression<String>? userId,
     Expression<int>? retryCount,
     Expression<DateTime>? createdAt,
     Expression<int>? rowid,
@@ -905,6 +952,7 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
       if (operation != null) 'operation': operation,
       if (payload != null) 'payload': payload,
       if (recordId != null) 'record_id': recordId,
+      if (userId != null) 'user_id': userId,
       if (retryCount != null) 'retry_count': retryCount,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
@@ -917,6 +965,7 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
       Value<String>? operation,
       Value<String>? payload,
       Value<String?>? recordId,
+      Value<String?>? userId,
       Value<int>? retryCount,
       Value<DateTime>? createdAt,
       Value<int>? rowid}) {
@@ -926,6 +975,7 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
       operation: operation ?? this.operation,
       payload: payload ?? this.payload,
       recordId: recordId ?? this.recordId,
+      userId: userId ?? this.userId,
       retryCount: retryCount ?? this.retryCount,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
@@ -950,6 +1000,9 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
     if (recordId.present) {
       map['record_id'] = Variable<String>(recordId.value);
     }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
     if (retryCount.present) {
       map['retry_count'] = Variable<int>(retryCount.value);
     }
@@ -970,6 +1023,7 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
           ..write('operation: $operation, ')
           ..write('payload: $payload, ')
           ..write('recordId: $recordId, ')
+          ..write('userId: $userId, ')
           ..write('retryCount: $retryCount, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
@@ -1333,6 +1387,7 @@ typedef $$PendingWritesTableCreateCompanionBuilder = PendingWritesCompanion
   required String operation,
   required String payload,
   Value<String?> recordId,
+  Value<String?> userId,
   Value<int> retryCount,
   required DateTime createdAt,
   Value<int> rowid,
@@ -1344,6 +1399,7 @@ typedef $$PendingWritesTableUpdateCompanionBuilder = PendingWritesCompanion
   Value<String> operation,
   Value<String> payload,
   Value<String?> recordId,
+  Value<String?> userId,
   Value<int> retryCount,
   Value<DateTime> createdAt,
   Value<int> rowid,
@@ -1372,6 +1428,9 @@ class $$PendingWritesTableFilterComposer
 
   ColumnFilters<String> get recordId => $composableBuilder(
       column: $table.recordId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnFilters(column));
@@ -1404,6 +1463,9 @@ class $$PendingWritesTableOrderingComposer
   ColumnOrderings<String> get recordId => $composableBuilder(
       column: $table.recordId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnOrderings(column));
 
@@ -1434,6 +1496,9 @@ class $$PendingWritesTableAnnotationComposer
 
   GeneratedColumn<String> get recordId =>
       $composableBuilder(column: $table.recordId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
 
   GeneratedColumn<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => column);
@@ -1474,6 +1539,7 @@ class $$PendingWritesTableTableManager extends RootTableManager<
             Value<String> operation = const Value.absent(),
             Value<String> payload = const Value.absent(),
             Value<String?> recordId = const Value.absent(),
+            Value<String?> userId = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -1484,6 +1550,7 @@ class $$PendingWritesTableTableManager extends RootTableManager<
             operation: operation,
             payload: payload,
             recordId: recordId,
+            userId: userId,
             retryCount: retryCount,
             createdAt: createdAt,
             rowid: rowid,
@@ -1494,6 +1561,7 @@ class $$PendingWritesTableTableManager extends RootTableManager<
             required String operation,
             required String payload,
             Value<String?> recordId = const Value.absent(),
+            Value<String?> userId = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
             required DateTime createdAt,
             Value<int> rowid = const Value.absent(),
@@ -1504,6 +1572,7 @@ class $$PendingWritesTableTableManager extends RootTableManager<
             operation: operation,
             payload: payload,
             recordId: recordId,
+            userId: userId,
             retryCount: retryCount,
             createdAt: createdAt,
             rowid: rowid,

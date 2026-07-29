@@ -1,6 +1,46 @@
-# 9.6.0
+# 9.7.0
+
+## Changed — read this before upgrading
+
+- **A rejected session now signs the user out.** When the server refuses a
+  session token (401), the SDK clears the stored session and throws
+  `KoolbaseSessionExpiredException`. Previously a 401 produced a generic
+  `KoolbaseDataException` and the session stayed on disk, so an app kept
+  believing it was authenticated and looped: call, reject, retry, forever, with
+  no path back to login.
+
+  If your app catches exceptions broadly around data calls, note that by the
+  time you catch this one the user is already signed out. Route to login rather
+  than retrying.
+
+  A 403 is unchanged and still means a permission failure — the session is
+  valid, the caller may not touch that resource. Only 401 clears.
 
 ## Added
+
+- **`auth.clearStoredSession()`** — discards the persisted session without
+  contacting the server. For when the session is already known to be unusable:
+  the token was refused, or a build was pointed at a different project and the
+  stored session belongs to the old one. Unlike `logout()` there is no server
+  call, and it is safe in any state including with no session at all.
+
+## Fixed
+
+- **Queued offline writes are no longer replayed under the wrong user.** The
+  write queue is per-device and outlives sessions, so a write made offline could
+  be sent after someone else had signed in on the same device — attributing one
+  user's record to another. Writes now record who made them and are only
+  replayed under a session for that same user.
+
+  Local database schema 2 → 3. Existing queued writes are preserved but have no
+  recorded owner, so they are not replayed; they are logged when skipped.
+
+- The SDK now tracks the signed-in user itself for offline attribution rather
+  than depending on the app calling `setUserId`.
+
+## 9.6.0
+
+### Added
 
 - **`auth.resendVerificationEmail()`** — re-send the email-verification link
   to the current authenticated-but-unverified user. Returns

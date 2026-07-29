@@ -32,6 +32,17 @@ class PendingWrites extends Table {
   TextColumn get operation => text()(); // insert | update | delete
   TextColumn get payload => text()(); // JSON
   TextColumn get recordId => text().nullable()(); // for update/delete
+
+  /// The user who made this write.
+  ///
+  /// The queue is per-device, not per-session: a write made offline can
+  /// outlive the session that created it, and be replayed after someone else
+  /// has signed in on the same device. Without this, their record would be
+  /// written under the new user's identity.
+  ///
+  /// Nullable because writes queued before schema v3 have no owner recorded.
+  /// Those are never replayed — see [SyncEngine.syncPendingWrites].
+  TextColumn get userId => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
 
@@ -46,7 +57,7 @@ class KoolbaseLocalDatabase extends _$KoolbaseLocalDatabase {
   KoolbaseLocalDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -59,6 +70,13 @@ class KoolbaseLocalDatabase extends _$KoolbaseLocalDatabase {
           if (from < 2) {
             await delete(cachedQueries).go();
             await delete(cachedRecords).go();
+          }
+          // v3: pending writes now record who made them, so a write queued
+          // offline is never replayed under a different user's session.
+          // Existing rows keep a null owner and are not replayed — see the
+          // sync engine. Preserved rather than deleted: they are user data.
+          if (from < 3) {
+            await m.addColumn(pendingWrites, pendingWrites.userId);
           }
         },
       );

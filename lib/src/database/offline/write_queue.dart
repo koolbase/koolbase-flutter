@@ -18,6 +18,7 @@ class WriteQueue {
     required String operation, // insert | update | delete
     required Map<String, dynamic> payload,
     String? recordId,
+    String? userId,
   }) async {
     final id = _uuid.v4();
     await _db.into(_db.pendingWrites).insert(
@@ -26,6 +27,7 @@ class WriteQueue {
             collection: Value(collection),
             operation: Value(operation),
             payload: Value(jsonEncode(payload)),
+            userId: Value(userId),
             recordId: Value(recordId),
             retryCount: const Value(0),
             createdAt: Value(DateTime.now()),

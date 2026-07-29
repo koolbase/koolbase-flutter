@@ -123,6 +123,23 @@ class KoolbaseVectorDimensionMismatchException extends KoolbaseDataException {
 /// preferring the server's stable `code` and falling back to the HTTP status
 /// for older or uncoded responses. The caller decodes the body once and
 /// passes `(statusCode, body)`; this keeps the mapper free of an http
+/// Thrown when the server rejects the session token itself — expired, revoked,
+/// or belonging to a different project than the one this app is configured for.
+///
+/// Distinct from [KoolbasePermissionException], which means the session is valid
+/// but the caller may not touch that resource. The difference decides what an app
+/// should do: a permission failure is a message, a session failure is a login.
+///
+/// The SDK clears the stored session before this is thrown, so by the time an app
+/// catches it the user is already signed out and the app can route to login. That
+/// is deliberate: a session the server will not honour is not a session, and
+/// leaving it in place produces an app that believes it is authenticated and
+/// fails every request.
+class KoolbaseSessionExpiredException extends KoolbaseDataException {
+  const KoolbaseSessionExpiredException(super.message)
+      : super(code: 'session_expired');
+}
+
 /// dependency at its core while [koolbaseDataErrorFromResponse] offers a
 /// convenience wrapper.
 ///
@@ -146,6 +163,9 @@ KoolbaseDataException koolbaseDataError(
     case 'vector_not_found':
     case 'vector_field_not_found':
       return KoolbaseNotFoundException(message);
+    case 'session_expired':
+    case 'invalid_token':
+      return KoolbaseSessionExpiredException(message);
     case 'permission_denied':
       return KoolbasePermissionException(message);
     case 'rate_limit':
@@ -164,6 +184,11 @@ KoolbaseDataException koolbaseDataError(
       return KoolbaseConflictException(message);
     case 404:
       return KoolbaseNotFoundException(message);
+    case 401:
+      // Servers do not currently send a code here, so the status carries the
+      // meaning. Safe because a permission failure is 403: a 401 means the
+      // token itself was not accepted, not that this caller may not proceed.
+      return KoolbaseSessionExpiredException(message);
     case 403:
       return KoolbasePermissionException(message);
     case 429:
@@ -187,4 +212,26 @@ KoolbaseDataException koolbaseDataErrorFromResponse(
   } catch (_) {}
   return koolbaseDataError(res.statusCode, body,
       fallbackMessage: fallbackMessage);
+}
+
+/// Builds the exception for a failed response and notifies [onSessionExpired]
+/// when the server rejected the session token itself.
+///
+/// The notification happens before the exception is thrown, so by the time a
+/// caller catches [KoolbaseSessionExpiredException] the session is already
+/// cleared and the app can route to login without racing the SDK.
+///
+/// Shared by every client rather than duplicated: a path that forgot to notify
+/// would leave an app authenticated against a token the server refuses, which is
+/// the failure this exists to prevent.
+Future<KoolbaseDataException> koolbaseDataErrorNotifying(
+  http.Response res, {
+  String fallbackMessage = 'Request failed',
+  Future<void> Function()? onSessionExpired,
+}) async {
+  final err = koolbaseDataErrorFromResponse(res, fallbackMessage: fallbackMessage);
+  if (err is KoolbaseSessionExpiredException) {
+    await onSessionExpired?.call();
+  }
+  return err;
 }

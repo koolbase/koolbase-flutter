@@ -13,6 +13,15 @@ class KoolbaseDatabaseClient {
   final String publicKey;
   String? _userId;
   final Future<String?> Function()? _accessTokenProvider;
+
+  /// Called when the server rejects the session token itself.
+  ///
+  /// A session the server will not honour is not a session: leaving it in
+  /// place produces an app that believes it is authenticated and fails every
+  /// request, with no path back to login. The auth client clears it, so by the
+  /// time [KoolbaseSessionExpiredException] reaches the caller the user is
+  /// already signed out and the app can route accordingly.
+  final Future<void> Function()? _onSessionExpired;
   CacheStore? _cacheStore;
   WriteQueue? _writeQueue;
   static const _uuid = Uuid();
@@ -21,9 +30,11 @@ class KoolbaseDatabaseClient {
     required this.baseUrl,
     required this.publicKey,
     Future<String?> Function()? accessTokenProvider,
+    Future<void> Function()? onSessionExpired,
     CacheStore? cacheStore,
     WriteQueue? writeQueue,
   })  : _accessTokenProvider = accessTokenProvider,
+        _onSessionExpired = onSessionExpired,
         _cacheStore = cacheStore,
         _writeQueue = writeQueue;
 
@@ -59,6 +70,7 @@ class KoolbaseDatabaseClient {
       publicKey: publicKey,
       collectionName: name,
       accessTokenProvider: _accessTokenProvider,
+      onSessionExpired: _onSessionExpired,
       userId: _userId,
       cacheStore: _cacheStore,
       writeQueue: _writeQueue,
@@ -72,6 +84,7 @@ class KoolbaseDatabaseClient {
       publicKey: publicKey,
       recordId: recordId,
       accessTokenProvider: _accessTokenProvider,
+      onSessionExpired: _onSessionExpired,
       cacheStore: _cacheStore,
     );
   }
@@ -98,7 +111,7 @@ class KoolbaseDatabaseClient {
           .timeout(const Duration(seconds: 10));
 
       if (res.statusCode != 201) {
-        throw koolbaseDataErrorFromResponse(res,
+        throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
             fallbackMessage: 'Insert failed');
       }
 
@@ -131,6 +144,9 @@ class KoolbaseDatabaseClient {
           collection: collection,
           operation: 'insert',
           payload: data,
+          // Recorded so this write is never replayed under a different
+          // user's session: the queue outlives the session that filled it.
+          userId: _userId,
         );
 
         // Optimistically save to local cache
@@ -181,7 +197,7 @@ class KoolbaseDatabaseClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200 && res.statusCode != 201) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Upsert failed');
     }
 
@@ -218,7 +234,7 @@ class KoolbaseDatabaseClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Delete failed');
     }
 
@@ -270,7 +286,7 @@ class KoolbaseDatabaseClient {
         .timeout(const Duration(seconds: 15));
 
     if (res.statusCode != 200) {
-      throw koolbaseDataErrorFromResponse(res, fallbackMessage: 'Batch failed');
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired, fallbackMessage: 'Batch failed');
     }
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -309,7 +325,18 @@ class KoolbaseDatabaseClient {
 
     debugPrint('[Koolbase] Syncing ${writes.length} pending write(s)');
 
+    final currentUser = _userId;
     for (final write in writes) {
+      // A queued write belongs to the session that made it. The queue is
+      // per-device and outlives sessions, so replaying someone else's write
+      // under the current token would attribute their record to this user.
+      // Writes with no recorded owner predate schema v3 and are never replayed.
+      if (write.userId != currentUser) {
+        debugPrint(
+            '[Koolbase] Skipping queued write ${write.id}: it belongs to '
+            '${write.userId ?? "an earlier version"}, not the current session');
+        continue;
+      }
       if (await _writeQueue!.shouldDrop(write.id)) {
         debugPrint(
             '[Koolbase] Dropping failed write after max retries: ${write.id}');

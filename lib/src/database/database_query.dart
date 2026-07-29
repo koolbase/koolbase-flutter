@@ -25,6 +25,7 @@ class KoolbaseQuery {
   final String collectionName;
   final String? _userId;
   final Future<String?> Function()? _accessTokenProvider;
+  final Future<void> Function()? _onSessionExpired;
   final CacheStore? _cacheStore;
   final Map<String, dynamic> _filters = {};
   final List<String> _populate = [];
@@ -39,10 +40,12 @@ class KoolbaseQuery {
     required this.collectionName,
     String? userId,
     Future<String?> Function()? accessTokenProvider,
+    Future<void> Function()? onSessionExpired,
     CacheStore? cacheStore,
     WriteQueue? writeQueue,
   })  : _userId = userId,
         _accessTokenProvider = accessTokenProvider,
+        _onSessionExpired = onSessionExpired,
         _cacheStore = cacheStore;
 
   Future<Map<String, String>> _headers() async {
@@ -164,7 +167,7 @@ class KoolbaseQuery {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseDataErrorFromResponse(res, fallbackMessage: 'Query failed');
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired, fallbackMessage: 'Query failed');
     }
 
     final data = jsonDecode(res.body) as Map<String, dynamic>;
@@ -269,7 +272,7 @@ class KoolbaseQuery {
         )
         .timeout(const Duration(seconds: 10));
     if (res.statusCode != 200) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Semantic search failed');
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
@@ -326,7 +329,7 @@ class KoolbaseQuery {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'embedText failed');
     }
   }
@@ -338,6 +341,7 @@ class KoolbaseDocRef {
   final String publicKey;
   final String recordId;
   final Future<String?> Function()? _accessTokenProvider;
+  final Future<void> Function()? _onSessionExpired;
   final CacheStore? _cacheStore;
 
   KoolbaseDocRef({
@@ -345,8 +349,10 @@ class KoolbaseDocRef {
     required this.publicKey,
     required this.recordId,
     Future<String?> Function()? accessTokenProvider,
+    Future<void> Function()? onSessionExpired,
     CacheStore? cacheStore,
   })  : _accessTokenProvider = accessTokenProvider,
+        _onSessionExpired = onSessionExpired,
         _cacheStore = cacheStore;
 
   Future<Map<String, String>> _headers() async {
@@ -370,7 +376,7 @@ class KoolbaseDocRef {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Record not found');
     }
     return KoolbaseRecord.fromJson(
@@ -387,7 +393,7 @@ class KoolbaseDocRef {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Update failed');
     }
 
@@ -406,7 +412,7 @@ class KoolbaseDocRef {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Delete failed');
     }
 
@@ -446,7 +452,7 @@ class KoolbaseDocRef {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Set vector failed');
     }
   }
@@ -478,7 +484,7 @@ class KoolbaseDocRef {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Get vector failed');
     }
     return KoolbaseVector.fromJson(
@@ -507,7 +513,7 @@ class KoolbaseDocRef {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      throw koolbaseDataErrorFromResponse(res,
+      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Delete vector failed');
     }
   }

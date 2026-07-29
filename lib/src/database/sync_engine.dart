@@ -18,6 +18,13 @@ class SyncEngine {
   /// anonymously. Wired to KoolbaseAuthClient.validAccessToken.
   final Future<String?> Function()? accessTokenProvider;
 
+  /// The user the current session belongs to.
+  ///
+  /// A queued write is only replayed under a session for the same user: the
+  /// queue is per-device and outlives sessions, so replaying without this
+  /// would attribute one user's offline work to whoever signed in next.
+  final String? Function()? currentUserId;
+
   StreamSubscription? _connectivitySubscription;
 
   SyncEngine({
@@ -26,6 +33,7 @@ class SyncEngine {
     required this.cacheStore,
     required this.writeQueue,
     this.accessTokenProvider,
+    this.currentUserId,
   });
 
   // ─── Start auto-sync on reconnect ─────────────────────────────────────────
@@ -49,8 +57,18 @@ class SyncEngine {
 
   Future<void> syncPendingWrites() async {
     final writes = await writeQueue.getPending();
+    final currentUser = currentUserId?.call();
 
     for (final write in writes) {
+      // A queued write belongs to the session that made it. The queue is
+      // per-device and outlives sessions, so replaying under a different
+      // token would attribute one user's offline work to another. Writes
+      // with no recorded owner predate schema v3 and are never replayed.
+      if (write.userId != currentUser) {
+        debugPrint(
+            '[Koolbase] Skipping queued write ${write.id}: not this session\'s');
+        continue;
+      }
       // Drop writes that have exceeded max retries
       if (await writeQueue.shouldDrop(write.id)) {
         debugPrint(

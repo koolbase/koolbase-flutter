@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^9.5.0
+     koolbase_flutter: ^9.7.0
 ```
 
 4. Initialize before `runApp()`:
@@ -189,6 +189,44 @@ await Koolbase.db.collection('posts').doc('record-id').update({'title': 'Updated
 // Delete
 await Koolbase.db.collection('posts').doc('record-id').delete();
 ```
+
+### Offline writes
+
+`insert` falls back to a local queue when the network is genuinely unreachable.
+The record is written to the local cache immediately and returned optimistically,
+so the UI moves on, and the write is sent when connectivity returns.
+
+```dart
+// Offline: queued, cached locally, returns an optimistic record
+final record = await Koolbase.db.insert(
+  collection: 'weight_readings',
+  data: {'kg': 68.4},
+);
+
+// Sync happens automatically on reconnect. To force it:
+await Koolbase.db.syncPendingWrites();
+```
+
+**Only inserts are queued.** `update` and `delete` are not — they throw on
+network failure rather than deferring. If your app needs offline edits, hold
+them in your own state and apply them when connectivity returns; the SDK will not
+do it for you today. This is a current limitation, not a design decision, and
+it is on the roadmap.
+
+**A queued write belongs to the session that made it.** The queue lives on the
+device and outlives sessions, so a write made offline can still be pending after
+someone else has signed in on the same device. Those writes are held, not sent —
+replaying them under a different token would file one person's records under
+another's name. Sign back in as the same user and they sync normally.
+
+> **Upgrading to 9.7.0:** writes queued by an earlier version have no recorded
+> owner, so there is no way to know whose they were. They are preserved but never
+> replayed, and are logged when skipped. If your app may have unsynced writes,
+> drain the queue before upgrading.
+
+A server-side rejection is never queued — a unique-constraint conflict, a
+validation failure, or a permission denial surfaces immediately. Only a genuine
+network failure defers.
 
 ### Handling unique-constraint conflicts
 
@@ -918,7 +956,8 @@ All data-layer failures extend `KoolbaseDataException` (which implements
 | `KoolbaseConflictException` | A write violates a unique constraint (409). Exposes `.field` — the field that collided, when the server reports it. |
 | `KoolbaseNotFoundException` | The record or collection doesn't exist (404). |
 | `KoolbaseValidationException` | The request was rejected as invalid (400). |
-| `KoolbasePermissionException` | An access rule denied the operation (403). |
+| `KoolbasePermissionException` | An access rule denied the operation (403). The session is fine; this caller may not touch that resource. |
+| `KoolbaseSessionExpiredException` | The server refused the session token itself (401). **The SDK has already signed the user out by the time you catch this** — route to login rather than retrying. |
 | `KoolbaseRateLimitException` | The caller is being rate-limited (429). |
 | `KoolbaseVectorDimensionMismatchException` | A vector's length doesn't match the field's declared dimension (400, code `vector_dimension_mismatch`). |
 
@@ -931,6 +970,9 @@ try {
 } on KoolbaseConflictException catch (e) {
   // e.field is 'email' when the server reports which field clashed
   showError('That ${e.field ?? 'value'} is already taken.');
+} on KoolbaseSessionExpiredException {
+  // Already signed out — the stored session was cleared before this threw.
+  goToLogin();
 } on KoolbasePermissionException {
   showError('You do not have permission to do that.');
 } on KoolbaseDataException catch (e) {
@@ -981,6 +1023,33 @@ try {
 Auth methods throw `KoolbaseAuthException` subtypes — `InvalidCredentialsException`,
 `AccountLockedException`, `EmailAlreadyInUseException`, `OtpExpiredException`,
 and so on — also selected from the server's error `code`.
+
+#### When a session stops working
+
+A session can be invalidated while an app is running — the account was deleted,
+the token was revoked, or the build was pointed at a different project and the
+persisted session belongs to the old one.
+
+When that happens the SDK clears the stored session and throws
+`KoolbaseSessionExpiredException` from the database call that hit it.
+(Storage and Functions do not yet do this — a rejected session surfaces there
+as a generic error. That is on the roadmap.) `authStateChanges`
+emits `null`, so an app already listening to it routes to login without doing
+anything else.
+
+If you know a stored session is stale before making a call — switching projects
+in a debug build, say — discard it directly:
+
+```dart
+await Koolbase.auth.clearStoredSession();
+```
+
+Unlike `logout()`, there is no server call: the token has already been refused,
+and asking for it to be revoked would only add a round trip that cannot succeed.
+Safe in any state, including with no session at all.
+
+> The persisted session survives app deletion on iOS, because the Keychain does.
+> A reinstall alone will not clear a stale session.
 
 ---
 
