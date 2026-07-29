@@ -13,6 +13,16 @@
   time you catch this one the user is already signed out. Route to login rather
   than retrying.
 
+  Verified on device: a session invalidated server-side (password reset) left a
+  stale token on the device; the next call returned 401, the SDK cleared the
+  session, and the app routed to login with no app-side handling.
+
+  This only fires when the server actually rejects the call. A Function deployed
+  without `requires_auth` runs with an unauthenticated context and returns
+  whatever error it decides — a 200 carrying a failure, which no SDK can
+  classify. Deploy Functions that assume a signed-in caller with
+  `--requires-auth` so the platform rejects the invoke before your code runs.
+
   A 403 is unchanged and still means a permission failure — the session is
   valid, the caller may not touch that resource. Only 401 clears.
 
