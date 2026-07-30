@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import 'database_models.dart';
 import 'database_query.dart';
 import 'offline/cache_store.dart';
+import 'sync_engine.dart';
 import 'offline/write_queue.dart';
 import 'database_exceptions.dart';
 
@@ -24,6 +25,7 @@ class KoolbaseDatabaseClient {
   final Future<void> Function()? _onSessionExpired;
   CacheStore? _cacheStore;
   WriteQueue? _writeQueue;
+  SyncEngine? _syncEngine;
   static const _uuid = Uuid();
 
   KoolbaseDatabaseClient({
@@ -42,6 +44,13 @@ class KoolbaseDatabaseClient {
   /// metadata only). NOT the auth mechanism — request identity comes from the
   /// verified access token via [_accessTokenProvider].
   void setUserId(String? userId) => _userId = userId;
+
+  /// Wires the sync engine used by [syncPendingWrites].
+  ///
+  /// Set after construction because the engine and this client share a cache
+  /// store and write queue, so one has to be built first and handed to the
+  /// other.
+  void setSyncEngine(SyncEngine engine) => _syncEngine = engine;
 
   void setOfflineSupport({
     required CacheStore cacheStore,
@@ -318,87 +327,17 @@ class KoolbaseDatabaseClient {
   /// await Koolbase.db.syncPendingWrites();
   /// ```
   Future<void> syncPendingWrites() async {
-    if (_writeQueue == null || _cacheStore == null) return;
-
-    final writes = await _writeQueue!.getPending();
-    if (writes.isEmpty) return;
-
-    debugPrint('[Koolbase] Syncing ${writes.length} pending write(s)');
-
-    final currentUser = _userId;
-    for (final write in writes) {
-      // A queued write belongs to the session that made it. The queue is
-      // per-device and outlives sessions, so replaying someone else's write
-      // under the current token would attribute their record to this user.
-      // Writes with no recorded owner predate schema v3 and are never replayed.
-      if (write.userId != currentUser) {
-        debugPrint(
-            '[Koolbase] Skipping queued write ${write.id}: it belongs to '
-            '${write.userId ?? "an earlier version"}, not the current session');
-        continue;
-      }
-      if (await _writeQueue!.shouldDrop(write.id)) {
-        debugPrint(
-            '[Koolbase] Dropping failed write after max retries: ${write.id}');
-        await _writeQueue!.remove(write.id);
-        continue;
-      }
-
-      try {
-        final payload = _writeQueue!.decodePayload(write);
-
-        switch (write.operation) {
-          case 'insert':
-            final res = await http
-                .post(
-                  Uri.parse('$baseUrl/v1/sdk/db/insert'),
-                  headers: await _headers(),
-                  body: jsonEncode({
-                    'collection': write.collection,
-                    'data': payload,
-                  }),
-                )
-                .timeout(const Duration(seconds: 10));
-            if (res.statusCode != 201) {
-              throw Exception('Insert sync failed: ${res.statusCode}');
-            }
-            break;
-
-          case 'update':
-            if (write.recordId == null) continue;
-            final res = await http
-                .patch(
-                  Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),
-                  headers: await _headers(),
-                  body: jsonEncode({'data': payload}),
-                )
-                .timeout(const Duration(seconds: 10));
-            if (res.statusCode != 200) {
-              throw Exception('Update sync failed: ${res.statusCode}');
-            }
-            break;
-
-          case 'delete':
-            if (write.recordId == null) continue;
-            final res = await http
-                .delete(
-                  Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),
-                  headers: await _headers(),
-                )
-                .timeout(const Duration(seconds: 10));
-            if (res.statusCode != 204) {
-              throw Exception('Delete sync failed: ${res.statusCode}');
-            }
-            break;
-        }
-
-        await _writeQueue!.remove(write.id);
-        await _cacheStore!.invalidateCollection(write.collection);
-        debugPrint('[Koolbase] Write synced: ${write.id}');
-      } catch (e) {
-        debugPrint('[Koolbase] Write sync failed for ${write.id}: $e');
-        await _writeQueue!.incrementRetry(write.id);
-      }
+    // Delegates rather than duplicating. This method and SyncEngine were two
+    // independent implementations of the same drain, and they had already
+    // drifted: one discarded a malformed write, the other retained it forever,
+    // and a fix applied to one silently missed the other. One implementation,
+    // two entry points — automatic on reconnect, and this, for a "sync now"
+    // affordance an app may want in poor connectivity.
+    final engine = _syncEngine;
+    if (engine == null) {
+      debugPrint('[Koolbase] No sync engine configured; nothing to sync');
+      return;
     }
+    await engine.syncPendingWrites();
   }
 }

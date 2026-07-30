@@ -193,8 +193,13 @@ class Koolbase {
       accessTokenProvider: () =>
           _auth?.validAccessToken() ?? Future<String?>.value(null),
       currentUserId: () => _auth?.currentUser?.id,
+      onSessionExpired: () async => _auth?.clearStoredSession(),
     );
     _syncEngine!.start();
+
+    // One drain, two entry points: automatic on reconnect, and
+    // Koolbase.db.syncPendingWrites() for an app-driven retry.
+    _database!.setSyncEngine(_syncEngine!);
 
     // Keep the database client's notion of the current user in step with auth,
     // so queued offline writes are attributed without the app having to

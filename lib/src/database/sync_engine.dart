@@ -3,9 +3,24 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'database_exceptions.dart';
 import 'offline/cache_store.dart';
 import 'offline/local_database.dart';
 import 'offline/write_queue.dart';
+
+/// Raised when a queued write cannot be replayed no matter how many times it is
+/// tried — an update or delete with no record id, or an operation the SDK does
+/// not recognise.
+///
+/// Distinct from a transient failure so the queue can discard it immediately
+/// rather than retrying it to death or holding it forever. The two sync
+/// implementations this file replaced did one of those each.
+class _MalformedWrite implements Exception {
+  final String reason;
+  const _MalformedWrite(this.reason);
+  @override
+  String toString() => reason;
+}
 
 class SyncEngine {
   final String baseUrl;
@@ -25,6 +40,15 @@ class SyncEngine {
   /// would attribute one user's offline work to whoever signed in next.
   final String? Function()? currentUserId;
 
+  /// Called when the server rejects the session token itself.
+  ///
+  /// Background sync is the likeliest place to meet a dead session: the queue
+  /// replays writes made while offline, potentially long after the session that
+  /// made them stopped being honoured. Without this the pass burns a retry per
+  /// write until each is dropped -- losing the data to an auth failure that has
+  /// nothing to do with it.
+  final Future<void> Function()? onSessionExpired;
+
   StreamSubscription? _connectivitySubscription;
 
   SyncEngine({
@@ -34,6 +58,7 @@ class SyncEngine {
     required this.writeQueue,
     this.accessTokenProvider,
     this.currentUserId,
+    this.onSessionExpired,
   });
 
   // ─── Start auto-sync on reconnect ─────────────────────────────────────────
@@ -82,6 +107,18 @@ class SyncEngine {
         await writeQueue.remove(write.id);
         // Invalidate cache for this collection so next read is fresh
         await cacheStore.invalidateCollection(write.collection);
+      } on _MalformedWrite catch (e) {
+        // Cannot succeed on any attempt. Retrying would burn the budget and
+        // then drop it anyway; keeping it would hold it forever.
+        debugPrint('[Koolbase] Discarding unreplayable write ${write.id}: $e');
+        await writeQueue.remove(write.id);
+      } on KoolbaseSessionExpiredException {
+        // The session is gone, so nothing else in the queue can succeed
+        // either. Stop rather than spending a retry on every remaining write
+        // against a token the server has already refused. onSessionExpired has
+        // cleared the session; the queue is intact and replays after login.
+        debugPrint('[Koolbase] Sync stopped: the session was rejected');
+        return;
       } catch (e) {
         debugPrint('[Koolbase] Write sync failed for ${write.id}: $e');
         await writeQueue.incrementRetry(write.id);
@@ -116,13 +153,14 @@ class SyncEngine {
             )
             .timeout(const Duration(seconds: 10));
         if (res.statusCode != 201) {
-          throw Exception('Insert failed: ${res.statusCode}');
+          throw await koolbaseDataErrorNotifying(res,
+              onSessionExpired: onSessionExpired, fallbackMessage: 'Insert sync failed');
         }
         break;
 
       case 'update':
         if (write.recordId == null) {
-          throw Exception('recordId required for update');
+          throw const _MalformedWrite('update has no record id');
         }
         final res = await http
             .patch(
@@ -132,13 +170,14 @@ class SyncEngine {
             )
             .timeout(const Duration(seconds: 10));
         if (res.statusCode != 200) {
-          throw Exception('Update failed: ${res.statusCode}');
+          throw await koolbaseDataErrorNotifying(res,
+              onSessionExpired: onSessionExpired, fallbackMessage: 'Update sync failed');
         }
         break;
 
       case 'delete':
         if (write.recordId == null) {
-          throw Exception('recordId required for delete');
+          throw const _MalformedWrite('delete has no record id');
         }
         final res = await http
             .delete(
@@ -147,12 +186,13 @@ class SyncEngine {
             )
             .timeout(const Duration(seconds: 10));
         if (res.statusCode != 204) {
-          throw Exception('Delete failed: ${res.statusCode}');
+          throw await koolbaseDataErrorNotifying(res,
+              onSessionExpired: onSessionExpired, fallbackMessage: 'Delete sync failed');
         }
         break;
 
       default:
-        throw Exception('Unknown operation: ${write.operation}');
+        throw _MalformedWrite('unknown operation "${write.operation}"');
     }
   }
 }
