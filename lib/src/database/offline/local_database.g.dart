@@ -628,6 +628,18 @@ class $PendingWritesTable extends PendingWrites
   late final GeneratedColumn<String> userId = GeneratedColumn<String>(
       'user_id', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _baselineMeta =
+      const VerificationMeta('baseline');
+  @override
+  late final GeneratedColumn<String> baseline = GeneratedColumn<String>(
+      'baseline', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _baseRevisionMeta =
+      const VerificationMeta('baseRevision');
+  @override
+  late final GeneratedColumn<int> baseRevision = GeneratedColumn<int>(
+      'base_revision', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   static const VerificationMeta _retryCountMeta =
       const VerificationMeta('retryCount');
   @override
@@ -650,6 +662,8 @@ class $PendingWritesTable extends PendingWrites
         payload,
         recordId,
         userId,
+        baseline,
+        baseRevision,
         retryCount,
         createdAt
       ];
@@ -696,6 +710,16 @@ class $PendingWritesTable extends PendingWrites
       context.handle(_userIdMeta,
           userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
     }
+    if (data.containsKey('baseline')) {
+      context.handle(_baselineMeta,
+          baseline.isAcceptableOrUnknown(data['baseline']!, _baselineMeta));
+    }
+    if (data.containsKey('base_revision')) {
+      context.handle(
+          _baseRevisionMeta,
+          baseRevision.isAcceptableOrUnknown(
+              data['base_revision']!, _baseRevisionMeta));
+    }
     if (data.containsKey('retry_count')) {
       context.handle(
           _retryCountMeta,
@@ -729,6 +753,10 @@ class $PendingWritesTable extends PendingWrites
           .read(DriftSqlType.string, data['${effectivePrefix}record_id']),
       userId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}user_id']),
+      baseline: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}baseline']),
+      baseRevision: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}base_revision']),
       retryCount: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
       createdAt: attachedDatabase.typeMapping
@@ -759,6 +787,24 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
   /// Nullable because writes queued before schema v3 have no owner recorded.
   /// Those are never replayed — see [SyncEngine.syncPendingWrites].
   final String? userId;
+
+  /// The record's field values as the client last saw them, for update and
+  /// delete.
+  ///
+  /// Replay compares three ways — this write's change, what was there when it
+  /// was composed, and what is on the server now — which is the only way to
+  /// tell "nothing else touched it" from "someone changed it while you were
+  /// offline". Without it, applying a queued write silently discards whatever
+  /// happened in between.
+  ///
+  /// Null for inserts, which have no prior state, and for writes queued before
+  /// schema v4.
+  final String? baseline;
+
+  /// The record revision the write was composed against, sent to the server so
+  /// it can refuse the write atomically rather than the client checking first
+  /// and hoping nothing lands in the gap.
+  final int? baseRevision;
   final int retryCount;
   final DateTime createdAt;
   const PendingWrite(
@@ -768,6 +814,8 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
       required this.payload,
       this.recordId,
       this.userId,
+      this.baseline,
+      this.baseRevision,
       required this.retryCount,
       required this.createdAt});
   @override
@@ -782,6 +830,12 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
     }
     if (!nullToAbsent || userId != null) {
       map['user_id'] = Variable<String>(userId);
+    }
+    if (!nullToAbsent || baseline != null) {
+      map['baseline'] = Variable<String>(baseline);
+    }
+    if (!nullToAbsent || baseRevision != null) {
+      map['base_revision'] = Variable<int>(baseRevision);
     }
     map['retry_count'] = Variable<int>(retryCount);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -799,6 +853,12 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
           : Value(recordId),
       userId:
           userId == null && nullToAbsent ? const Value.absent() : Value(userId),
+      baseline: baseline == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseline),
+      baseRevision: baseRevision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseRevision),
       retryCount: Value(retryCount),
       createdAt: Value(createdAt),
     );
@@ -814,6 +874,8 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
       payload: serializer.fromJson<String>(json['payload']),
       recordId: serializer.fromJson<String?>(json['recordId']),
       userId: serializer.fromJson<String?>(json['userId']),
+      baseline: serializer.fromJson<String?>(json['baseline']),
+      baseRevision: serializer.fromJson<int?>(json['baseRevision']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
@@ -828,6 +890,8 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
       'payload': serializer.toJson<String>(payload),
       'recordId': serializer.toJson<String?>(recordId),
       'userId': serializer.toJson<String?>(userId),
+      'baseline': serializer.toJson<String?>(baseline),
+      'baseRevision': serializer.toJson<int?>(baseRevision),
       'retryCount': serializer.toJson<int>(retryCount),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
@@ -840,6 +904,8 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
           String? payload,
           Value<String?> recordId = const Value.absent(),
           Value<String?> userId = const Value.absent(),
+          Value<String?> baseline = const Value.absent(),
+          Value<int?> baseRevision = const Value.absent(),
           int? retryCount,
           DateTime? createdAt}) =>
       PendingWrite(
@@ -849,6 +915,9 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
         payload: payload ?? this.payload,
         recordId: recordId.present ? recordId.value : this.recordId,
         userId: userId.present ? userId.value : this.userId,
+        baseline: baseline.present ? baseline.value : this.baseline,
+        baseRevision:
+            baseRevision.present ? baseRevision.value : this.baseRevision,
         retryCount: retryCount ?? this.retryCount,
         createdAt: createdAt ?? this.createdAt,
       );
@@ -861,6 +930,10 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
       payload: data.payload.present ? data.payload.value : this.payload,
       recordId: data.recordId.present ? data.recordId.value : this.recordId,
       userId: data.userId.present ? data.userId.value : this.userId,
+      baseline: data.baseline.present ? data.baseline.value : this.baseline,
+      baseRevision: data.baseRevision.present
+          ? data.baseRevision.value
+          : this.baseRevision,
       retryCount:
           data.retryCount.present ? data.retryCount.value : this.retryCount,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -876,6 +949,8 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
           ..write('payload: $payload, ')
           ..write('recordId: $recordId, ')
           ..write('userId: $userId, ')
+          ..write('baseline: $baseline, ')
+          ..write('baseRevision: $baseRevision, ')
           ..write('retryCount: $retryCount, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -884,7 +959,7 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
 
   @override
   int get hashCode => Object.hash(id, collection, operation, payload, recordId,
-      userId, retryCount, createdAt);
+      userId, baseline, baseRevision, retryCount, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -895,6 +970,8 @@ class PendingWrite extends DataClass implements Insertable<PendingWrite> {
           other.payload == this.payload &&
           other.recordId == this.recordId &&
           other.userId == this.userId &&
+          other.baseline == this.baseline &&
+          other.baseRevision == this.baseRevision &&
           other.retryCount == this.retryCount &&
           other.createdAt == this.createdAt);
 }
@@ -906,6 +983,8 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
   final Value<String> payload;
   final Value<String?> recordId;
   final Value<String?> userId;
+  final Value<String?> baseline;
+  final Value<int?> baseRevision;
   final Value<int> retryCount;
   final Value<DateTime> createdAt;
   final Value<int> rowid;
@@ -916,6 +995,8 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
     this.payload = const Value.absent(),
     this.recordId = const Value.absent(),
     this.userId = const Value.absent(),
+    this.baseline = const Value.absent(),
+    this.baseRevision = const Value.absent(),
     this.retryCount = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -927,6 +1008,8 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
     required String payload,
     this.recordId = const Value.absent(),
     this.userId = const Value.absent(),
+    this.baseline = const Value.absent(),
+    this.baseRevision = const Value.absent(),
     this.retryCount = const Value.absent(),
     required DateTime createdAt,
     this.rowid = const Value.absent(),
@@ -942,6 +1025,8 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
     Expression<String>? payload,
     Expression<String>? recordId,
     Expression<String>? userId,
+    Expression<String>? baseline,
+    Expression<int>? baseRevision,
     Expression<int>? retryCount,
     Expression<DateTime>? createdAt,
     Expression<int>? rowid,
@@ -953,6 +1038,8 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
       if (payload != null) 'payload': payload,
       if (recordId != null) 'record_id': recordId,
       if (userId != null) 'user_id': userId,
+      if (baseline != null) 'baseline': baseline,
+      if (baseRevision != null) 'base_revision': baseRevision,
       if (retryCount != null) 'retry_count': retryCount,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
@@ -966,6 +1053,8 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
       Value<String>? payload,
       Value<String?>? recordId,
       Value<String?>? userId,
+      Value<String?>? baseline,
+      Value<int?>? baseRevision,
       Value<int>? retryCount,
       Value<DateTime>? createdAt,
       Value<int>? rowid}) {
@@ -976,6 +1065,8 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
       payload: payload ?? this.payload,
       recordId: recordId ?? this.recordId,
       userId: userId ?? this.userId,
+      baseline: baseline ?? this.baseline,
+      baseRevision: baseRevision ?? this.baseRevision,
       retryCount: retryCount ?? this.retryCount,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
@@ -1003,6 +1094,12 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
     if (userId.present) {
       map['user_id'] = Variable<String>(userId.value);
     }
+    if (baseline.present) {
+      map['baseline'] = Variable<String>(baseline.value);
+    }
+    if (baseRevision.present) {
+      map['base_revision'] = Variable<int>(baseRevision.value);
+    }
     if (retryCount.present) {
       map['retry_count'] = Variable<int>(retryCount.value);
     }
@@ -1024,8 +1121,635 @@ class PendingWritesCompanion extends UpdateCompanion<PendingWrite> {
           ..write('payload: $payload, ')
           ..write('recordId: $recordId, ')
           ..write('userId: $userId, ')
+          ..write('baseline: $baseline, ')
+          ..write('baseRevision: $baseRevision, ')
           ..write('retryCount: $retryCount, ')
           ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ConflictsTable extends Conflicts
+    with TableInfo<$ConflictsTable, Conflict> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ConflictsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _collectionMeta =
+      const VerificationMeta('collection');
+  @override
+  late final GeneratedColumn<String> collection = GeneratedColumn<String>(
+      'collection', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _recordIdMeta =
+      const VerificationMeta('recordId');
+  @override
+  late final GeneratedColumn<String> recordId = GeneratedColumn<String>(
+      'record_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _operationMeta =
+      const VerificationMeta('operation');
+  @override
+  late final GeneratedColumn<String> operation = GeneratedColumn<String>(
+      'operation', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _payloadMeta =
+      const VerificationMeta('payload');
+  @override
+  late final GeneratedColumn<String> payload = GeneratedColumn<String>(
+      'payload', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _baselineMeta =
+      const VerificationMeta('baseline');
+  @override
+  late final GeneratedColumn<String> baseline = GeneratedColumn<String>(
+      'baseline', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _serverStateMeta =
+      const VerificationMeta('serverState');
+  @override
+  late final GeneratedColumn<String> serverState = GeneratedColumn<String>(
+      'server_state', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _baseRevisionMeta =
+      const VerificationMeta('baseRevision');
+  @override
+  late final GeneratedColumn<int> baseRevision = GeneratedColumn<int>(
+      'base_revision', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _serverRevisionMeta =
+      const VerificationMeta('serverRevision');
+  @override
+  late final GeneratedColumn<int> serverRevision = GeneratedColumn<int>(
+      'server_revision', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _lastAttemptedAtMeta =
+      const VerificationMeta('lastAttemptedAt');
+  @override
+  late final GeneratedColumn<DateTime> lastAttemptedAt =
+      GeneratedColumn<DateTime>('last_attempted_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        collection,
+        recordId,
+        operation,
+        payload,
+        baseline,
+        serverState,
+        baseRevision,
+        serverRevision,
+        userId,
+        createdAt,
+        lastAttemptedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'conflicts';
+  @override
+  VerificationContext validateIntegrity(Insertable<Conflict> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('collection')) {
+      context.handle(
+          _collectionMeta,
+          collection.isAcceptableOrUnknown(
+              data['collection']!, _collectionMeta));
+    } else if (isInserting) {
+      context.missing(_collectionMeta);
+    }
+    if (data.containsKey('record_id')) {
+      context.handle(_recordIdMeta,
+          recordId.isAcceptableOrUnknown(data['record_id']!, _recordIdMeta));
+    } else if (isInserting) {
+      context.missing(_recordIdMeta);
+    }
+    if (data.containsKey('operation')) {
+      context.handle(_operationMeta,
+          operation.isAcceptableOrUnknown(data['operation']!, _operationMeta));
+    } else if (isInserting) {
+      context.missing(_operationMeta);
+    }
+    if (data.containsKey('payload')) {
+      context.handle(_payloadMeta,
+          payload.isAcceptableOrUnknown(data['payload']!, _payloadMeta));
+    } else if (isInserting) {
+      context.missing(_payloadMeta);
+    }
+    if (data.containsKey('baseline')) {
+      context.handle(_baselineMeta,
+          baseline.isAcceptableOrUnknown(data['baseline']!, _baselineMeta));
+    }
+    if (data.containsKey('server_state')) {
+      context.handle(
+          _serverStateMeta,
+          serverState.isAcceptableOrUnknown(
+              data['server_state']!, _serverStateMeta));
+    }
+    if (data.containsKey('base_revision')) {
+      context.handle(
+          _baseRevisionMeta,
+          baseRevision.isAcceptableOrUnknown(
+              data['base_revision']!, _baseRevisionMeta));
+    }
+    if (data.containsKey('server_revision')) {
+      context.handle(
+          _serverRevisionMeta,
+          serverRevision.isAcceptableOrUnknown(
+              data['server_revision']!, _serverRevisionMeta));
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('last_attempted_at')) {
+      context.handle(
+          _lastAttemptedAtMeta,
+          lastAttemptedAt.isAcceptableOrUnknown(
+              data['last_attempted_at']!, _lastAttemptedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Conflict map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Conflict(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      collection: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}collection'])!,
+      recordId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}record_id'])!,
+      operation: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}operation'])!,
+      payload: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}payload'])!,
+      baseline: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}baseline']),
+      serverState: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}server_state']),
+      baseRevision: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}base_revision']),
+      serverRevision: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}server_revision']),
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id']),
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      lastAttemptedAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}last_attempted_at']),
+    );
+  }
+
+  @override
+  $ConflictsTable createAlias(String alias) {
+    return $ConflictsTable(attachedDatabase, alias);
+  }
+}
+
+class Conflict extends DataClass implements Insertable<Conflict> {
+  final String id;
+  final String collection;
+  final String recordId;
+  final String operation;
+
+  /// What the write wanted to apply.
+  final String payload;
+
+  /// What the client saw when it was composed.
+  final String? baseline;
+
+  /// What the server holds now, as returned with the refusal — so resolving does
+  /// not need a fetch, and cannot race one.
+  final String? serverState;
+  final int? baseRevision;
+  final int? serverRevision;
+  final String? userId;
+  final DateTime createdAt;
+  final DateTime? lastAttemptedAt;
+  const Conflict(
+      {required this.id,
+      required this.collection,
+      required this.recordId,
+      required this.operation,
+      required this.payload,
+      this.baseline,
+      this.serverState,
+      this.baseRevision,
+      this.serverRevision,
+      this.userId,
+      required this.createdAt,
+      this.lastAttemptedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['collection'] = Variable<String>(collection);
+    map['record_id'] = Variable<String>(recordId);
+    map['operation'] = Variable<String>(operation);
+    map['payload'] = Variable<String>(payload);
+    if (!nullToAbsent || baseline != null) {
+      map['baseline'] = Variable<String>(baseline);
+    }
+    if (!nullToAbsent || serverState != null) {
+      map['server_state'] = Variable<String>(serverState);
+    }
+    if (!nullToAbsent || baseRevision != null) {
+      map['base_revision'] = Variable<int>(baseRevision);
+    }
+    if (!nullToAbsent || serverRevision != null) {
+      map['server_revision'] = Variable<int>(serverRevision);
+    }
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || lastAttemptedAt != null) {
+      map['last_attempted_at'] = Variable<DateTime>(lastAttemptedAt);
+    }
+    return map;
+  }
+
+  ConflictsCompanion toCompanion(bool nullToAbsent) {
+    return ConflictsCompanion(
+      id: Value(id),
+      collection: Value(collection),
+      recordId: Value(recordId),
+      operation: Value(operation),
+      payload: Value(payload),
+      baseline: baseline == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseline),
+      serverState: serverState == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverState),
+      baseRevision: baseRevision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseRevision),
+      serverRevision: serverRevision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverRevision),
+      userId:
+          userId == null && nullToAbsent ? const Value.absent() : Value(userId),
+      createdAt: Value(createdAt),
+      lastAttemptedAt: lastAttemptedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastAttemptedAt),
+    );
+  }
+
+  factory Conflict.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Conflict(
+      id: serializer.fromJson<String>(json['id']),
+      collection: serializer.fromJson<String>(json['collection']),
+      recordId: serializer.fromJson<String>(json['recordId']),
+      operation: serializer.fromJson<String>(json['operation']),
+      payload: serializer.fromJson<String>(json['payload']),
+      baseline: serializer.fromJson<String?>(json['baseline']),
+      serverState: serializer.fromJson<String?>(json['serverState']),
+      baseRevision: serializer.fromJson<int?>(json['baseRevision']),
+      serverRevision: serializer.fromJson<int?>(json['serverRevision']),
+      userId: serializer.fromJson<String?>(json['userId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      lastAttemptedAt: serializer.fromJson<DateTime?>(json['lastAttemptedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'collection': serializer.toJson<String>(collection),
+      'recordId': serializer.toJson<String>(recordId),
+      'operation': serializer.toJson<String>(operation),
+      'payload': serializer.toJson<String>(payload),
+      'baseline': serializer.toJson<String?>(baseline),
+      'serverState': serializer.toJson<String?>(serverState),
+      'baseRevision': serializer.toJson<int?>(baseRevision),
+      'serverRevision': serializer.toJson<int?>(serverRevision),
+      'userId': serializer.toJson<String?>(userId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'lastAttemptedAt': serializer.toJson<DateTime?>(lastAttemptedAt),
+    };
+  }
+
+  Conflict copyWith(
+          {String? id,
+          String? collection,
+          String? recordId,
+          String? operation,
+          String? payload,
+          Value<String?> baseline = const Value.absent(),
+          Value<String?> serverState = const Value.absent(),
+          Value<int?> baseRevision = const Value.absent(),
+          Value<int?> serverRevision = const Value.absent(),
+          Value<String?> userId = const Value.absent(),
+          DateTime? createdAt,
+          Value<DateTime?> lastAttemptedAt = const Value.absent()}) =>
+      Conflict(
+        id: id ?? this.id,
+        collection: collection ?? this.collection,
+        recordId: recordId ?? this.recordId,
+        operation: operation ?? this.operation,
+        payload: payload ?? this.payload,
+        baseline: baseline.present ? baseline.value : this.baseline,
+        serverState: serverState.present ? serverState.value : this.serverState,
+        baseRevision:
+            baseRevision.present ? baseRevision.value : this.baseRevision,
+        serverRevision:
+            serverRevision.present ? serverRevision.value : this.serverRevision,
+        userId: userId.present ? userId.value : this.userId,
+        createdAt: createdAt ?? this.createdAt,
+        lastAttemptedAt: lastAttemptedAt.present
+            ? lastAttemptedAt.value
+            : this.lastAttemptedAt,
+      );
+  Conflict copyWithCompanion(ConflictsCompanion data) {
+    return Conflict(
+      id: data.id.present ? data.id.value : this.id,
+      collection:
+          data.collection.present ? data.collection.value : this.collection,
+      recordId: data.recordId.present ? data.recordId.value : this.recordId,
+      operation: data.operation.present ? data.operation.value : this.operation,
+      payload: data.payload.present ? data.payload.value : this.payload,
+      baseline: data.baseline.present ? data.baseline.value : this.baseline,
+      serverState:
+          data.serverState.present ? data.serverState.value : this.serverState,
+      baseRevision: data.baseRevision.present
+          ? data.baseRevision.value
+          : this.baseRevision,
+      serverRevision: data.serverRevision.present
+          ? data.serverRevision.value
+          : this.serverRevision,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      lastAttemptedAt: data.lastAttemptedAt.present
+          ? data.lastAttemptedAt.value
+          : this.lastAttemptedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Conflict(')
+          ..write('id: $id, ')
+          ..write('collection: $collection, ')
+          ..write('recordId: $recordId, ')
+          ..write('operation: $operation, ')
+          ..write('payload: $payload, ')
+          ..write('baseline: $baseline, ')
+          ..write('serverState: $serverState, ')
+          ..write('baseRevision: $baseRevision, ')
+          ..write('serverRevision: $serverRevision, ')
+          ..write('userId: $userId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('lastAttemptedAt: $lastAttemptedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      collection,
+      recordId,
+      operation,
+      payload,
+      baseline,
+      serverState,
+      baseRevision,
+      serverRevision,
+      userId,
+      createdAt,
+      lastAttemptedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Conflict &&
+          other.id == this.id &&
+          other.collection == this.collection &&
+          other.recordId == this.recordId &&
+          other.operation == this.operation &&
+          other.payload == this.payload &&
+          other.baseline == this.baseline &&
+          other.serverState == this.serverState &&
+          other.baseRevision == this.baseRevision &&
+          other.serverRevision == this.serverRevision &&
+          other.userId == this.userId &&
+          other.createdAt == this.createdAt &&
+          other.lastAttemptedAt == this.lastAttemptedAt);
+}
+
+class ConflictsCompanion extends UpdateCompanion<Conflict> {
+  final Value<String> id;
+  final Value<String> collection;
+  final Value<String> recordId;
+  final Value<String> operation;
+  final Value<String> payload;
+  final Value<String?> baseline;
+  final Value<String?> serverState;
+  final Value<int?> baseRevision;
+  final Value<int?> serverRevision;
+  final Value<String?> userId;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> lastAttemptedAt;
+  final Value<int> rowid;
+  const ConflictsCompanion({
+    this.id = const Value.absent(),
+    this.collection = const Value.absent(),
+    this.recordId = const Value.absent(),
+    this.operation = const Value.absent(),
+    this.payload = const Value.absent(),
+    this.baseline = const Value.absent(),
+    this.serverState = const Value.absent(),
+    this.baseRevision = const Value.absent(),
+    this.serverRevision = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.lastAttemptedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ConflictsCompanion.insert({
+    required String id,
+    required String collection,
+    required String recordId,
+    required String operation,
+    required String payload,
+    this.baseline = const Value.absent(),
+    this.serverState = const Value.absent(),
+    this.baseRevision = const Value.absent(),
+    this.serverRevision = const Value.absent(),
+    this.userId = const Value.absent(),
+    required DateTime createdAt,
+    this.lastAttemptedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        collection = Value(collection),
+        recordId = Value(recordId),
+        operation = Value(operation),
+        payload = Value(payload),
+        createdAt = Value(createdAt);
+  static Insertable<Conflict> custom({
+    Expression<String>? id,
+    Expression<String>? collection,
+    Expression<String>? recordId,
+    Expression<String>? operation,
+    Expression<String>? payload,
+    Expression<String>? baseline,
+    Expression<String>? serverState,
+    Expression<int>? baseRevision,
+    Expression<int>? serverRevision,
+    Expression<String>? userId,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? lastAttemptedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (collection != null) 'collection': collection,
+      if (recordId != null) 'record_id': recordId,
+      if (operation != null) 'operation': operation,
+      if (payload != null) 'payload': payload,
+      if (baseline != null) 'baseline': baseline,
+      if (serverState != null) 'server_state': serverState,
+      if (baseRevision != null) 'base_revision': baseRevision,
+      if (serverRevision != null) 'server_revision': serverRevision,
+      if (userId != null) 'user_id': userId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (lastAttemptedAt != null) 'last_attempted_at': lastAttemptedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ConflictsCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? collection,
+      Value<String>? recordId,
+      Value<String>? operation,
+      Value<String>? payload,
+      Value<String?>? baseline,
+      Value<String?>? serverState,
+      Value<int?>? baseRevision,
+      Value<int?>? serverRevision,
+      Value<String?>? userId,
+      Value<DateTime>? createdAt,
+      Value<DateTime?>? lastAttemptedAt,
+      Value<int>? rowid}) {
+    return ConflictsCompanion(
+      id: id ?? this.id,
+      collection: collection ?? this.collection,
+      recordId: recordId ?? this.recordId,
+      operation: operation ?? this.operation,
+      payload: payload ?? this.payload,
+      baseline: baseline ?? this.baseline,
+      serverState: serverState ?? this.serverState,
+      baseRevision: baseRevision ?? this.baseRevision,
+      serverRevision: serverRevision ?? this.serverRevision,
+      userId: userId ?? this.userId,
+      createdAt: createdAt ?? this.createdAt,
+      lastAttemptedAt: lastAttemptedAt ?? this.lastAttemptedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (collection.present) {
+      map['collection'] = Variable<String>(collection.value);
+    }
+    if (recordId.present) {
+      map['record_id'] = Variable<String>(recordId.value);
+    }
+    if (operation.present) {
+      map['operation'] = Variable<String>(operation.value);
+    }
+    if (payload.present) {
+      map['payload'] = Variable<String>(payload.value);
+    }
+    if (baseline.present) {
+      map['baseline'] = Variable<String>(baseline.value);
+    }
+    if (serverState.present) {
+      map['server_state'] = Variable<String>(serverState.value);
+    }
+    if (baseRevision.present) {
+      map['base_revision'] = Variable<int>(baseRevision.value);
+    }
+    if (serverRevision.present) {
+      map['server_revision'] = Variable<int>(serverRevision.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (lastAttemptedAt.present) {
+      map['last_attempted_at'] = Variable<DateTime>(lastAttemptedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ConflictsCompanion(')
+          ..write('id: $id, ')
+          ..write('collection: $collection, ')
+          ..write('recordId: $recordId, ')
+          ..write('operation: $operation, ')
+          ..write('payload: $payload, ')
+          ..write('baseline: $baseline, ')
+          ..write('serverState: $serverState, ')
+          ..write('baseRevision: $baseRevision, ')
+          ..write('serverRevision: $serverRevision, ')
+          ..write('userId: $userId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('lastAttemptedAt: $lastAttemptedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1039,12 +1763,13 @@ abstract class _$KoolbaseLocalDatabase extends GeneratedDatabase {
   late final $CachedQueriesTable cachedQueries = $CachedQueriesTable(this);
   late final $CachedRecordsTable cachedRecords = $CachedRecordsTable(this);
   late final $PendingWritesTable pendingWrites = $PendingWritesTable(this);
+  late final $ConflictsTable conflicts = $ConflictsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [cachedQueries, cachedRecords, pendingWrites];
+      [cachedQueries, cachedRecords, pendingWrites, conflicts];
 }
 
 typedef $$CachedQueriesTableCreateCompanionBuilder = CachedQueriesCompanion
@@ -1388,6 +2113,8 @@ typedef $$PendingWritesTableCreateCompanionBuilder = PendingWritesCompanion
   required String payload,
   Value<String?> recordId,
   Value<String?> userId,
+  Value<String?> baseline,
+  Value<int?> baseRevision,
   Value<int> retryCount,
   required DateTime createdAt,
   Value<int> rowid,
@@ -1400,6 +2127,8 @@ typedef $$PendingWritesTableUpdateCompanionBuilder = PendingWritesCompanion
   Value<String> payload,
   Value<String?> recordId,
   Value<String?> userId,
+  Value<String?> baseline,
+  Value<int?> baseRevision,
   Value<int> retryCount,
   Value<DateTime> createdAt,
   Value<int> rowid,
@@ -1431,6 +2160,12 @@ class $$PendingWritesTableFilterComposer
 
   ColumnFilters<String> get userId => $composableBuilder(
       column: $table.userId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get baseline => $composableBuilder(
+      column: $table.baseline, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get baseRevision => $composableBuilder(
+      column: $table.baseRevision, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnFilters(column));
@@ -1466,6 +2201,13 @@ class $$PendingWritesTableOrderingComposer
   ColumnOrderings<String> get userId => $composableBuilder(
       column: $table.userId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get baseline => $composableBuilder(
+      column: $table.baseline, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get baseRevision => $composableBuilder(
+      column: $table.baseRevision,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnOrderings(column));
 
@@ -1499,6 +2241,12 @@ class $$PendingWritesTableAnnotationComposer
 
   GeneratedColumn<String> get userId =>
       $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get baseline =>
+      $composableBuilder(column: $table.baseline, builder: (column) => column);
+
+  GeneratedColumn<int> get baseRevision => $composableBuilder(
+      column: $table.baseRevision, builder: (column) => column);
 
   GeneratedColumn<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => column);
@@ -1540,6 +2288,8 @@ class $$PendingWritesTableTableManager extends RootTableManager<
             Value<String> payload = const Value.absent(),
             Value<String?> recordId = const Value.absent(),
             Value<String?> userId = const Value.absent(),
+            Value<String?> baseline = const Value.absent(),
+            Value<int?> baseRevision = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -1551,6 +2301,8 @@ class $$PendingWritesTableTableManager extends RootTableManager<
             payload: payload,
             recordId: recordId,
             userId: userId,
+            baseline: baseline,
+            baseRevision: baseRevision,
             retryCount: retryCount,
             createdAt: createdAt,
             rowid: rowid,
@@ -1562,6 +2314,8 @@ class $$PendingWritesTableTableManager extends RootTableManager<
             required String payload,
             Value<String?> recordId = const Value.absent(),
             Value<String?> userId = const Value.absent(),
+            Value<String?> baseline = const Value.absent(),
+            Value<int?> baseRevision = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
             required DateTime createdAt,
             Value<int> rowid = const Value.absent(),
@@ -1573,6 +2327,8 @@ class $$PendingWritesTableTableManager extends RootTableManager<
             payload: payload,
             recordId: recordId,
             userId: userId,
+            baseline: baseline,
+            baseRevision: baseRevision,
             retryCount: retryCount,
             createdAt: createdAt,
             rowid: rowid,
@@ -1599,6 +2355,288 @@ typedef $$PendingWritesTableProcessedTableManager = ProcessedTableManager<
     ),
     PendingWrite,
     PrefetchHooks Function()>;
+typedef $$ConflictsTableCreateCompanionBuilder = ConflictsCompanion Function({
+  required String id,
+  required String collection,
+  required String recordId,
+  required String operation,
+  required String payload,
+  Value<String?> baseline,
+  Value<String?> serverState,
+  Value<int?> baseRevision,
+  Value<int?> serverRevision,
+  Value<String?> userId,
+  required DateTime createdAt,
+  Value<DateTime?> lastAttemptedAt,
+  Value<int> rowid,
+});
+typedef $$ConflictsTableUpdateCompanionBuilder = ConflictsCompanion Function({
+  Value<String> id,
+  Value<String> collection,
+  Value<String> recordId,
+  Value<String> operation,
+  Value<String> payload,
+  Value<String?> baseline,
+  Value<String?> serverState,
+  Value<int?> baseRevision,
+  Value<int?> serverRevision,
+  Value<String?> userId,
+  Value<DateTime> createdAt,
+  Value<DateTime?> lastAttemptedAt,
+  Value<int> rowid,
+});
+
+class $$ConflictsTableFilterComposer
+    extends Composer<_$KoolbaseLocalDatabase, $ConflictsTable> {
+  $$ConflictsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get collection => $composableBuilder(
+      column: $table.collection, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get recordId => $composableBuilder(
+      column: $table.recordId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get operation => $composableBuilder(
+      column: $table.operation, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get payload => $composableBuilder(
+      column: $table.payload, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get baseline => $composableBuilder(
+      column: $table.baseline, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get serverState => $composableBuilder(
+      column: $table.serverState, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get baseRevision => $composableBuilder(
+      column: $table.baseRevision, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get serverRevision => $composableBuilder(
+      column: $table.serverRevision,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastAttemptedAt => $composableBuilder(
+      column: $table.lastAttemptedAt,
+      builder: (column) => ColumnFilters(column));
+}
+
+class $$ConflictsTableOrderingComposer
+    extends Composer<_$KoolbaseLocalDatabase, $ConflictsTable> {
+  $$ConflictsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get collection => $composableBuilder(
+      column: $table.collection, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get recordId => $composableBuilder(
+      column: $table.recordId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get operation => $composableBuilder(
+      column: $table.operation, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get payload => $composableBuilder(
+      column: $table.payload, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get baseline => $composableBuilder(
+      column: $table.baseline, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get serverState => $composableBuilder(
+      column: $table.serverState, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get baseRevision => $composableBuilder(
+      column: $table.baseRevision,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get serverRevision => $composableBuilder(
+      column: $table.serverRevision,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastAttemptedAt => $composableBuilder(
+      column: $table.lastAttemptedAt,
+      builder: (column) => ColumnOrderings(column));
+}
+
+class $$ConflictsTableAnnotationComposer
+    extends Composer<_$KoolbaseLocalDatabase, $ConflictsTable> {
+  $$ConflictsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get collection => $composableBuilder(
+      column: $table.collection, builder: (column) => column);
+
+  GeneratedColumn<String> get recordId =>
+      $composableBuilder(column: $table.recordId, builder: (column) => column);
+
+  GeneratedColumn<String> get operation =>
+      $composableBuilder(column: $table.operation, builder: (column) => column);
+
+  GeneratedColumn<String> get payload =>
+      $composableBuilder(column: $table.payload, builder: (column) => column);
+
+  GeneratedColumn<String> get baseline =>
+      $composableBuilder(column: $table.baseline, builder: (column) => column);
+
+  GeneratedColumn<String> get serverState => $composableBuilder(
+      column: $table.serverState, builder: (column) => column);
+
+  GeneratedColumn<int> get baseRevision => $composableBuilder(
+      column: $table.baseRevision, builder: (column) => column);
+
+  GeneratedColumn<int> get serverRevision => $composableBuilder(
+      column: $table.serverRevision, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastAttemptedAt => $composableBuilder(
+      column: $table.lastAttemptedAt, builder: (column) => column);
+}
+
+class $$ConflictsTableTableManager extends RootTableManager<
+    _$KoolbaseLocalDatabase,
+    $ConflictsTable,
+    Conflict,
+    $$ConflictsTableFilterComposer,
+    $$ConflictsTableOrderingComposer,
+    $$ConflictsTableAnnotationComposer,
+    $$ConflictsTableCreateCompanionBuilder,
+    $$ConflictsTableUpdateCompanionBuilder,
+    (
+      Conflict,
+      BaseReferences<_$KoolbaseLocalDatabase, $ConflictsTable, Conflict>
+    ),
+    Conflict,
+    PrefetchHooks Function()> {
+  $$ConflictsTableTableManager(
+      _$KoolbaseLocalDatabase db, $ConflictsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ConflictsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ConflictsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ConflictsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> collection = const Value.absent(),
+            Value<String> recordId = const Value.absent(),
+            Value<String> operation = const Value.absent(),
+            Value<String> payload = const Value.absent(),
+            Value<String?> baseline = const Value.absent(),
+            Value<String?> serverState = const Value.absent(),
+            Value<int?> baseRevision = const Value.absent(),
+            Value<int?> serverRevision = const Value.absent(),
+            Value<String?> userId = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> lastAttemptedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ConflictsCompanion(
+            id: id,
+            collection: collection,
+            recordId: recordId,
+            operation: operation,
+            payload: payload,
+            baseline: baseline,
+            serverState: serverState,
+            baseRevision: baseRevision,
+            serverRevision: serverRevision,
+            userId: userId,
+            createdAt: createdAt,
+            lastAttemptedAt: lastAttemptedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String collection,
+            required String recordId,
+            required String operation,
+            required String payload,
+            Value<String?> baseline = const Value.absent(),
+            Value<String?> serverState = const Value.absent(),
+            Value<int?> baseRevision = const Value.absent(),
+            Value<int?> serverRevision = const Value.absent(),
+            Value<String?> userId = const Value.absent(),
+            required DateTime createdAt,
+            Value<DateTime?> lastAttemptedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ConflictsCompanion.insert(
+            id: id,
+            collection: collection,
+            recordId: recordId,
+            operation: operation,
+            payload: payload,
+            baseline: baseline,
+            serverState: serverState,
+            baseRevision: baseRevision,
+            serverRevision: serverRevision,
+            userId: userId,
+            createdAt: createdAt,
+            lastAttemptedAt: lastAttemptedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$ConflictsTableProcessedTableManager = ProcessedTableManager<
+    _$KoolbaseLocalDatabase,
+    $ConflictsTable,
+    Conflict,
+    $$ConflictsTableFilterComposer,
+    $$ConflictsTableOrderingComposer,
+    $$ConflictsTableAnnotationComposer,
+    $$ConflictsTableCreateCompanionBuilder,
+    $$ConflictsTableUpdateCompanionBuilder,
+    (
+      Conflict,
+      BaseReferences<_$KoolbaseLocalDatabase, $ConflictsTable, Conflict>
+    ),
+    Conflict,
+    PrefetchHooks Function()>;
 
 class $KoolbaseLocalDatabaseManager {
   final _$KoolbaseLocalDatabase _db;
@@ -1609,4 +2647,6 @@ class $KoolbaseLocalDatabaseManager {
       $$CachedRecordsTableTableManager(_db, _db.cachedRecords);
   $$PendingWritesTableTableManager get pendingWrites =>
       $$PendingWritesTableTableManager(_db, _db.pendingWrites);
+  $$ConflictsTableTableManager get conflicts =>
+      $$ConflictsTableTableManager(_db, _db.conflicts);
 }
