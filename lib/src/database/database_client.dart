@@ -95,6 +95,8 @@ class KoolbaseDatabaseClient {
       accessTokenProvider: _accessTokenProvider,
       onSessionExpired: _onSessionExpired,
       cacheStore: _cacheStore,
+      userId: _userId,
+      writeQueue: _writeQueue,
     );
   }
 
@@ -133,6 +135,7 @@ class KoolbaseDatabaseClient {
         collection,
         record.data,
         _userId,
+        revision: record.revision,
       );
 
       // Invalidate collection cache so next query is fresh
@@ -159,6 +162,9 @@ class KoolbaseDatabaseClient {
         );
 
         // Optimistically save to local cache
+        // No revision: the record does not exist on the server yet, so there
+        // is nothing to be conditional against. An offline edit to it composes
+        // against the queued insert rather than a cached revision.
         await _cacheStore?.saveRecord(tempId, collection, data, _userId);
         await _cacheStore?.invalidateCollection(collection);
 
@@ -215,7 +221,8 @@ class KoolbaseDatabaseClient {
         KoolbaseRecord.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
 
     // Keep the local cache consistent, same as insert.
-    await _cacheStore?.saveRecord(record.id, collection, record.data, _userId);
+    await _cacheStore?.saveRecord(record.id, collection, record.data, _userId,
+        revision: record.revision);
     await _cacheStore?.invalidateCollection(collection);
 
     return KoolbaseUpsertResult(record: record, created: created);
@@ -309,7 +316,8 @@ class KoolbaseDatabaseClient {
       final rec = r.record;
       final col = rec?.collection;
       if (rec != null && col != null) {
-        await _cacheStore?.saveRecord(rec.id, col, rec.data, _userId);
+        await _cacheStore?.saveRecord(rec.id, col, rec.data, _userId,
+            revision: rec.revision);
         await _cacheStore?.invalidateCollection(col);
       }
     }

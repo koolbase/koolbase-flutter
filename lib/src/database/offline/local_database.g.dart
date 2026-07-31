@@ -300,6 +300,12 @@ class $CachedRecordsTable extends CachedRecords
   late final GeneratedColumn<String> data = GeneratedColumn<String>(
       'data', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _revisionMeta =
+      const VerificationMeta('revision');
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+      'revision', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
   @override
   late final GeneratedColumn<String> userId = GeneratedColumn<String>(
@@ -313,7 +319,7 @@ class $CachedRecordsTable extends CachedRecords
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, collection, data, userId, updatedAt];
+      [id, collection, data, revision, userId, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -343,6 +349,10 @@ class $CachedRecordsTable extends CachedRecords
     } else if (isInserting) {
       context.missing(_dataMeta);
     }
+    if (data.containsKey('revision')) {
+      context.handle(_revisionMeta,
+          revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta));
+    }
     if (data.containsKey('user_id')) {
       context.handle(_userIdMeta,
           userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
@@ -368,6 +378,8 @@ class $CachedRecordsTable extends CachedRecords
           .read(DriftSqlType.string, data['${effectivePrefix}collection'])!,
       data: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}data'])!,
+      revision: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}revision']),
       userId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}user_id']),
       updatedAt: attachedDatabase.typeMapping
@@ -385,12 +397,25 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
   final String id;
   final String collection;
   final String data;
+
+  /// The revision this copy was read at.
+  ///
+  /// An offline mutation is composed against a cached record, and replays with
+  /// the revision that copy carried — which is how the server can refuse the
+  /// write atomically rather than the client checking first and hoping nothing
+  /// lands in the gap.
+  ///
+  /// Null for records cached before this version, and for servers that predate
+  /// revisions. Those cannot be mutated offline: the baseline rules refuse
+  /// rather than replay blindly.
+  final int? revision;
   final String? userId;
   final DateTime updatedAt;
   const CachedRecord(
       {required this.id,
       required this.collection,
       required this.data,
+      this.revision,
       this.userId,
       required this.updatedAt});
   @override
@@ -399,6 +424,9 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
     map['id'] = Variable<String>(id);
     map['collection'] = Variable<String>(collection);
     map['data'] = Variable<String>(data);
+    if (!nullToAbsent || revision != null) {
+      map['revision'] = Variable<int>(revision);
+    }
     if (!nullToAbsent || userId != null) {
       map['user_id'] = Variable<String>(userId);
     }
@@ -411,6 +439,9 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
       id: Value(id),
       collection: Value(collection),
       data: Value(data),
+      revision: revision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(revision),
       userId:
           userId == null && nullToAbsent ? const Value.absent() : Value(userId),
       updatedAt: Value(updatedAt),
@@ -424,6 +455,7 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
       id: serializer.fromJson<String>(json['id']),
       collection: serializer.fromJson<String>(json['collection']),
       data: serializer.fromJson<String>(json['data']),
+      revision: serializer.fromJson<int?>(json['revision']),
       userId: serializer.fromJson<String?>(json['userId']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -435,6 +467,7 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
       'id': serializer.toJson<String>(id),
       'collection': serializer.toJson<String>(collection),
       'data': serializer.toJson<String>(data),
+      'revision': serializer.toJson<int?>(revision),
       'userId': serializer.toJson<String?>(userId),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -444,12 +477,14 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
           {String? id,
           String? collection,
           String? data,
+          Value<int?> revision = const Value.absent(),
           Value<String?> userId = const Value.absent(),
           DateTime? updatedAt}) =>
       CachedRecord(
         id: id ?? this.id,
         collection: collection ?? this.collection,
         data: data ?? this.data,
+        revision: revision.present ? revision.value : this.revision,
         userId: userId.present ? userId.value : this.userId,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -459,6 +494,7 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
       collection:
           data.collection.present ? data.collection.value : this.collection,
       data: data.data.present ? data.data.value : this.data,
+      revision: data.revision.present ? data.revision.value : this.revision,
       userId: data.userId.present ? data.userId.value : this.userId,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -470,6 +506,7 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
           ..write('id: $id, ')
           ..write('collection: $collection, ')
           ..write('data: $data, ')
+          ..write('revision: $revision, ')
           ..write('userId: $userId, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -477,7 +514,8 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
   }
 
   @override
-  int get hashCode => Object.hash(id, collection, data, userId, updatedAt);
+  int get hashCode =>
+      Object.hash(id, collection, data, revision, userId, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -485,6 +523,7 @@ class CachedRecord extends DataClass implements Insertable<CachedRecord> {
           other.id == this.id &&
           other.collection == this.collection &&
           other.data == this.data &&
+          other.revision == this.revision &&
           other.userId == this.userId &&
           other.updatedAt == this.updatedAt);
 }
@@ -493,6 +532,7 @@ class CachedRecordsCompanion extends UpdateCompanion<CachedRecord> {
   final Value<String> id;
   final Value<String> collection;
   final Value<String> data;
+  final Value<int?> revision;
   final Value<String?> userId;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -500,6 +540,7 @@ class CachedRecordsCompanion extends UpdateCompanion<CachedRecord> {
     this.id = const Value.absent(),
     this.collection = const Value.absent(),
     this.data = const Value.absent(),
+    this.revision = const Value.absent(),
     this.userId = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -508,6 +549,7 @@ class CachedRecordsCompanion extends UpdateCompanion<CachedRecord> {
     required String id,
     required String collection,
     required String data,
+    this.revision = const Value.absent(),
     this.userId = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -519,6 +561,7 @@ class CachedRecordsCompanion extends UpdateCompanion<CachedRecord> {
     Expression<String>? id,
     Expression<String>? collection,
     Expression<String>? data,
+    Expression<int>? revision,
     Expression<String>? userId,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -527,6 +570,7 @@ class CachedRecordsCompanion extends UpdateCompanion<CachedRecord> {
       if (id != null) 'id': id,
       if (collection != null) 'collection': collection,
       if (data != null) 'data': data,
+      if (revision != null) 'revision': revision,
       if (userId != null) 'user_id': userId,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -537,6 +581,7 @@ class CachedRecordsCompanion extends UpdateCompanion<CachedRecord> {
       {Value<String>? id,
       Value<String>? collection,
       Value<String>? data,
+      Value<int?>? revision,
       Value<String?>? userId,
       Value<DateTime>? updatedAt,
       Value<int>? rowid}) {
@@ -544,6 +589,7 @@ class CachedRecordsCompanion extends UpdateCompanion<CachedRecord> {
       id: id ?? this.id,
       collection: collection ?? this.collection,
       data: data ?? this.data,
+      revision: revision ?? this.revision,
       userId: userId ?? this.userId,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -561,6 +607,9 @@ class CachedRecordsCompanion extends UpdateCompanion<CachedRecord> {
     }
     if (data.present) {
       map['data'] = Variable<String>(data.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
     }
     if (userId.present) {
       map['user_id'] = Variable<String>(userId.value);
@@ -580,6 +629,7 @@ class CachedRecordsCompanion extends UpdateCompanion<CachedRecord> {
           ..write('id: $id, ')
           ..write('collection: $collection, ')
           ..write('data: $data, ')
+          ..write('revision: $revision, ')
           ..write('userId: $userId, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -1936,6 +1986,7 @@ typedef $$CachedRecordsTableCreateCompanionBuilder = CachedRecordsCompanion
   required String id,
   required String collection,
   required String data,
+  Value<int?> revision,
   Value<String?> userId,
   required DateTime updatedAt,
   Value<int> rowid,
@@ -1945,6 +1996,7 @@ typedef $$CachedRecordsTableUpdateCompanionBuilder = CachedRecordsCompanion
   Value<String> id,
   Value<String> collection,
   Value<String> data,
+  Value<int?> revision,
   Value<String?> userId,
   Value<DateTime> updatedAt,
   Value<int> rowid,
@@ -1967,6 +2019,9 @@ class $$CachedRecordsTableFilterComposer
 
   ColumnFilters<String> get data => $composableBuilder(
       column: $table.data, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get revision => $composableBuilder(
+      column: $table.revision, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get userId => $composableBuilder(
       column: $table.userId, builder: (column) => ColumnFilters(column));
@@ -1993,6 +2048,9 @@ class $$CachedRecordsTableOrderingComposer
   ColumnOrderings<String> get data => $composableBuilder(
       column: $table.data, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get revision => $composableBuilder(
+      column: $table.revision, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get userId => $composableBuilder(
       column: $table.userId, builder: (column) => ColumnOrderings(column));
 
@@ -2017,6 +2075,9 @@ class $$CachedRecordsTableAnnotationComposer
 
   GeneratedColumn<String> get data =>
       $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
 
   GeneratedColumn<String> get userId =>
       $composableBuilder(column: $table.userId, builder: (column) => column);
@@ -2055,6 +2116,7 @@ class $$CachedRecordsTableTableManager extends RootTableManager<
             Value<String> id = const Value.absent(),
             Value<String> collection = const Value.absent(),
             Value<String> data = const Value.absent(),
+            Value<int?> revision = const Value.absent(),
             Value<String?> userId = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -2063,6 +2125,7 @@ class $$CachedRecordsTableTableManager extends RootTableManager<
             id: id,
             collection: collection,
             data: data,
+            revision: revision,
             userId: userId,
             updatedAt: updatedAt,
             rowid: rowid,
@@ -2071,6 +2134,7 @@ class $$CachedRecordsTableTableManager extends RootTableManager<
             required String id,
             required String collection,
             required String data,
+            Value<int?> revision = const Value.absent(),
             Value<String?> userId = const Value.absent(),
             required DateTime updatedAt,
             Value<int> rowid = const Value.absent(),
@@ -2079,6 +2143,7 @@ class $$CachedRecordsTableTableManager extends RootTableManager<
             id: id,
             collection: collection,
             data: data,
+            revision: revision,
             userId: userId,
             updatedAt: updatedAt,
             rowid: rowid,

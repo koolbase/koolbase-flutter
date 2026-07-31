@@ -19,6 +19,18 @@ class CachedRecords extends Table {
   TextColumn get id => text()();
   TextColumn get collection => text()();
   TextColumn get data => text()(); // JSON
+
+  /// The revision this copy was read at.
+  ///
+  /// An offline mutation is composed against a cached record, and replays with
+  /// the revision that copy carried — which is how the server can refuse the
+  /// write atomically rather than the client checking first and hoping nothing
+  /// lands in the gap.
+  ///
+  /// Null for records cached before this version, and for servers that predate
+  /// revisions. Those cannot be mutated offline: the baseline rules refuse
+  /// rather than replay blindly.
+  IntColumn get revision => integer().nullable()();
   TextColumn get userId => text().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -118,7 +130,7 @@ class KoolbaseLocalDatabase extends _$KoolbaseLocalDatabase {
   KoolbaseLocalDatabase.withExecutor(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -147,6 +159,13 @@ class KoolbaseLocalDatabase extends _$KoolbaseLocalDatabase {
             await m.addColumn(pendingWrites, pendingWrites.baseline);
             await m.addColumn(pendingWrites, pendingWrites.baseRevision);
             await m.createTable(conflicts);
+          }
+          // v5: cached records remember the revision they were read at, so a
+          // mutation composed against one can replay conditionally. Rows cached
+          // earlier keep a null revision and are refused for offline mutation
+          // until they are read again.
+          if (from < 5) {
+            await m.addColumn(cachedRecords, cachedRecords.revision);
           }
         },
       );

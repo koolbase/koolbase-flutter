@@ -177,11 +177,13 @@ class KoolbaseQuery {
 
     // Save to cache
     if (_cacheStore != null) {
-      await _cacheStore!.saveQuery(
-        cacheKey,
-        collectionName,
-        records.map((r) => r.toJson()).toList(),
-      );
+      final asJson = records.map((r) => r.toJson()).toList();
+      await _cacheStore!.saveQuery(cacheKey, collectionName, asJson);
+      // Also individually, so a record the user has seen can be edited
+      // offline. The query cache says what a query returned; the record cache
+      // says what the SDK last saw of each record, and a mutation baseline
+      // belongs to the second.
+      await _cacheStore!.cacheRecordsFromQuery(collectionName, asJson, _userId);
     }
 
     return QueryResult(
@@ -343,6 +345,12 @@ class KoolbaseDocRef {
   final Future<String?> Function()? _accessTokenProvider;
   final Future<void> Function()? _onSessionExpired;
   final CacheStore? _cacheStore;
+  final String? _userId;
+
+  /// Queues a mutation that could not reach the server because the network
+  /// was unreachable. Null when offline support is not configured, in which
+  /// case update and delete surface the failure as they always did.
+  final WriteQueue? _writeQueue;
 
   KoolbaseDocRef({
     required this.baseUrl,
@@ -351,9 +359,13 @@ class KoolbaseDocRef {
     Future<String?> Function()? accessTokenProvider,
     Future<void> Function()? onSessionExpired,
     CacheStore? cacheStore,
+    String? userId,
+    WriteQueue? writeQueue,
   })  : _accessTokenProvider = accessTokenProvider,
         _onSessionExpired = onSessionExpired,
-        _cacheStore = cacheStore;
+        _cacheStore = cacheStore,
+        _userId = userId,
+        _writeQueue = writeQueue;
 
   Future<Map<String, String>> _headers() async {
     final headers = <String, String>{
@@ -379,44 +391,195 @@ class KoolbaseDocRef {
       throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Record not found');
     }
-    return KoolbaseRecord.fromJson(
-        jsonDecode(res.body) as Map<String, dynamic>);
+    final record =
+        KoolbaseRecord.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+
+    // Cached individually, with its revision, so a record the user has opened
+    // can be edited offline. Reading one record then editing it is the ordinary
+    // flow — without this the most common path would have no baseline and the
+    // edit would be refused.
+    final col = record.collection;
+    if (col != null) {
+      await _cacheStore?.saveRecord(
+          record.id, col, record.data, _userId, revision: record.revision);
+    }
+    return record;
   }
 
+  /// Applies a partial update, merging with what is already stored.
+  ///
+  /// Offline, the change is queued and replayed when connectivity returns — but
+  /// only if the SDK knows what the record looked like when the change was
+  /// composed. That baseline is what lets replay tell an untouched record from
+  /// one someone else changed meanwhile; without it the write would be applied
+  /// blindly, overwriting whatever happened while the device was away.
+  ///
+  /// Throws [KoolbaseOfflineBaselineUnavailableException] when there is no such
+  /// baseline: read the record first, or make the change online.
   Future<KoolbaseRecord> update(Map<String, dynamic> data) async {
-    final res = await http
-        .patch(
-          Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
-          headers: await _headers(),
-          body: jsonEncode({'data': data}),
-        )
-        .timeout(const Duration(seconds: 10));
+    Map<String, dynamic>? baseline;
+    int? baseRevision;
+    String? collection;
+
+    // Resolved before the request, so a network failure has somewhere to go.
+    if (_writeQueue != null) {
+      final resolved = await _resolveBaseline();
+      baseline = resolved?.baseline;
+      baseRevision = resolved?.revision;
+      collection = resolved?.collection;
+    }
+
+    final http.Response res;
+    try {
+      res = await http
+          .patch(
+            Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
+            headers: await _headers(),
+            // Deliberately unconditional. This release adds optimistic
+            // concurrency to queued replay only: a direct online write keeps the
+            // overwrite semantics applications already depend on, and making
+            // every write conditional because a revision happens to be cached
+            // would be a breaking change nobody opted into. An explicit
+            // conditional API comes later.
+            body: jsonEncode({'data': data}),
+          )
+          .timeout(const Duration(seconds: 10));
+    } catch (_) {
+      // The network was unreachable. A server that answered — with a rejection,
+      // a conflict, anything — is not this case and must never be queued.
+      if (_writeQueue == null || collection == null) rethrow;
+      if (baseline == null) {
+        throw const KoolbaseOfflineBaselineUnavailableException(
+            'This record must be read at least once before it can be updated offline.');
+      }
+      await _writeQueue!.enqueue(
+        collection: collection,
+        operation: 'update',
+        payload: data,
+        recordId: recordId,
+        userId: _userId,
+        baseline: baseline,
+        baseRevision: baseRevision,
+      );
+      final merged = {...baseline, ...data};
+      await _cacheStore?.saveRecord(recordId, collection, merged, _userId,
+          revision: baseRevision);
+      // Optimistic: durable locally and queued to send, not yet accepted.
+      return KoolbaseRecord(
+        id: recordId,
+        collection: collection,
+        data: merged,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        revision: baseRevision,
+      );
+    }
 
     if (res.statusCode != 200) {
-      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
-          fallbackMessage: 'Update failed');
+      throw await koolbaseDataErrorNotifying(res,
+          onSessionExpired: _onSessionExpired, fallbackMessage: 'Update failed');
     }
 
     final record =
         KoolbaseRecord.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
 
+    final col = record.collection ?? collection;
+    if (col != null) {
+      await _cacheStore?.saveRecord(record.id, col, record.data, _userId,
+          revision: record.revision);
+    }
     return record;
   }
 
-  Future<void> delete() async {
-    final res = await http
-        .delete(
-          Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
-          headers: await _headers(),
-        )
-        .timeout(const Duration(seconds: 10));
+  /// The record's state as the SDK last knew it, for composing an offline
+  /// mutation against.
+  ///
+  /// Two sources, in order. A record created offline is not in the cache as a
+  /// server record, but its queued insert holds the state a later edit builds
+  /// on — insert-then-correct is the ordinary offline sequence. Otherwise the
+  /// cached copy, with the revision it was read at.
+  ///
+  /// Null when neither exists: never seen on this device, or a queued delete has
+  /// already removed it locally.
+  Future<({Map<String, dynamic> baseline, int? revision, String collection})?>
+      _resolveBaseline() async {
+    final pending = await _writeQueue?.pendingForRecord(recordId) ?? const [];
+    if (pending.isNotEmpty) {
+      final projected = await _writeQueue?.projectedState(recordId);
+      if (projected == null) return null; // the chain ends in a delete
+      return (
+        baseline: projected,
+        revision: pending.last.baseRevision,
+        collection: pending.first.collection,
+      );
+    }
+    final cached = await _cacheStore?.getRecordWithCollection(recordId);
+    if (cached == null) return null;
+    return (
+      baseline: cached.data,
+      revision: await _cacheStore?.revisionFor(recordId),
+      collection: cached.collection,
+    );
+  }
 
-    if (res.statusCode != 204) {
-      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
-          fallbackMessage: 'Delete failed');
+  /// Deletes the record.
+  ///
+  /// Offline, the delete is queued and replayed when connectivity returns, but
+  /// only when the SDK knows what the record looked like at the time. A delete
+  /// replayed blindly would remove something the user last saw hours earlier and
+  /// which may have changed since — the most destructive kind of stale write.
+  ///
+  /// Throws [KoolbaseOfflineBaselineUnavailableException] when there is no such
+  /// baseline: read the record first, or delete it while online.
+  Future<void> delete() async {
+    Map<String, dynamic>? baseline;
+    int? baseRevision;
+    String? collection;
+
+    if (_writeQueue != null) {
+      final resolved = await _resolveBaseline();
+      baseline = resolved?.baseline;
+      baseRevision = resolved?.revision;
+      collection = resolved?.collection;
     }
 
-    // Remove from local cache
+    final http.Response res;
+    try {
+      res = await http
+          .delete(
+            // Unconditional, as above: the guarantee belongs to queued replay,
+            // not to every direct call.
+            Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
+            headers: await _headers(),
+          )
+          .timeout(const Duration(seconds: 10));
+    } catch (_) {
+      if (_writeQueue == null || collection == null) rethrow;
+      if (baseline == null) {
+        throw const KoolbaseOfflineBaselineUnavailableException(
+            'This record must be read at least once before it can be deleted offline.');
+      }
+      await _writeQueue!.enqueue(
+        collection: collection,
+        operation: 'delete',
+        payload: const {},
+        recordId: recordId,
+        userId: _userId,
+        baseline: baseline,
+        baseRevision: baseRevision,
+      );
+      // The queued write holds its own copy of the baseline, so removing the
+      // cached record now costs nothing and keeps local reads consistent with
+      // what the user just did.
+      await _cacheStore?.deleteRecord(recordId);
+      return;
+    }
+
+    if (res.statusCode != 204) {
+      throw await koolbaseDataErrorNotifying(res,
+          onSessionExpired: _onSessionExpired, fallbackMessage: 'Delete failed');
+    }
+
     await _cacheStore?.deleteRecord(recordId);
   }
 
