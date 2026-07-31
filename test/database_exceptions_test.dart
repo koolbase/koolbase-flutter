@@ -55,4 +55,37 @@ void main() {
           isA<KoolbaseConflictException>());
     });
   });
+
+  group('record revision', () {
+    // A record that loses its revision cannot make its next write conditional,
+    // so the guarantee would silently degrade to last-write-wins.
+    test('survives a round trip through json', () {
+      final rec = KoolbaseRecord.fromJson({
+        r'$id': 'rec-1',
+        r'$collection': 'weights',
+        r'$createdAt': '2026-01-01T00:00:00Z',
+        r'$updatedAt': '2026-01-02T00:00:00Z',
+        r'$revision': 7,
+        'kg': 68.4,
+      });
+      expect(rec.revision, 7);
+      expect(rec.data.containsKey(r'$revision'), isFalse,
+          reason: 'the revision is metadata, not one of the user\'s fields');
+
+      final back = KoolbaseRecord.fromJson(rec.toJson());
+      expect(back.revision, 7, reason: 'a cached record must keep its revision');
+    });
+
+    // Servers that predate revisions, and records cached by an earlier SDK.
+    test('is null when the server does not send one', () {
+      final rec = KoolbaseRecord.fromJson({
+        r'$id': 'rec-1',
+        r'$createdAt': '2026-01-01T00:00:00Z',
+        r'$updatedAt': '2026-01-01T00:00:00Z',
+        'kg': 68.4,
+      });
+      expect(rec.revision, isNull);
+      expect(rec.toJson().containsKey(r'$revision'), isFalse);
+    });
+  });
 }

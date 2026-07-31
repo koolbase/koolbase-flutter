@@ -93,6 +93,29 @@ class CacheStore {
     }
   }
 
+  /// A cached record with the collection it belongs to.
+  ///
+  /// [getRecord] drops the collection, but an offline mutation needs it: a
+  /// queued write records which collection it targets, and a record reference
+  /// carries only an id. Since an offline update already requires the record to
+  /// be cached — that is where its baseline comes from — the same lookup can
+  /// supply both, and no API change is needed to ask callers for a collection
+  /// they should not have to know.
+  Future<({String collection, Map<String, dynamic> data})?> getRecordWithCollection(
+      String id) async {
+    final row = await (_db.select(_db.cachedRecords)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    try {
+      return (
+        collection: row.collection,
+        data: jsonDecode(row.data) as Map<String, dynamic>,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> deleteRecord(String id) async {
     await (_db.delete(_db.cachedRecords)..where((t) => t.id.equals(id))).go();
   }

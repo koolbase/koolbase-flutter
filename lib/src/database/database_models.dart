@@ -35,6 +35,17 @@ class KoolbaseRecord {
   final Map<String, dynamic> data;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// The record's revision, advanced by the server on every write.
+  ///
+  /// Pass it back on an update or delete to make the write conditional: it
+  /// applies only if nothing else has touched the record since — the
+  /// difference between overwriting someone else's change and being told
+  /// about it.
+  ///
+  /// Null for records from a server that predates revisions, and for records
+  /// cached before this SDK version.
+  final int? revision;
   const KoolbaseRecord({
     required this.id,
     this.collection,
@@ -42,6 +53,7 @@ class KoolbaseRecord {
     required this.data,
     required this.createdAt,
     required this.updatedAt,
+    this.revision,
   });
 
   /// Direct field access: `record['email']` == `record.data['email']`.
@@ -60,6 +72,7 @@ class KoolbaseRecord {
       data: fields,
       createdAt: DateTime.parse(json[r'$createdAt'] as String),
       updatedAt: DateTime.parse(json[r'$updatedAt'] as String),
+      revision: (json[r'$revision'] as num?)?.toInt(),
     );
   }
   Map<String, dynamic> toJson() => {
@@ -68,6 +81,7 @@ class KoolbaseRecord {
         if (createdBy != null) r'$createdBy': createdBy,
         r'$createdAt': createdAt.toIso8601String(),
         r'$updatedAt': updatedAt.toIso8601String(),
+        if (revision != null) r'$revision': revision,
         ...data,
       };
 }

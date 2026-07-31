@@ -135,6 +135,27 @@ class KoolbaseVectorDimensionMismatchException extends KoolbaseDataException {
 /// is deliberate: a session the server will not honour is not a session, and
 /// leaving it in place produces an app that believes it is authenticated and
 /// fails every request.
+/// Thrown when an offline update or delete cannot be queued because the SDK has
+/// no record of what the change was composed against.
+///
+/// Replaying a mutation without knowing the state it was based on means applying
+/// it blindly: whatever changed on the server in the meantime is overwritten,
+/// silently, with nobody able to tell it happened. Koolbase accepts an offline
+/// mutation only when it can persist that baseline.
+///
+/// A baseline is available when the record is in the local cache, or when it was
+/// created offline and its insert is still queued. It is unavailable when the
+/// record has never been read on this device — so read it, or make the change
+/// while online, where the server arbitrates directly.
+///
+/// Deliberate rather than lenient: queueing these unconditionally would mean most
+/// offline updates are conflict-safe and some quietly are not, which is a worse
+/// guarantee than a clear refusal.
+class KoolbaseOfflineBaselineUnavailableException extends KoolbaseDataException {
+  const KoolbaseOfflineBaselineUnavailableException(super.message)
+      : super(code: 'offline_baseline_unavailable');
+}
+
 class KoolbaseSessionExpiredException extends KoolbaseDataException {
   const KoolbaseSessionExpiredException(super.message)
       : super(code: 'session_expired');
