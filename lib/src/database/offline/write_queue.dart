@@ -89,6 +89,16 @@ class WriteQueue {
     });
   }
 
+  /// Clears a resolved conflict.
+  ///
+  /// Called only once a resolving write has been accepted, or when the
+  /// application has explicitly chosen the server's version or abandoned the
+  /// change. Removing it before a write lands would lose the change if the write
+  /// then failed.
+  Future<void> removeConflict(String id) async {
+    await (_db.delete(_db.conflicts)..where((c) => c.id.equals(id))).go();
+  }
+
   /// Every unresolved conflict, oldest first.
   ///
   /// Read from storage rather than held in memory: closing an app must not

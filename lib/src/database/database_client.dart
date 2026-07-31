@@ -4,7 +4,9 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'database_models.dart';
 import 'database_query.dart';
+import 'conflict.dart';
 import 'offline/cache_store.dart';
+import 'offline/local_database.dart' show Conflict;
 import 'sync_engine.dart';
 import 'offline/write_queue.dart';
 import 'database_exceptions.dart';
@@ -71,6 +73,99 @@ class KoolbaseDatabaseClient {
     }
     return headers;
   }
+
+  /// Unresolved conflicts, oldest first.
+  ///
+  /// A conflict is a change the user made that the server would not apply,
+  /// because the record moved in between. It is held rather than discarded, and
+  /// survives restarts, until the application decides what should win.
+  Future<List<KoolbaseConflict>> conflicts() async {
+    final rows = await _writeQueue?.conflicts() ?? const [];
+    return rows.map(_mapConflict).toList();
+  }
+
+  /// Emits the current conflicts, and again whenever they change.
+  Stream<List<KoolbaseConflict>> watchConflicts() {
+    final queue = _writeQueue;
+    if (queue == null) return Stream.value(const []);
+    return queue.watchConflicts().map((rows) => rows.map(_mapConflict).toList());
+  }
+
+  KoolbaseConflict _mapConflict(Conflict row) => KoolbaseConflict(
+        id: row.id,
+        collection: row.collection,
+        recordId: row.recordId,
+        operation: row.operation == 'delete'
+            ? ConflictOperation.delete
+            : ConflictOperation.update,
+        baseline: _decodeOrNull(row.baseline),
+        local: _decodeOrNull(row.payload),
+        server: _decodeOrNull(row.serverState),
+        baseRevision: row.baseRevision,
+        serverRevision: row.serverRevision,
+        createdAt: row.createdAt,
+        resolver: _conflictResolver,
+      );
+
+  Map<String, dynamic>? _decodeOrNull(String? raw) =>
+      raw == null ? null : jsonDecode(raw) as Map<String, dynamic>;
+
+  Future<Conflict> _requireConflict(String id) async {
+    final rows = await _writeQueue?.conflicts() ?? const [];
+    for (final r in rows) {
+      if (r.id == id) return r;
+    }
+    throw KoolbaseDataException(
+        'That conflict is no longer outstanding — it may already have been resolved.',
+        code: 'conflict_not_found');
+  }
+
+  /// Issues a resolving write, conditional on the revision the refusal reported.
+  ///
+  /// Builds its own request rather than going through [doc]: that path resolves
+  /// a baseline from the cache and queues on network failure, and a resolution
+  /// must send the conflict's own revision and leave the conflict standing if it
+  /// cannot be delivered.
+  Future<void> _resolveWrite(Conflict row, Map<String, dynamic> payload) async {
+    final rev = row.serverRevision;
+    final http.Response res;
+    if (row.operation == 'delete') {
+      res = await http
+          .delete(
+            Uri.parse(
+                '$baseUrl/v1/sdk/db/records/${row.recordId}${rev != null ? '?expected_revision=$rev' : ''}'),
+            headers: await _headers(),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 204) {
+        throw await koolbaseDataErrorNotifying(res,
+            onSessionExpired: _onSessionExpired,
+            fallbackMessage: 'Resolving the conflict failed');
+      }
+    } else {
+      res = await http
+          .patch(
+            Uri.parse('$baseUrl/v1/sdk/db/records/${row.recordId}'),
+            headers: await _headers(),
+            body: jsonEncode({
+              'data': payload,
+              if (rev != null) 'expected_revision': rev,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) {
+        throw await koolbaseDataErrorNotifying(res,
+            onSessionExpired: _onSessionExpired,
+            fallbackMessage: 'Resolving the conflict failed');
+      }
+    }
+    // Only once the server has accepted it. A conflict cleared before the write
+    // lands would lose the change if the write then failed.
+    await _writeQueue?.removeConflict(row.id);
+    await _cacheStore?.invalidateCollection(row.collection);
+  }
+
+  late final _ConflictResolver _conflictResolver = _ConflictResolver(this);
 
   /// Get a fluent query builder for a collection
   KoolbaseQuery collection(String name) {
@@ -347,5 +442,53 @@ class KoolbaseDatabaseClient {
       return;
     }
     await engine.syncPendingWrites();
+  }
+}
+
+// ─── Conflicts ───────────────────────────────────────────────────────────────
+
+/// Resolves conflicts on behalf of [KoolbaseConflict], reloading the stored row
+/// before acting.
+///
+/// A conflict object handed to a UI can sit there while someone decides, and a
+/// sync pass may resolve it or another write supersede it meanwhile. Acting on
+/// values captured when the object was built would write against a state that no
+/// longer exists.
+class _ConflictResolver implements ConflictResolver {
+  _ConflictResolver(this._client);
+
+  final KoolbaseDatabaseClient _client;
+
+  @override
+  Future<void> resolveWithLocal(String conflictId) async {
+    final row = await _client._requireConflict(conflictId);
+    final payload = jsonDecode(row.payload) as Map<String, dynamic>;
+    // Conditional on the revision the refusal reported. If the record has moved
+    // again while someone was deciding, this is refused in turn rather than
+    // overwriting a change nobody has seen.
+    await _client._resolveWrite(row, payload);
+  }
+
+  @override
+  Future<void> resolveWithMerge(
+      String conflictId, Map<String, dynamic> data) async {
+    final row = await _client._requireConflict(conflictId);
+    await _client._resolveWrite(row, data);
+  }
+
+  @override
+  Future<void> resolveWithServer(String conflictId) async {
+    final row = await _client._requireConflict(conflictId);
+    // The server's version stands. Recorded as a decision by removing the
+    // conflict, rather than the write quietly disappearing.
+    await _client._writeQueue?.removeConflict(row.id);
+    debugPrint('[Koolbase] Conflict ${row.id} resolved in favour of the server');
+  }
+
+  @override
+  Future<void> abandon(String conflictId) async {
+    final row = await _client._requireConflict(conflictId);
+    await _client._writeQueue?.removeConflict(row.id);
+    debugPrint('[Koolbase] Conflict ${row.id} abandoned');
   }
 }
