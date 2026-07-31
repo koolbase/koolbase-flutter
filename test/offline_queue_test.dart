@@ -131,4 +131,88 @@ void main() {
       expect(await other.conflicts(), hasLength(1));
     });
   });
+
+  group('rebasing', () {
+    // A conflict resolved one way leaves the writes behind it composed against a
+    // state that never happened. Releasing them unchanged would make each replay
+    // against a revision that has moved, turning one disagreement into as many
+    // conflicts as the user had queued.
+    test('held writes are pointed at the resolved state', () async {
+      await queue.enqueue(
+        collection: 'weights',
+        operation: 'update',
+        payload: {'kg': 70.0},
+        recordId: 'rec-1',
+        baseline: {'kg': 68.0, 'note': 'morning'},
+        baseRevision: 3,
+      );
+      await queue.enqueue(
+        collection: 'weights',
+        operation: 'update',
+        payload: {'note': 'evening'},
+        recordId: 'rec-1',
+        baseline: {'kg': 70.0, 'note': 'morning'},
+        baseRevision: 3,
+      );
+
+      // The first conflicts and is resolved by taking the server's version.
+      final first = (await queue.pendingForRecord('rec-1')).first;
+      await queue.moveToConflict(
+        first,
+        const KoolbaseRevisionMismatchException('changed',
+            currentRevision: 9, currentRecord: {'kg': 69.2, 'note': 'morning'}),
+      );
+      await queue.rebaseAfterResolution(
+          'rec-1', {'kg': 69.2, 'note': 'morning'}, 9);
+
+      final remaining = (await queue.pendingForRecord('rec-1')).single;
+      expect(remaining.baseRevision, 9,
+          reason: 'a stale revision would conflict on replay');
+      expect(remaining.baseline, contains('69.2'),
+          reason: 'the baseline must describe the state that actually won');
+      expect(remaining.payload, contains('evening'),
+          reason: 'the change itself is untouched — only what it builds on moved');
+    });
+
+    // Each write in a chain builds on the one before it, so rebasing walks
+    // forward rather than pointing them all at the same state.
+    test('a chain rebases through its own writes', () async {
+      for (final p in [
+        {'a': 1},
+        {'b': 2},
+        {'c': 3}
+      ]) {
+        await queue.enqueue(
+          collection: 'things',
+          operation: 'update',
+          payload: p,
+          recordId: 'rec-2',
+          baseline: {'a': 0},
+          baseRevision: 1,
+        );
+      }
+      await queue.rebaseAfterResolution('rec-2', {'base': true}, 5);
+
+      final writes = await queue.pendingForRecord('rec-2');
+      expect(writes[0].baseline, contains('base'));
+      expect(writes[1].baseline, contains('"a":1'),
+          reason: 'the second builds on the first');
+      expect(writes[2].baseline, contains('"b":2'),
+          reason: 'the third builds on the second');
+    });
+
+    // The revision a write produces is not known until the server assigns it, so
+    // the next write in the chain has to be told.
+    test('a landed write advances the revision for those behind it', () async {
+      await queue.enqueue(
+          collection: 'things',
+          operation: 'update',
+          payload: {'a': 1},
+          recordId: 'rec-3',
+          baseRevision: 4);
+      await queue.advanceChainRevision('rec-3', 11);
+
+      expect((await queue.pendingForRecord('rec-3')).single.baseRevision, 11);
+    });
+  });
 }

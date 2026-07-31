@@ -113,8 +113,13 @@ class SyncEngine {
       }
 
       try {
-        await _executeWrite(write);
+        final applied = await _executeWrite(write);
         await writeQueue.remove(write.id);
+        // Anything queued behind this for the same record was composed against
+        // this write's result, and now knows the revision that result carries.
+        if (write.recordId != null) {
+          await writeQueue.advanceChainRevision(write.recordId!, applied);
+        }
         // Invalidate cache for this collection so next read is fresh
         await cacheStore.invalidateCollection(write.collection);
       } on KoolbaseRevisionMismatchException catch (e) {
@@ -150,7 +155,12 @@ class SyncEngine {
 
   // ─── Execute a single write against the API ───────────────────────────────
 
-  Future<void> _executeWrite(PendingWrite write) async {
+  /// Sends one queued write, returning the revision the record now carries.
+  ///
+  /// The revision matters to whatever is queued behind this for the same record:
+  /// those writes were composed against this one's result and cannot know its
+  /// revision until the server assigns it.
+  Future<int?> _executeWrite(PendingWrite write) async {
     final payload = writeQueue.decodePayload(write);
     final headers = <String, String>{
       'Content-Type': 'application/json',
@@ -177,7 +187,7 @@ class SyncEngine {
           throw await koolbaseDataErrorNotifying(res,
               onSessionExpired: onSessionExpired, fallbackMessage: 'Insert sync failed');
         }
-        break;
+        return _revisionOf(res);
 
       case 'update':
         if (write.recordId == null) {
@@ -203,7 +213,7 @@ class SyncEngine {
           throw await koolbaseDataErrorNotifying(res,
               onSessionExpired: onSessionExpired, fallbackMessage: 'Update sync failed');
         }
-        break;
+        return _revisionOf(res);
 
       case 'delete':
         if (write.recordId == null) {
@@ -220,10 +230,21 @@ class SyncEngine {
           throw await koolbaseDataErrorNotifying(res,
               onSessionExpired: onSessionExpired, fallbackMessage: 'Delete sync failed');
         }
-        break;
+        return null;
 
       default:
         throw _MalformedWrite('unknown operation "${write.operation}"');
     }
+  }
+
+  /// The revision from a write response, when the body carries one.
+  int? _revisionOf(http.Response res) {
+    try {
+      final body = jsonDecode(res.body);
+      if (body is Map<String, dynamic>) {
+        return (body[r'\$revision'] as num?)?.toInt();
+      }
+    } catch (_) {}
+    return null;
   }
 }

@@ -162,7 +162,46 @@ class KoolbaseDatabaseClient {
     // Only once the server has accepted it. A conflict cleared before the write
     // lands would lose the change if the write then failed.
     await _writeQueue?.removeConflict(row.id);
+
+    // Writes held behind this one were composed against the state it would have
+    // produced. That state has now been decided, so point them at it — otherwise
+    // each would replay against a revision that has moved and conflict in turn,
+    // multiplying one disagreement into as many as the user had queued.
+    final applied = _revisionFromResponse(res);
+    await _writeQueue?.rebaseAfterResolution(
+        row.recordId, payload, applied ?? row.serverRevision);
+
     await _cacheStore?.invalidateCollection(row.collection);
+  }
+
+  /// Points writes still queued for a record at the server's version, after a
+  /// resolution that discarded the local change.
+  ///
+  /// Uses the state captured when the write was refused. It may have moved again
+  /// since — in which case those writes will conflict when they replay, which is
+  /// correct: the disagreement is real and belongs to the user, not invented by
+  /// a baseline nobody ever saw.
+  Future<void> _rebaseOntoServerState(Conflict row) async {
+    final raw = row.serverState;
+    if (raw == null) return;
+    final state = _decodeOrNull(raw);
+    if (state == null) return;
+    final fields = <String, dynamic>{};
+    for (final e in state.entries) {
+      if (!e.key.startsWith(r'\$')) fields[e.key] = e.value;
+    }
+    await _writeQueue?.rebaseAfterResolution(
+        row.recordId, fields, row.serverRevision);
+  }
+
+  int? _revisionFromResponse(http.Response res) {
+    try {
+      final body = jsonDecode(res.body);
+      if (body is Map<String, dynamic>) {
+        return (body[r'\$revision'] as num?)?.toInt();
+      }
+    } catch (_) {}
+    return null;
   }
 
   late final _ConflictResolver _conflictResolver = _ConflictResolver(this);
@@ -482,6 +521,10 @@ class _ConflictResolver implements ConflictResolver {
     // The server's version stands. Recorded as a decision by removing the
     // conflict, rather than the write quietly disappearing.
     await _client._writeQueue?.removeConflict(row.id);
+    // The state the held writes were composed against never happened. What won
+    // is the server's version, so rebase them onto that — otherwise each would
+    // replay against a revision that moved and conflict in turn.
+    await _client._rebaseOntoServerState(row);
     debugPrint('[Koolbase] Conflict ${row.id} resolved in favour of the server');
   }
 
@@ -489,6 +532,9 @@ class _ConflictResolver implements ConflictResolver {
   Future<void> abandon(String conflictId) async {
     final row = await _client._requireConflict(conflictId);
     await _client._writeQueue?.removeConflict(row.id);
+    // Abandoning claims neither version won, so the record stands as the server
+    // has it — which is what anything still queued must build on.
+    await _client._rebaseOntoServerState(row);
     debugPrint('[Koolbase] Conflict ${row.id} abandoned');
   }
 }

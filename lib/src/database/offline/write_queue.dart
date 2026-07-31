@@ -89,6 +89,62 @@ class WriteQueue {
     });
   }
 
+  /// Points the writes still queued for a record at the state it is now in.
+  ///
+  /// When a conflict is resolved, the writes held behind it carry baselines
+  /// describing the state the conflicted write would have produced — a state
+  /// that no longer exists, and may never have. Releasing them unchanged would
+  /// apply them conditionally against a revision that has moved on, so every one
+  /// would conflict in turn: a single disagreement multiplying into as many
+  /// conflicts as the user had queued.
+  ///
+  /// Refreshing the baseline is sufficient here, and only here, because every
+  /// operation this API offers is an absolute assignment. A patch says what a
+  /// field becomes, not what to do to it, so it means the same thing whatever it
+  /// is applied to. **If a relative operation is ever added — an increment, an
+  /// array append — this stops being true and the chain must be replayed through
+  /// its projected states instead.**
+  Future<void> rebaseAfterResolution(
+    String recordId,
+    Map<String, dynamic> resolvedState,
+    int? resolvedRevision,
+  ) async {
+    final held = await pendingForRecord(recordId);
+    if (held.isEmpty) return;
+
+    var state = Map<String, dynamic>.from(resolvedState);
+    for (final w in held) {
+      await (_db.update(_db.pendingWrites)..where((p) => p.id.equals(w.id)))
+          .write(PendingWritesCompanion(
+        baseline: Value(jsonEncode(state)),
+        baseRevision: Value(resolvedRevision),
+      ));
+      // Each write in the chain is composed against the one before it, so the
+      // next baseline is this write applied to the last.
+      if (w.operation == 'update') {
+        state = {...state, ...decodePayload(w)};
+      } else if (w.operation == 'delete') {
+        break; // nothing after a delete has a state to build on
+      }
+    }
+  }
+
+  /// Records the revision a record now carries, for the writes still queued
+  /// behind the one that just landed.
+  ///
+  /// Each write in a chain is composed against the previous one's result, but
+  /// the revision that result carries is not known until the server assigns it.
+  /// Without this, the second write in any chain would replay against a revision
+  /// the first has already superseded and be refused — turning every multi-write
+  /// chain into a conflict the user did not cause. False conflicts are worse
+  /// than none: they teach people to reach for overwrite.
+  Future<void> advanceChainRevision(String recordId, int? revision) async {
+    if (revision == null) return;
+    await (_db.update(_db.pendingWrites)
+          ..where((p) => p.recordId.equals(recordId)))
+        .write(PendingWritesCompanion(baseRevision: Value(revision)));
+  }
+
   /// Clears a resolved conflict.
   ///
   /// Called only once a resolving write has been accepted, or when the
