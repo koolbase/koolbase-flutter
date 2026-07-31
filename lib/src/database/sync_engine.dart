@@ -84,7 +84,17 @@ class SyncEngine {
     final writes = await writeQueue.getPending();
     final currentUser = currentUserId?.call();
 
+    // Records whose chain stopped this pass, so later writes for them are held
+    // rather than applied against a state their baseline does not describe.
+    final blocked = <String?>{};
+
     for (final write in writes) {
+      if (write.recordId != null && blocked.contains(write.recordId)) {
+        debugPrint(
+            '[Koolbase] Holding ${write.id}: an earlier write for this record is unresolved');
+        continue;
+      }
+
       // A queued write belongs to the session that made it. The queue is
       // per-device and outlives sessions, so replaying under a different
       // token would attribute one user's offline work to another. Writes
@@ -107,6 +117,17 @@ class SyncEngine {
         await writeQueue.remove(write.id);
         // Invalidate cache for this collection so next read is fresh
         await cacheStore.invalidateCollection(write.collection);
+      } on KoolbaseRevisionMismatchException catch (e) {
+        // The record moved since this write was composed. Not a failure to
+        // retry — retrying cannot help, and the retry counter would discard the
+        // write after three passes, which is the silent loss this exists to
+        // prevent. It becomes durable unresolved state instead.
+        debugPrint('[Koolbase] Conflict on ${write.id}: the record has changed');
+        await writeQueue.moveToConflict(write, e);
+        // Everything queued after this for the same record was composed against
+        // the state this write would have produced. Replaying those now would
+        // apply them against a state their baselines never described.
+        blocked.add(write.recordId);
       } on _MalformedWrite catch (e) {
         // Cannot succeed on any attempt. Retrying would burn the budget and
         // then drop it anyway; keeping it would hold it forever.
@@ -166,7 +187,16 @@ class SyncEngine {
             .patch(
               Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),
               headers: headers,
-              body: jsonEncode({'data': payload}),
+              // The revision the write was composed against. The server applies
+              // the change only if the record still carries it, so nothing can
+              // land between the client deciding the write is safe and the
+              // server applying it. Replay is where this guarantee belongs:
+              // hours may have passed since the user made the change.
+              body: jsonEncode({
+                'data': payload,
+                if (write.baseRevision != null)
+                  'expected_revision': write.baseRevision,
+              }),
             )
             .timeout(const Duration(seconds: 10));
         if (res.statusCode != 200) {
@@ -181,7 +211,8 @@ class SyncEngine {
         }
         final res = await http
             .delete(
-              Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),
+              Uri.parse(
+                  '$baseUrl/v1/sdk/db/records/${write.recordId}${write.baseRevision != null ? '?expected_revision=${write.baseRevision}' : ''}'),
               headers: headers,
             )
             .timeout(const Duration(seconds: 10));

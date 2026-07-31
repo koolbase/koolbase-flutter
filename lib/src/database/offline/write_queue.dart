@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
+import '../database_exceptions.dart';
 import 'local_database.dart';
 
 const _maxRetries = 3;
@@ -47,6 +48,63 @@ class WriteQueue {
           ),
         );
     return id;
+  }
+
+  // ─── Conflicts ─────────────────────────────────────────────────────────────
+
+  /// Moves a refused write out of the queue and into durable conflict state.
+  ///
+  /// Both halves in one transaction: a write removed without its conflict
+  /// recorded is lost, and a conflict recorded without removing the write would
+  /// be replayed again on the next pass and refused again.
+  ///
+  /// The server's current state is stored alongside, exactly as it was returned
+  /// with the refusal. Resolving therefore needs no fetch — and cannot race one,
+  /// which is the reason the server returns it in the first place.
+  Future<void> moveToConflict(
+    PendingWrite write,
+    KoolbaseRevisionMismatchException mismatch,
+  ) async {
+    await _db.transaction(() async {
+      await _db.into(_db.conflicts).insert(
+            ConflictsCompanion.insert(
+              id: _uuid.v4(),
+              collection: write.collection,
+              recordId: write.recordId ?? '',
+              operation: write.operation,
+              payload: write.payload,
+              baseline: Value(write.baseline),
+              serverState: Value(mismatch.currentRecord == null
+                  ? null
+                  : jsonEncode(mismatch.currentRecord)),
+              baseRevision: Value(write.baseRevision),
+              serverRevision: Value(mismatch.currentRevision),
+              userId: Value(write.userId),
+              createdAt: DateTime.now(),
+              lastAttemptedAt: Value(DateTime.now()),
+            ),
+          );
+      await (_db.delete(_db.pendingWrites)..where((w) => w.id.equals(write.id)))
+          .go();
+    });
+  }
+
+  /// Every unresolved conflict, oldest first.
+  ///
+  /// Read from storage rather than held in memory: closing an app must not
+  /// change the outcome of a write, and a conflict discarded by a restart is the
+  /// silent loss this whole mechanism exists to prevent.
+  Future<List<Conflict>> conflicts() {
+    return (_db.select(_db.conflicts)
+          ..orderBy([(c) => OrderingTerm.asc(c.createdAt)]))
+        .get();
+  }
+
+  /// Emits the current conflicts and again whenever they change.
+  Stream<List<Conflict>> watchConflicts() {
+    return (_db.select(_db.conflicts)
+          ..orderBy([(c) => OrderingTerm.asc(c.createdAt)]))
+        .watch();
   }
 
   // ─── Per-record state ──────────────────────────────────────────────────────

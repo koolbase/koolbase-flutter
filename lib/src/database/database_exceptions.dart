@@ -156,6 +156,34 @@ class KoolbaseOfflineBaselineUnavailableException extends KoolbaseDataException 
       : super(code: 'offline_baseline_unavailable');
 }
 
+/// Thrown when a write was refused because the record changed since it was
+/// composed.
+///
+/// Carries the server's current state, returned with the refusal, so deciding
+/// what to do needs no second fetch — and cannot race one, which is the whole
+/// point of the server checking and applying atomically.
+///
+/// On the direct write path this surfaces to the caller. During replay of a
+/// queued offline write it becomes a persisted conflict instead: the write is
+/// not lost, and not applied, until someone decides.
+class KoolbaseRevisionMismatchException extends KoolbaseDataException {
+  /// The revision the write expected.
+  final int? expectedRevision;
+
+  /// The revision the record now carries.
+  final int? currentRevision;
+
+  /// The record as the server holds it now.
+  final Map<String, dynamic>? currentRecord;
+
+  const KoolbaseRevisionMismatchException(
+    super.message, {
+    this.expectedRevision,
+    this.currentRevision,
+    this.currentRecord,
+  }) : super(code: 'revision_mismatch');
+}
+
 class KoolbaseSessionExpiredException extends KoolbaseDataException {
   const KoolbaseSessionExpiredException(super.message)
       : super(code: 'session_expired');
@@ -184,6 +212,13 @@ KoolbaseDataException koolbaseDataError(
     case 'vector_not_found':
     case 'vector_field_not_found':
       return KoolbaseNotFoundException(message);
+    case 'revision_mismatch':
+      return KoolbaseRevisionMismatchException(
+        message,
+        expectedRevision: (details?['expected_revision'] as num?)?.toInt(),
+        currentRevision: (details?['current_revision'] as num?)?.toInt(),
+        currentRecord: details?['record'] as Map<String, dynamic>?,
+      );
     case 'session_expired':
     case 'invalid_token':
       return KoolbaseSessionExpiredException(message);
