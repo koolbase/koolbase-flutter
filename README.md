@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^9.8.0
+     koolbase_flutter: ^9.9.0
 ```
 
 4. Initialize before `runApp()`:
@@ -1144,7 +1144,7 @@ Manage your projects at [app.koolbase.com](https://app.koolbase.com)
 
 - [GitHub Issues](https://github.com/koolbase/koolbase-flutter/issues)
 - [docs.koolbase.com](https://docs.koolbase.com)
-- Email: <hello@koolbase.com>
+- Email: <dev@koolbase.com>
 
 ## License
 
