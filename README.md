@@ -1032,8 +1032,8 @@ try {
 } on KoolbaseConflictException catch (e) {
   // e.field is 'email' when the server reports which field clashed
   showError('That ${e.field ?? 'value'} is already taken.');
-} on KoolbaseSessionExpiredException {
-  // Already signed out — the stored session was cleared before this threw.
+} on KoolbaseUnauthenticatedException {
+  // Already signed out — the session was cleared before this threw.
   goToLogin();
 } on KoolbasePermissionException {
   showError('You do not have permission to do that.');
@@ -1080,6 +1080,24 @@ try {
 }
 ```
 
+### Function errors
+
+A failed invocation raises a type describing what went wrong, so an application
+can respond to each rather than reading a status code:
+
+| Exception | When |
+|---|---|
+| `FunctionNotFoundException` | Nothing is deployed under that name (404). Usually a name mismatch, or deployed to a different project than the app points at. |
+| `FunctionPermissionException` | The caller may not invoke it (403). The credentials were accepted; this caller is not permitted. |
+| `FunctionValidationException` | The Function rejected its arguments (400). |
+| `FunctionExecutionException` | The Function ran and threw. The message is the Function's own. |
+| `FunctionQuotaExceededException` | The project's Function invocations are used up (402). Retrying will not help until the plan allows it. |
+
+All extend `FunctionInvokeException`, so catching that still covers every one.
+
+A 401 raises `KoolbaseUnauthenticatedException` instead — a rejected credential
+is not a Function failure, and it means the same thing whichever call met it.
+
 ### Auth errors
 
 Auth methods throw `KoolbaseAuthException` subtypes — `InvalidCredentialsException`,
@@ -1093,11 +1111,11 @@ the token was revoked, or the build was pointed at a different project and the
 persisted session belongs to the old one.
 
 When that happens the SDK clears the stored session and throws
-`KoolbaseSessionExpiredException` from the database call that hit it.
-(Storage and Functions do not yet do this — a rejected session surfaces there
-as a generic error. That is on the roadmap.) `authStateChanges`
-emits `null`, so an app already listening to it routes to login without doing
-anything else.
+`KoolbaseUnauthenticatedException` — from whichever call met it. A query, an
+upload, a Function invoke, or a background sync of queued offline writes: a
+session stops working for the whole SDK at once, so one handler covers all of
+them. `authStateChanges` emits `null`, so an app already listening to it routes
+to login without doing anything else.
 
 If you know a stored session is stale before making a call — switching projects
 in a debug build, say — discard it directly:
