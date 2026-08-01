@@ -103,4 +103,44 @@ void main() {
     expect(fromData, isA<KoolbaseException>());
     expect(fromStorage, isA<KoolbaseException>());
   });
+
+  group('function invocation errors', () {
+    // One type carrying a status number made every failure look alike: a missing
+    // Function, a caller without permission, and a Function that threw all
+    // arrived identically. The distinction matters — one is a deployment
+    // problem, one is permissions, one is a bug in the Function.
+    test('failures are told apart', () {
+      expect(functionInvokeError(403, 'no'), isA<FunctionPermissionException>());
+      expect(functionInvokeError(404, 'no such function'),
+          isA<FunctionNotFoundException>());
+      expect(functionInvokeError(400, 'bad args'),
+          isA<FunctionValidationException>());
+      expect(functionInvokeError(500, 'threw'),
+          isA<FunctionExecutionException>());
+      expect(functionInvokeError(402, 'limit reached'),
+          isA<FunctionQuotaExceededException>(),
+          reason: 'a plan limit is fixed by changing a plan, not by retrying');
+    });
+
+    // A rejected credential is not a Function failure.
+    test('a 401 is an authentication failure, shared with every surface', () {
+      final err = functionInvokeError(401, 'unauthorized');
+      expect(err, isA<KoolbaseUnauthenticatedException>());
+      expect(err, isNot(isA<FunctionInvokeException>()));
+    });
+
+    // A permission failure must not be mistaken for one: signing the user out
+    // for calling a Function they may not call would be wrong.
+    test('a 403 does not sign the user out', () {
+      expect(functionInvokeError(403, 'no'),
+          isNot(isA<KoolbaseUnauthenticatedException>()));
+    });
+
+    test('everything is catchable as an SDK failure', () {
+      for (final status in [400, 401, 403, 404, 418, 500]) {
+        expect(functionInvokeError(status, 'x'), isA<KoolbaseException>(),
+            reason: 'status $status');
+      }
+    });
+  });
 }

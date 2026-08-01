@@ -36,6 +36,27 @@ revoked key, and malformed or missing credentials, and the server does not
 distinguish them. Signing a user out on a revoked API key would be acting on a
 precision that never existed.
 
+## Added — Function failures are told apart
+
+Every failed invocation raised one type carrying a status number, so a missing
+Function, a caller without permission, a Function that threw, and an exhausted
+plan limit all arrived identically. An application had to read the number to
+tell them apart — and they call for entirely different responses.
+
+- `FunctionNotFoundException` — nothing deployed under that name
+- `FunctionPermissionException` — the caller may not invoke it
+- `FunctionValidationException` — the Function rejected its arguments
+- `FunctionExecutionException` — the Function ran and threw
+- `FunctionQuotaExceededException` — the plan's invocations are used up
+
+`FunctionInvokeException` remains the base, so existing catches still match, and
+it now sits under `KoolbaseException` with the other families.
+
+A 401 raises `KoolbaseUnauthenticatedException` rather than a Function type: a
+rejected credential is not a Function failure. A 403 deliberately does not —
+signing a user out for calling something they are not allowed to call would be
+wrong.
+
 ## Fixed — every surface clears the session
 
 Only database calls cleared a rejected session. Storage, Functions, and
