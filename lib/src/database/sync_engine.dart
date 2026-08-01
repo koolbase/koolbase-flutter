@@ -209,6 +209,10 @@ class SyncEngine {
               headers: headers,
               body: jsonEncode({
                 'collection': write.collection,
+                // The write's own id: generated at enqueue, identical on every retry.
+                // Without it, an insert whose response was lost duplicated on replay —
+                // the server had no way to recognise the repeat.
+                'idempotency_key': write.id,
                 'data': payload,
               }),
             )
