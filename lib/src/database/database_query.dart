@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:koolbase_flutter/koolbase_flutter.dart';
 import 'offline/cache_store.dart';
@@ -429,6 +430,10 @@ class KoolbaseDocRef {
       collection = resolved?.collection;
     }
 
+    if (_writeQueue != null && await _certainlyOffline()) {
+      return _queueUpdate(data, baseline, baseRevision, collection);
+    }
+
     final http.Response res;
     try {
       res = await http
@@ -448,33 +453,7 @@ class KoolbaseDocRef {
       // The network was unreachable. A server that answered — with a rejection,
       // a conflict, anything — is not this case and must never be queued.
       if (_writeQueue == null) rethrow;
-      // Checked before the collection: a record never seen has neither, and the
-      // useful thing to say is "read it first", not the socket error underneath.
-      if (baseline == null || collection == null) {
-        throw const KoolbaseOfflineBaselineUnavailableException(
-            'This record must be read at least once before it can be updated offline.');
-      }
-      await _writeQueue!.enqueue(
-        collection: collection,
-        operation: 'update',
-        payload: data,
-        recordId: recordId,
-        userId: _userId,
-        baseline: baseline,
-        baseRevision: baseRevision,
-      );
-      final merged = {...baseline, ...data};
-      await _cacheStore?.saveRecord(recordId, collection, merged, _userId,
-          revision: baseRevision);
-      // Optimistic: durable locally and queued to send, not yet accepted.
-      return KoolbaseRecord(
-        id: recordId,
-        collection: collection,
-        data: merged,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        revision: baseRevision,
-      );
+      return _queueUpdate(data, baseline, baseRevision, collection);
     }
 
     if (res.statusCode != 200) {
@@ -491,6 +470,94 @@ class KoolbaseDocRef {
           revision: record.revision);
     }
     return record;
+  }
+
+  /// Defers an update until the network returns.
+  ///
+  /// Reached two ways — the device reporting no network, or a request that
+  /// failed to reach the server — and both need identical handling, so they
+  /// share one path rather than two that drift.
+  Future<KoolbaseRecord> _queueUpdate(
+    Map<String, dynamic> data,
+    Map<String, dynamic>? baseline,
+    int? baseRevision,
+    String? collection,
+  ) async {
+    // Checked before the collection: a record never seen has neither, and the
+    // useful thing to say is "read it first", not the socket error underneath.
+    if (baseline == null || collection == null) {
+      throw const KoolbaseOfflineBaselineUnavailableException(
+          'This record must be read at least once before it can be updated offline.');
+    }
+    await _writeQueue!.enqueue(
+      collection: collection,
+      operation: 'update',
+      payload: data,
+      recordId: recordId,
+      userId: _userId,
+      baseline: baseline,
+      baseRevision: baseRevision,
+    );
+    final merged = {...baseline, ...data};
+    await _cacheStore?.saveRecord(recordId, collection, merged, _userId,
+        revision: baseRevision);
+    // Optimistic: durable locally and queued to send, not yet accepted.
+    return KoolbaseRecord(
+      id: recordId,
+      collection: collection,
+      data: merged,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      revision: baseRevision,
+    );
+  }
+
+  /// Defers a delete until the network returns.
+  Future<void> _queueDelete(
+    Map<String, dynamic>? baseline,
+    int? baseRevision,
+    String? collection,
+  ) async {
+    if (baseline == null || collection == null) {
+      throw const KoolbaseOfflineBaselineUnavailableException(
+          'This record must be read at least once before it can be deleted offline.');
+    }
+    await _writeQueue!.enqueue(
+      collection: collection,
+      operation: 'delete',
+      payload: const {},
+      recordId: recordId,
+      userId: _userId,
+      baseline: baseline,
+      baseRevision: baseRevision,
+    );
+    // The queued write holds its own copy of the baseline, so removing the
+    // cached record now costs nothing and keeps local reads consistent with what
+    // the user just did.
+    await _cacheStore?.deleteRecord(recordId);
+  }
+
+  /// Whether the device reports having no network at all.
+  ///
+  /// Used only to take the offline path sooner. A request to an unreachable
+  /// server waits out its timeout before failing, so an offline edit appears to
+  /// hang for ten seconds before succeeding — the interface feels broken at
+  /// exactly the moment the feature is doing its job.
+  ///
+  /// Never used to decide that a request *would* succeed. Connectivity says an
+  /// interface is up, not that the server can be reached: a device behind a
+  /// captive portal reports connected and every request fails. So a positive
+  /// answer changes nothing and the request proceeds as before.
+  Future<bool> _certainlyOffline() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      return results.every((r) => r == ConnectivityResult.none);
+    } catch (_) {
+      // If connectivity cannot be determined, assume it is fine and let the
+      // request decide. Guessing offline would queue writes that could have
+      // been sent.
+      return false;
+    }
   }
 
   /// The record's state as the SDK last knew it, for composing an offline
@@ -545,6 +612,10 @@ class KoolbaseDocRef {
       collection = resolved?.collection;
     }
 
+    if (_writeQueue != null && await _certainlyOffline()) {
+      return _queueDelete(baseline, baseRevision, collection);
+    }
+
     final http.Response res;
     try {
       res = await http
@@ -557,26 +628,7 @@ class KoolbaseDocRef {
           .timeout(const Duration(seconds: 10));
     } catch (_) {
       if (_writeQueue == null) rethrow;
-      // Checked before the collection: a record never seen has neither, and the
-      // useful thing to say is "read it first", not the socket error underneath.
-      if (baseline == null || collection == null) {
-        throw const KoolbaseOfflineBaselineUnavailableException(
-            'This record must be read at least once before it can be deleted offline.');
-      }
-      await _writeQueue!.enqueue(
-        collection: collection,
-        operation: 'delete',
-        payload: const {},
-        recordId: recordId,
-        userId: _userId,
-        baseline: baseline,
-        baseRevision: baseRevision,
-      );
-      // The queued write holds its own copy of the baseline, so removing the
-      // cached record now costs nothing and keeps local reads consistent with
-      // what the user just did.
-      await _cacheStore?.deleteRecord(recordId);
-      return;
+      return _queueDelete(baseline, baseRevision, collection);
     }
 
     if (res.statusCode != 204) {

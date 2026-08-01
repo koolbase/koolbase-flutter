@@ -188,7 +188,7 @@ class KoolbaseDatabaseClient {
     if (state == null) return;
     final fields = <String, dynamic>{};
     for (final e in state.entries) {
-      if (!e.key.startsWith(r'\$')) fields[e.key] = e.value;
+      if (!e.key.startsWith(r'$')) fields[e.key] = e.value;
     }
     await _writeQueue?.rebaseAfterResolution(
         row.recordId, fields, row.serverRevision);
@@ -198,7 +198,7 @@ class KoolbaseDatabaseClient {
     try {
       final body = jsonDecode(res.body);
       if (body is Map<String, dynamic>) {
-        return (body[r'\$revision'] as num?)?.toInt();
+        return (body[r'$revision'] as num?)?.toInt();
       }
     } catch (_) {}
     return null;

@@ -258,4 +258,25 @@ void main() {
               'that just landed');
     });
   });
+
+  // The revision has to be read out of a real response body. A key literal that
+  // does not match — an escaped dollar, a typo — returns null silently, and the
+  // chain never advances: every multi-write chain then conflicts on its second
+  // write for a reason the user never caused.
+  test('a write response yields its revision', () {
+    final body = {
+      r'$id': 'rec-1',
+      r'$collection': 'things',
+      r'$revision': 4,
+      r'$createdAt': '2026-01-01T00:00:00Z',
+      r'$updatedAt': '2026-01-01T00:00:00Z',
+      'label': 'x',
+    };
+    final rec = KoolbaseRecord.fromJson(body);
+    expect(rec.revision, 4);
+
+    // The same lookup the sync engine and the resolver perform.
+    expect((body[r'$revision'] as num?)?.toInt(), 4,
+        reason: 'if this key does not match, the chain silently stops advancing');
+  });
 }

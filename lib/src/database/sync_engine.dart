@@ -248,7 +248,7 @@ class SyncEngine {
     try {
       final body = jsonDecode(res.body);
       if (body is Map<String, dynamic>) {
-        return (body[r'\$revision'] as num?)?.toInt();
+        return (body[r'$revision'] as num?)?.toInt();
       }
     } catch (_) {}
     return null;
