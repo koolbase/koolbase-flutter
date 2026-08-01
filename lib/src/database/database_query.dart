@@ -417,7 +417,21 @@ class KoolbaseDocRef {
   ///
   /// Throws [KoolbaseOfflineBaselineUnavailableException] when there is no such
   /// baseline: read the record first, or make the change online.
-  Future<KoolbaseRecord> update(Map<String, dynamic> data) async {
+  /// Applies a partial update, merging with what is already stored.
+  ///
+  /// Pass [expectedRevision] to make the write conditional: it applies only if
+  /// the record still carries that revision, and throws
+  /// [KoolbaseRevisionMismatchException] — carrying the record as it now stands
+  /// — otherwise. Without it the write applies regardless, which is fine when
+  /// one thing writes a record at a time and a silent lost update when two do.
+  ///
+  /// The check and the write are one operation on the server, so nothing can
+  /// land between them. Reading a record, comparing it yourself, then writing
+  /// cannot promise that.
+  Future<KoolbaseRecord> update(
+    Map<String, dynamic> data, {
+    int? expectedRevision,
+  }) async {
     Map<String, dynamic>? baseline;
     int? baseRevision;
     String? collection;
@@ -446,7 +460,11 @@ class KoolbaseDocRef {
             // every write conditional because a revision happens to be cached
             // would be a breaking change nobody opted into. An explicit
             // conditional API comes later.
-            body: jsonEncode({'data': data}),
+            body: jsonEncode({
+              'data': data,
+              if (expectedRevision != null)
+                'expected_revision': expectedRevision,
+            }),
           )
           .timeout(const Duration(seconds: 10));
     } catch (_) {
@@ -600,7 +618,13 @@ class KoolbaseDocRef {
   ///
   /// Throws [KoolbaseOfflineBaselineUnavailableException] when there is no such
   /// baseline: read the record first, or delete it while online.
-  Future<void> delete() async {
+  /// Deletes the record.
+  ///
+  /// Pass [expectedRevision] to make it conditional: the delete applies only if
+  /// the record still carries that revision. Worth doing where a record may have
+  /// changed since it was read — removing something on the strength of a version
+  /// the user saw an hour ago is the more destructive kind of stale write.
+  Future<void> delete({int? expectedRevision}) async {
     Map<String, dynamic>? baseline;
     int? baseRevision;
     String? collection;
@@ -620,9 +644,8 @@ class KoolbaseDocRef {
     try {
       res = await http
           .delete(
-            // Unconditional, as above: the guarantee belongs to queued replay,
-            // not to every direct call.
-            Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
+            Uri.parse(
+                '$baseUrl/v1/sdk/db/records/$recordId${expectedRevision != null ? '?expected_revision=$expectedRevision' : ''}'),
             headers: await _headers(),
           )
           .timeout(const Duration(seconds: 10));

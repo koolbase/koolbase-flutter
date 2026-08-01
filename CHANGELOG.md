@@ -38,6 +38,29 @@ Conflicts do not expire. An app that never reads them accumulates them
 invisibly, with the changes they hold never applied. If you support offline
 editing, surface them somewhere.
 
+## Added — conditional writes
+
+`update` and `delete` take an optional `expectedRevision`, applying the write
+only if the record still carries it and throwing
+`KoolbaseRevisionMismatchException` — with the record as it now stands —
+otherwise.
+
+```dart
+final record = await Koolbase.db.doc(id).get();
+await Koolbase.db.doc(id).update(
+  {'title': 'Corrected'},
+  expectedRevision: record.revision,
+);
+```
+
+Opt-in: a write without it behaves exactly as before. The check and the write
+are one operation on the server, so nothing can land between them — which
+reading a record, comparing it, then writing cannot promise.
+
+Worth reaching for where two things can write the same record. Without it, the
+second write replaces the first and neither writer learns that it happened.
+
+
 ## Changed
 
 - Records now carry `revision`, which the server advances on every write.
