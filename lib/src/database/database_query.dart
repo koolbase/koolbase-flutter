@@ -447,8 +447,10 @@ class KoolbaseDocRef {
     } catch (_) {
       // The network was unreachable. A server that answered — with a rejection,
       // a conflict, anything — is not this case and must never be queued.
-      if (_writeQueue == null || collection == null) rethrow;
-      if (baseline == null) {
+      if (_writeQueue == null) rethrow;
+      // Checked before the collection: a record never seen has neither, and the
+      // useful thing to say is "read it first", not the socket error underneath.
+      if (baseline == null || collection == null) {
         throw const KoolbaseOfflineBaselineUnavailableException(
             'This record must be read at least once before it can be updated offline.');
       }
@@ -554,8 +556,10 @@ class KoolbaseDocRef {
           )
           .timeout(const Duration(seconds: 10));
     } catch (_) {
-      if (_writeQueue == null || collection == null) rethrow;
-      if (baseline == null) {
+      if (_writeQueue == null) rethrow;
+      // Checked before the collection: a record never seen has neither, and the
+      // useful thing to say is "read it first", not the socket error underneath.
+      if (baseline == null || collection == null) {
         throw const KoolbaseOfflineBaselineUnavailableException(
             'This record must be read at least once before it can be deleted offline.');
       }

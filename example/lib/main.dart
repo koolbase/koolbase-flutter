@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:koolbase_flutter/koolbase_flutter.dart';
 
+import 'offline_probe.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Koolbase.initialize(
     const KoolbaseConfig(
-      publicKey: 'pk_live_6e4abe2ffba691e8e44093d9',
+      publicKey: 'pk_test_76a8e292268c362133314b1f',
       baseUrl: 'https://api.koolbase.com',
       refreshInterval: Duration(seconds: 30),
     ),
@@ -48,6 +50,12 @@ class HomeScreen extends StatelessWidget {
           children: [
             Text('Device ID: ${Koolbase.deviceId}'),
             Text('Payload Version: ${Koolbase.payloadVersion}'),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const OfflineProbe())),
+              child: const Text('Offline probe'),
+            ),
             const SizedBox(height: 16),
             Text('new_auth_flow enabled: $showNewAuthFlow'),
             Text('swap_timeout_config: ${swapTimeout}s'),

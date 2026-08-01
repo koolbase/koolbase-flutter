@@ -190,6 +190,16 @@ class WriteQueue {
         .get();
   }
 
+  /// One queued write, read fresh.
+  ///
+  /// Replay updates the revision of writes still queued behind one that has
+  /// landed, so a list fetched at the start of a pass goes stale as the pass
+  /// proceeds.
+  Future<PendingWrite?> byId(String id) {
+    return (_db.select(_db.pendingWrites)..where((w) => w.id.equals(id)))
+        .getSingleOrNull();
+  }
+
   /// The state a record would be in if every queued write for it were applied.
   ///
   /// Returns null when nothing is queued, or when the chain ends in a delete —

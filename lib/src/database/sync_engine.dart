@@ -113,7 +113,13 @@ class SyncEngine {
       }
 
       try {
-        final applied = await _executeWrite(write);
+        // Re-read immediately before sending. The pending list was fetched at
+        // the start of the pass, so a write behind one that has already landed
+        // still carries the revision it was queued with — and would replay
+        // against a revision its predecessor has since superseded, conflicting
+        // for a reason the user never caused.
+        final current = await writeQueue.byId(write.id) ?? write;
+        final applied = await _executeWrite(current);
         await writeQueue.remove(write.id);
         // Anything queued behind this for the same record was composed against
         // this write's result, and now knows the revision that result carries.

@@ -215,4 +215,47 @@ void main() {
       expect((await queue.pendingForRecord('rec-3')).single.baseRevision, 11);
     });
   });
+
+  group('chain replay', () {
+    // The pending list is fetched once at the start of a sync pass, so a write
+    // behind one that lands still holds the revision it was queued with. Reading
+    // it fresh is what stops it replaying against a revision its predecessor has
+    // already superseded — a conflict the user never caused, and the kind that
+    // teaches people to distrust the feature.
+    test('a write reads its revision fresh, not from the list', () async {
+      await queue.enqueue(
+        collection: 'things',
+        operation: 'update',
+        payload: {'a': 1},
+        recordId: 'rec-1',
+        baseline: {'a': 0},
+        baseRevision: 1,
+      );
+      await queue.enqueue(
+        collection: 'things',
+        operation: 'delete',
+        payload: const {},
+        recordId: 'rec-1',
+        baseline: {'a': 1},
+        baseRevision: 1,
+      );
+
+      // Both are in hand, as a sync pass would have them.
+      final batch = await queue.pendingForRecord('rec-1');
+      expect(batch, hasLength(2));
+
+      // The first lands and the server assigns a new revision.
+      await queue.remove(batch.first.id);
+      await queue.advanceChainRevision('rec-1', 2);
+
+      // The copy held from the start of the pass is now stale.
+      expect(batch.last.baseRevision, 1);
+
+      // Read fresh, it carries the revision the first write produced.
+      final fresh = await queue.byId(batch.last.id);
+      expect(fresh!.baseRevision, 2,
+          reason: 'replaying the stale copy would conflict against the write '
+              'that just landed');
+    });
+  });
 }
