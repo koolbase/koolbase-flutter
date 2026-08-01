@@ -1,3 +1,66 @@
+# 9.8.0
+
+## Added — offline update and delete
+
+Insert, update, and delete now all queue when the network is unreachable.
+Previously only inserts did: an update or delete threw, so a user without
+connectivity could create data but not correct or remove it.
+
+```dart
+await Koolbase.db.doc(id).update({'kg': 68.6});  // queued, applied on reconnect
+await Koolbase.db.doc(id).delete();              // same
+```
+
+**An offline update or delete requires having read the record.** Replaying a
+change without knowing what it was composed against means applying it blindly,
+overwriting whatever happened in the meantime with nobody able to tell. The SDK
+has that state if the record was read on this device — through a query, a
+`doc().get()`, or because it was created here. If not, the write throws
+`KoolbaseOfflineBaselineUnavailableException` rather than queueing. Deliberate:
+most offline updates being conflict-safe and some quietly not is a worse
+guarantee than a clear refusal.
+
+**Conflicts.** A queued write replays only if the record still carries the
+revision it was based on. If something changed it meanwhile, the write is refused
+and becomes a conflict — held, not applied, not lost, and surviving restarts.
+
+```dart
+final conflicts = await Koolbase.db.conflicts();
+Koolbase.db.watchConflicts().listen(...);
+
+await conflict.resolveWithLocal();
+await conflict.resolveWithServer();
+await conflict.resolveWithMerge({...});
+await conflict.abandon();
+```
+
+Conflicts do not expire. An app that never reads them accumulates them
+invisibly, with the changes they hold never applied. If you support offline
+editing, surface them somewhere.
+
+## Changed
+
+- Records now carry `revision`, which the server advances on every write.
+- Query results cache each record individually, so anything the user has seen can
+  be edited offline. Previously a query cached only its result set.
+- Direct online writes are unchanged and remain unconditional. The concurrency
+  guarantee added here applies to queued replay.
+
+## Note for existing code
+
+An offline `update` or `delete` that previously threw now succeeds and returns
+optimistically. Code written to treat that failure as an error will find it no
+longer occurs — which is the point, but it is a change to paths you may already
+have written around.
+
+## Local database
+
+Schema 3 → 5. Queued writes gain the state they were composed against; cached
+records gain their revision; conflicts get their own table.
+
+Records cached before this version have no revision and cannot be edited offline
+until they are read again. Nothing is lost, and skipped writes are logged.
+
 # 9.7.0
 
 ## Changed — read this before upgrading

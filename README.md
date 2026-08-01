@@ -192,41 +192,101 @@ await Koolbase.db.collection('posts').doc('record-id').delete();
 
 ### Offline writes
 
-`insert` falls back to a local queue when the network is genuinely unreachable.
-The record is written to the local cache immediately and returned optimistically,
-so the UI moves on, and the write is sent when connectivity returns.
+Insert, update, and delete all fall back to a local queue when the network is
+unreachable. The change is applied to the local cache immediately and returned
+optimistically, so the UI moves on, and sent when connectivity returns.
 
 ```dart
-// Offline: queued, cached locally, returns an optimistic record
+// Offline: queued, cached locally, returns optimistically
 final record = await Koolbase.db.insert(
   collection: 'weight_readings',
   data: {'kg': 68.4},
 );
 
+await Koolbase.db.doc(record.id).update({'kg': 68.6});
+await Koolbase.db.doc(record.id).delete();
+
 // Sync happens automatically on reconnect. To force it:
 await Koolbase.db.syncPendingWrites();
 ```
 
-**Only inserts are queued.** `update` and `delete` are not — they throw on
-network failure rather than deferring. If your app needs offline edits, hold
-them in your own state and apply them when connectivity returns; the SDK will not
-do it for you today. This is a current limitation, not a design decision, and
-it is on the roadmap.
-
-**A queued write belongs to the session that made it.** The queue lives on the
-device and outlives sessions, so a write made offline can still be pending after
-someone else has signed in on the same device. Those writes are held, not sent —
-replaying them under a different token would file one person's records under
-another's name. Sign back in as the same user and they sync normally.
-
-> **Upgrading to 9.7.0:** writes queued by an earlier version have no recorded
-> owner, so there is no way to know whose they were. They are preserved but never
-> replayed, and are logged when skipped. If your app may have unsynced writes,
-> drain the queue before upgrading.
-
-A server-side rejection is never queued — a unique-constraint conflict, a
-validation failure, or a permission denial surfaces immediately. Only a genuine
+A server-side rejection is never queued. A unique-constraint violation, a
+validation failure, or a permission denial surfaces immediately — only a genuine
 network failure defers.
+
+#### Editing offline requires having read the record
+
+An update or delete can only be queued if the SDK knows what the record looked
+like when the change was made. Replaying a change without that means applying it
+blindly: whatever else happened to the record in the meantime is overwritten,
+silently, with nobody able to tell.
+
+The SDK has that state if the record has been read on this device — through a
+query, a `doc().get()`, or because it was created here and is still queued. If it
+has not, the write is refused rather than queued:
+
+```dart
+try {
+  await Koolbase.db.doc(id).update({'kg': 68.6});
+} on KoolbaseOfflineBaselineUnavailableException {
+  // Never read on this device. Read it, or make the change while online.
+}
+```
+
+That is deliberate rather than lenient. Queueing it anyway would mean most
+offline updates are conflict-safe and some quietly are not, which is a worse
+guarantee than a clear refusal.
+
+#### Conflicts
+
+When a queued write replays, the server applies it only if the record still
+carries the revision the change was based on. If something changed it meanwhile —
+another device, another user, a Function — the write is refused and becomes a
+**conflict**: held, not applied, and not lost.
+
+Conflicts survive restarts. Closing the app does not change the outcome of a
+write.
+
+```dart
+final conflicts = await Koolbase.db.conflicts();
+
+for (final c in conflicts) {
+  c.local;             // the change the user made
+  c.server;            // the record as the server holds it now
+  c.divergentFields;   // where they disagree
+
+  await c.resolveWithLocal();          // reapply the user's change
+  await c.resolveWithServer();         // keep the server's version
+  await c.resolveWithMerge({...});     // apply something composed from both
+  await c.abandon();                   // drop it, neither side wins
+}
+
+// Or watch, to show a badge or a review screen:
+Koolbase.db.watchConflicts().listen(...);
+```
+
+Resolving is itself conditional: if the record has moved again while someone was
+deciding, resolution produces a new conflict rather than overwriting a change
+nobody has seen.
+
+> **Conflicts do not expire.** An app that never reads `conflicts()` accumulates
+> them in local storage indefinitely, invisible to the user, with the changes
+> they hold never applied. If you support offline editing, surface them
+> somewhere. Automatic expiry would hide the problem while reintroducing exactly
+> the silent loss this design prevents.
+
+#### A queued write belongs to the session that made it
+
+The queue lives on the device and outlives sessions, so a write made offline can
+still be pending after someone else has signed in. Those writes are held, not
+sent — replaying them under a different token would file one person's records
+under another's name. Sign back in as the same user and they sync normally.
+
+> **Upgrading:** writes queued before 9.7.0 have no recorded owner and are never
+> replayed. Records cached before 9.8.0 have no revision, so they cannot be
+> edited offline until they are read again. Neither is lost; both are logged when
+> skipped.
+
 
 ### Handling unique-constraint conflicts
 
@@ -958,6 +1018,8 @@ All data-layer failures extend `KoolbaseDataException` (which implements
 | `KoolbaseValidationException` | The request was rejected as invalid (400). |
 | `KoolbasePermissionException` | An access rule denied the operation (403). The session is fine; this caller may not touch that resource. |
 | `KoolbaseSessionExpiredException` | The server refused the session token itself (401). **The SDK has already signed the user out by the time you catch this** — route to login rather than retrying. |
+| `KoolbaseOfflineBaselineUnavailableException` | An offline update or delete could not be queued: the record has never been read on this device, so there is nothing to apply the change against. Read it first, or make the change online. |
+| `KoolbaseRevisionMismatchException` | The record changed since it was read, and the write was refused rather than overwriting. Carries the server's current version. During offline replay this becomes a conflict instead of surfacing. |
 | `KoolbaseRateLimitException` | The caller is being rate-limited (429). |
 | `KoolbaseVectorDimensionMismatchException` | A vector's length doesn't match the field's declared dimension (400, code `vector_dimension_mismatch`). |
 
