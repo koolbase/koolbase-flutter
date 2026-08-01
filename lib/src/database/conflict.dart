@@ -1,6 +1,24 @@
 /// What the user was trying to do when the write was refused.
 enum ConflictOperation { update, delete }
 
+/// Why a write is waiting for a decision.
+///
+/// Kept distinct because they are different situations and an app showing them
+/// to someone should say different things.
+enum ConflictReason {
+  /// The record moved between the change being made and the queue reaching it.
+  concurrentModification,
+
+  /// The server refused for a reason retrying cannot change — the data no
+  /// longer satisfies the collection's rules, the record is gone, the caller is
+  /// not permitted, a unique value is taken.
+  rejected,
+
+  /// Recorded before this distinction existed. Those were all concurrent
+  /// modifications, since a refusal used to be retried until dropped.
+  unknown,
+}
+
 /// Resolves conflicts by id.
 ///
 /// Deliberately by id rather than by value: a conflict object handed to a UI can
@@ -41,6 +59,8 @@ class KoolbaseConflict {
     required this.baseline,
     required this.local,
     required this.server,
+    required this.reason,
+    required this.message,
     required this.baseRevision,
     required this.serverRevision,
     required this.createdAt,
@@ -61,6 +81,12 @@ class KoolbaseConflict {
   /// The record as the server held it when the write was refused. Captured with
   /// the refusal, so showing both versions costs no fetch and cannot race one.
   final Map<String, dynamic>? server;
+
+  /// Why this is waiting.
+  final ConflictReason reason;
+
+  /// What the server said, when it refused for a terminal reason.
+  final String? message;
 
   final int? baseRevision;
   final int? serverRevision;

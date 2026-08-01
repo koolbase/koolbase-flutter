@@ -4,7 +4,6 @@ import 'package:uuid/uuid.dart';
 import '../database_exceptions.dart';
 import 'local_database.dart';
 
-const _maxRetries = 3;
 
 class WriteQueue {
   final KoolbaseLocalDatabase _db;
@@ -79,6 +78,7 @@ class WriteQueue {
                   : jsonEncode(mismatch.currentRecord)),
               baseRevision: Value(write.baseRevision),
               serverRevision: Value(mismatch.currentRevision),
+              reason: const Value('concurrent_modification'),
               userId: Value(write.userId),
               createdAt: DateTime.now(),
               lastAttemptedAt: Value(DateTime.now()),
@@ -153,6 +153,38 @@ class WriteQueue {
   /// then failed.
   Future<void> removeConflict(String id) async {
     await (_db.delete(_db.conflicts)..where((c) => c.id.equals(id))).go();
+  }
+
+  /// Moves a refused write out of the queue and into durable state.
+  ///
+  /// Same transaction as a conflict, for the same reason: a write removed
+  /// without a record of why is lost, and one recorded without being removed
+  /// replays and is refused again.
+  ///
+  /// Distinguished from a conflict by its reason. A record that moved and a
+  /// write the server will not accept are different situations, and an app
+  /// showing them to someone should say different things.
+  Future<void> moveToRejected(PendingWrite write, String message) async {
+    await _db.transaction(() async {
+      await _db.into(_db.conflicts).insert(
+            ConflictsCompanion.insert(
+              id: _uuid.v4(),
+              collection: write.collection,
+              recordId: write.recordId ?? '',
+              operation: write.operation,
+              payload: write.payload,
+              baseline: Value(write.baseline),
+              baseRevision: Value(write.baseRevision),
+              userId: Value(write.userId),
+              reason: const Value('rejected'),
+              message: Value(message),
+              createdAt: DateTime.now(),
+              lastAttemptedAt: Value(DateTime.now()),
+            ),
+          );
+      await (_db.delete(_db.pendingWrites)..where((w) => w.id.equals(write.id)))
+          .go();
+    });
   }
 
   /// Every unresolved conflict, oldest first.
@@ -256,9 +288,6 @@ class WriteQueue {
 
   // ─── Check if should drop ─────────────────────────────────────────────────
 
-  Future<bool> shouldDrop(String id) async {
-    return await _getRetryCount(id) >= _maxRetries;
-  }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 

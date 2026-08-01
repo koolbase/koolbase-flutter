@@ -280,4 +280,60 @@ void main() {
         reason: 'if this key does not match, the chain silently stops advancing');
   });
 
+
+  group('a write the server refuses outright', () {
+    // A failed replay had two outcomes and needed three. A write the server
+    // would never accept was retried twice more and then discarded — losing a
+    // change the user believed was saved, three attempts after the server had
+    // already made its decision.
+    test('moveToRejected holds the write and records why', () async {
+      final db = KoolbaseLocalDatabase.withExecutor(NativeDatabase.memory());
+      final queue = WriteQueue(db);
+
+      await queue.enqueue(
+        collection: 'weights',
+        operation: 'update',
+        payload: {'kg': 70.0},
+        recordId: 'rec-1',
+        baseline: {'kg': 68.0},
+        baseRevision: 2,
+      );
+      final write = (await queue.pendingForRecord('rec-1')).single;
+
+      await queue.moveToRejected(write, 'kg must be positive');
+
+      expect(await queue.pendingForRecord('rec-1'), isEmpty,
+          reason: 'a refused write must not stay queued and be retried');
+
+      final held = await queue.conflicts();
+      expect(held, hasLength(1));
+      expect(held.single.reason, 'rejected',
+          reason: 'a refusal and a record that moved are different situations');
+      expect(held.single.message, 'kg must be positive',
+          reason: 'what the server said is the only thing that explains this');
+      expect(held.single.payload, contains('70'),
+          reason: 'the change is preserved, which is the point of not dropping it');
+
+      await db.close();
+    });
+
+    test('a conflict records its reason too', () async {
+      final db = KoolbaseLocalDatabase.withExecutor(NativeDatabase.memory());
+      final queue = WriteQueue(db);
+      await queue.enqueue(
+        collection: 'weights',
+        operation: 'update',
+        payload: {'kg': 70.0},
+        recordId: 'rec-2',
+        baseline: {'kg': 68.0},
+        baseRevision: 1,
+      );
+      final write = (await queue.pendingForRecord('rec-2')).single;
+      await queue.moveToConflict(write,
+          const KoolbaseRevisionMismatchException('changed', currentRevision: 4));
+
+      expect((await queue.conflicts()).single.reason, 'concurrent_modification');
+      await db.close();
+    });
+  });
 }

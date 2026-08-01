@@ -16,6 +16,27 @@ import 'offline/write_queue.dart';
 /// Distinct from a transient failure so the queue can discard it immediately
 /// rather than retrying it to death or holding it forever. The two sync
 /// implementations this file replaced did one of those each.
+/// Raised when the server refused a write for a reason retrying cannot change.
+///
+/// The data no longer satisfies the collection's rules, the record is gone, the
+/// caller is not permitted, a unique value is taken. Retrying spends attempts to
+/// learn what is already known.
+class _TerminalRejection implements Exception {
+  const _TerminalRejection(this.message, this.status);
+  final String message;
+  final int status;
+  @override
+  String toString() => message;
+}
+
+/// Whether the server's answer can change on a later attempt.
+///
+/// 403 counts as terminal even though a role change could later permit it. A
+/// queue that holds writes indefinitely against a maybe is how a retry loop
+/// becomes invisible — surfacing it lets an app retry deliberately.
+bool _isTerminal(int status) =>
+    status == 400 || status == 403 || status == 404 || status == 409;
+
 class _MalformedWrite implements Exception {
   final String reason;
   const _MalformedWrite(this.reason);
@@ -105,13 +126,6 @@ class SyncEngine {
             '[Koolbase] Skipping queued write ${write.id}: not this session\'s');
         continue;
       }
-      // Drop writes that have exceeded max retries
-      if (await writeQueue.shouldDrop(write.id)) {
-        debugPrint(
-            '[Koolbase] Dropping failed write after max retries: ${write.id}');
-        await writeQueue.remove(write.id);
-        continue;
-      }
 
       try {
         // Re-read immediately before sending. The pending list was fetched at
@@ -140,6 +154,15 @@ class SyncEngine {
         // the state this write would have produced. Replaying those now would
         // apply them against a state their baselines never described.
         blocked.add(write.recordId);
+      } on _TerminalRejection catch (e) {
+        // The server made a decision that a later attempt will meet again: the
+        // data no longer satisfies the collection's rules, the record is gone,
+        // the caller is not permitted, a unique value is taken. Retrying spends
+        // attempts to learn what is already known; dropping loses a change the
+        // user believes is saved. It waits, with what the server said.
+        debugPrint('[Koolbase] ${write.id} refused: ${e.message}');
+        await writeQueue.moveToRejected(write, e.message);
+        if (write.recordId != null) blocked.add(write.recordId);
       } on _MalformedWrite catch (e) {
         // Cannot succeed on any attempt. Retrying would burn the budget and
         // then drop it anyway; keeping it would hold it forever.
@@ -191,8 +214,7 @@ class SyncEngine {
             )
             .timeout(const Duration(seconds: 10));
         if (res.statusCode != 201) {
-          throw await koolbaseDataErrorNotifying(res,
-              onSessionExpired: onSessionExpired, fallbackMessage: 'Insert sync failed');
+          throw await _classify(res, 'Insert sync failed');
         }
         return _revisionOf(res);
 
@@ -217,8 +239,7 @@ class SyncEngine {
             )
             .timeout(const Duration(seconds: 10));
         if (res.statusCode != 200) {
-          throw await koolbaseDataErrorNotifying(res,
-              onSessionExpired: onSessionExpired, fallbackMessage: 'Update sync failed');
+          throw await _classify(res, 'Update sync failed');
         }
         return _revisionOf(res);
 
@@ -234,14 +255,31 @@ class SyncEngine {
             )
             .timeout(const Duration(seconds: 10));
         if (res.statusCode != 204) {
-          throw await koolbaseDataErrorNotifying(res,
-              onSessionExpired: onSessionExpired, fallbackMessage: 'Delete sync failed');
+          // Already gone is what the write was asking for. Satisfied, not
+          // failed.
+          if (res.statusCode == 404) return null;
+          throw await _classify(res, 'Delete sync failed');
         }
         return null;
 
       default:
         throw _MalformedWrite('unknown operation "${write.operation}"');
     }
+  }
+
+  /// Turns a failed response into the right kind of failure.
+  ///
+  /// A rejected session still clears it, since that is not about this write. A
+  /// terminal refusal is separated from a retryable one so the loop can hold it
+  /// rather than spending attempts on an answer that will not change.
+  Future<Object> _classify(http.Response res, String fallback) async {
+    final err = await koolbaseDataErrorNotifying(res,
+        onSessionExpired: onSessionExpired, fallbackMessage: fallback);
+    if (err is KoolbaseUnauthenticatedException) return err;
+    if (_isTerminal(res.statusCode)) {
+      return _TerminalRejection(err.message, res.statusCode);
+    }
+    return err;
   }
 
   /// The revision from a write response, when the body carries one.

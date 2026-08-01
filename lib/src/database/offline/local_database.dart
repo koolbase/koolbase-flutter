@@ -107,6 +107,21 @@ class Conflicts extends Table {
   IntColumn get serverRevision => integer().nullable()();
 
   TextColumn get userId => text().nullable()();
+
+  /// Why this write is waiting.
+  ///
+  /// 'concurrent_modification' — the record moved between the change being made
+  /// and the queue reaching it. 'rejected' — the server refused for a reason
+  /// retrying cannot change. Different situations, and an app showing them to
+  /// someone should say different things.
+  ///
+  /// Null for conflicts recorded before this column existed; those were all
+  /// concurrent modifications, since that was the only kind.
+  TextColumn get reason => text().nullable()();
+
+  /// What the server said, when it refused for a terminal reason.
+  TextColumn get message => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get lastAttemptedAt => dateTime().nullable()();
 
@@ -130,7 +145,7 @@ class KoolbaseLocalDatabase extends _$KoolbaseLocalDatabase {
   KoolbaseLocalDatabase.withExecutor(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -166,6 +181,14 @@ class KoolbaseLocalDatabase extends _$KoolbaseLocalDatabase {
           // until they are read again.
           if (from < 5) {
             await m.addColumn(cachedRecords, cachedRecords.revision);
+          }
+          // v6: a conflict records why it is waiting, and what the server said
+          // when it refused. Rows written before this were all concurrent
+          // modifications, since a refusal used to be retried until dropped
+          // rather than held — so a null reason means that.
+          if (from < 6) {
+            await m.addColumn(conflicts, conflicts.reason);
+            await m.addColumn(conflicts, conflicts.message);
           }
         },
       );

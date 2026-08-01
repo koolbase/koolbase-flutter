@@ -98,6 +98,16 @@ class KoolbaseDatabaseClient {
         operation: row.operation == 'delete'
             ? ConflictOperation.delete
             : ConflictOperation.update,
+        // A null reason predates the distinction. Those were all concurrent
+        // modifications, since a refusal used to be retried until dropped
+        // rather than held — but it is recorded as unknown rather than
+        // asserting something about rows written before anyone was tracking it.
+        reason: switch (row.reason) {
+          'concurrent_modification' => ConflictReason.concurrentModification,
+          'rejected' => ConflictReason.rejected,
+          _ => ConflictReason.unknown,
+        },
+        message: row.message,
         baseline: _decodeOrNull(row.baseline),
         local: _decodeOrNull(row.payload),
         server: _decodeOrNull(row.serverState),

@@ -1245,6 +1245,17 @@ class $ConflictsTable extends Conflicts
   late final GeneratedColumn<String> userId = GeneratedColumn<String>(
       'user_id', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+      'reason', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _messageMeta =
+      const VerificationMeta('message');
+  @override
+  late final GeneratedColumn<String> message = GeneratedColumn<String>(
+      'message', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -1269,6 +1280,8 @@ class $ConflictsTable extends Conflicts
         baseRevision,
         serverRevision,
         userId,
+        reason,
+        message,
         createdAt,
         lastAttemptedAt
       ];
@@ -1339,6 +1352,14 @@ class $ConflictsTable extends Conflicts
       context.handle(_userIdMeta,
           userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
     }
+    if (data.containsKey('reason')) {
+      context.handle(_reasonMeta,
+          reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta));
+    }
+    if (data.containsKey('message')) {
+      context.handle(_messageMeta,
+          message.isAcceptableOrUnknown(data['message']!, _messageMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -1380,6 +1401,10 @@ class $ConflictsTable extends Conflicts
           .read(DriftSqlType.int, data['${effectivePrefix}server_revision']),
       userId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}user_id']),
+      reason: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}reason']),
+      message: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}message']),
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       lastAttemptedAt: attachedDatabase.typeMapping.read(
@@ -1411,6 +1436,20 @@ class Conflict extends DataClass implements Insertable<Conflict> {
   final int? baseRevision;
   final int? serverRevision;
   final String? userId;
+
+  /// Why this write is waiting.
+  ///
+  /// 'concurrent_modification' — the record moved between the change being made
+  /// and the queue reaching it. 'rejected' — the server refused for a reason
+  /// retrying cannot change. Different situations, and an app showing them to
+  /// someone should say different things.
+  ///
+  /// Null for conflicts recorded before this column existed; those were all
+  /// concurrent modifications, since that was the only kind.
+  final String? reason;
+
+  /// What the server said, when it refused for a terminal reason.
+  final String? message;
   final DateTime createdAt;
   final DateTime? lastAttemptedAt;
   const Conflict(
@@ -1424,6 +1463,8 @@ class Conflict extends DataClass implements Insertable<Conflict> {
       this.baseRevision,
       this.serverRevision,
       this.userId,
+      this.reason,
+      this.message,
       required this.createdAt,
       this.lastAttemptedAt});
   @override
@@ -1448,6 +1489,12 @@ class Conflict extends DataClass implements Insertable<Conflict> {
     }
     if (!nullToAbsent || userId != null) {
       map['user_id'] = Variable<String>(userId);
+    }
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    if (!nullToAbsent || message != null) {
+      map['message'] = Variable<String>(message);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || lastAttemptedAt != null) {
@@ -1477,6 +1524,11 @@ class Conflict extends DataClass implements Insertable<Conflict> {
           : Value(serverRevision),
       userId:
           userId == null && nullToAbsent ? const Value.absent() : Value(userId),
+      reason:
+          reason == null && nullToAbsent ? const Value.absent() : Value(reason),
+      message: message == null && nullToAbsent
+          ? const Value.absent()
+          : Value(message),
       createdAt: Value(createdAt),
       lastAttemptedAt: lastAttemptedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1498,6 +1550,8 @@ class Conflict extends DataClass implements Insertable<Conflict> {
       baseRevision: serializer.fromJson<int?>(json['baseRevision']),
       serverRevision: serializer.fromJson<int?>(json['serverRevision']),
       userId: serializer.fromJson<String?>(json['userId']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      message: serializer.fromJson<String?>(json['message']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       lastAttemptedAt: serializer.fromJson<DateTime?>(json['lastAttemptedAt']),
     );
@@ -1516,6 +1570,8 @@ class Conflict extends DataClass implements Insertable<Conflict> {
       'baseRevision': serializer.toJson<int?>(baseRevision),
       'serverRevision': serializer.toJson<int?>(serverRevision),
       'userId': serializer.toJson<String?>(userId),
+      'reason': serializer.toJson<String?>(reason),
+      'message': serializer.toJson<String?>(message),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'lastAttemptedAt': serializer.toJson<DateTime?>(lastAttemptedAt),
     };
@@ -1532,6 +1588,8 @@ class Conflict extends DataClass implements Insertable<Conflict> {
           Value<int?> baseRevision = const Value.absent(),
           Value<int?> serverRevision = const Value.absent(),
           Value<String?> userId = const Value.absent(),
+          Value<String?> reason = const Value.absent(),
+          Value<String?> message = const Value.absent(),
           DateTime? createdAt,
           Value<DateTime?> lastAttemptedAt = const Value.absent()}) =>
       Conflict(
@@ -1547,6 +1605,8 @@ class Conflict extends DataClass implements Insertable<Conflict> {
         serverRevision:
             serverRevision.present ? serverRevision.value : this.serverRevision,
         userId: userId.present ? userId.value : this.userId,
+        reason: reason.present ? reason.value : this.reason,
+        message: message.present ? message.value : this.message,
         createdAt: createdAt ?? this.createdAt,
         lastAttemptedAt: lastAttemptedAt.present
             ? lastAttemptedAt.value
@@ -1570,6 +1630,8 @@ class Conflict extends DataClass implements Insertable<Conflict> {
           ? data.serverRevision.value
           : this.serverRevision,
       userId: data.userId.present ? data.userId.value : this.userId,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      message: data.message.present ? data.message.value : this.message,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       lastAttemptedAt: data.lastAttemptedAt.present
           ? data.lastAttemptedAt.value
@@ -1590,6 +1652,8 @@ class Conflict extends DataClass implements Insertable<Conflict> {
           ..write('baseRevision: $baseRevision, ')
           ..write('serverRevision: $serverRevision, ')
           ..write('userId: $userId, ')
+          ..write('reason: $reason, ')
+          ..write('message: $message, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastAttemptedAt: $lastAttemptedAt')
           ..write(')'))
@@ -1608,6 +1672,8 @@ class Conflict extends DataClass implements Insertable<Conflict> {
       baseRevision,
       serverRevision,
       userId,
+      reason,
+      message,
       createdAt,
       lastAttemptedAt);
   @override
@@ -1624,6 +1690,8 @@ class Conflict extends DataClass implements Insertable<Conflict> {
           other.baseRevision == this.baseRevision &&
           other.serverRevision == this.serverRevision &&
           other.userId == this.userId &&
+          other.reason == this.reason &&
+          other.message == this.message &&
           other.createdAt == this.createdAt &&
           other.lastAttemptedAt == this.lastAttemptedAt);
 }
@@ -1639,6 +1707,8 @@ class ConflictsCompanion extends UpdateCompanion<Conflict> {
   final Value<int?> baseRevision;
   final Value<int?> serverRevision;
   final Value<String?> userId;
+  final Value<String?> reason;
+  final Value<String?> message;
   final Value<DateTime> createdAt;
   final Value<DateTime?> lastAttemptedAt;
   final Value<int> rowid;
@@ -1653,6 +1723,8 @@ class ConflictsCompanion extends UpdateCompanion<Conflict> {
     this.baseRevision = const Value.absent(),
     this.serverRevision = const Value.absent(),
     this.userId = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.message = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastAttemptedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1668,6 +1740,8 @@ class ConflictsCompanion extends UpdateCompanion<Conflict> {
     this.baseRevision = const Value.absent(),
     this.serverRevision = const Value.absent(),
     this.userId = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.message = const Value.absent(),
     required DateTime createdAt,
     this.lastAttemptedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1688,6 +1762,8 @@ class ConflictsCompanion extends UpdateCompanion<Conflict> {
     Expression<int>? baseRevision,
     Expression<int>? serverRevision,
     Expression<String>? userId,
+    Expression<String>? reason,
+    Expression<String>? message,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? lastAttemptedAt,
     Expression<int>? rowid,
@@ -1703,6 +1779,8 @@ class ConflictsCompanion extends UpdateCompanion<Conflict> {
       if (baseRevision != null) 'base_revision': baseRevision,
       if (serverRevision != null) 'server_revision': serverRevision,
       if (userId != null) 'user_id': userId,
+      if (reason != null) 'reason': reason,
+      if (message != null) 'message': message,
       if (createdAt != null) 'created_at': createdAt,
       if (lastAttemptedAt != null) 'last_attempted_at': lastAttemptedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1720,6 +1798,8 @@ class ConflictsCompanion extends UpdateCompanion<Conflict> {
       Value<int?>? baseRevision,
       Value<int?>? serverRevision,
       Value<String?>? userId,
+      Value<String?>? reason,
+      Value<String?>? message,
       Value<DateTime>? createdAt,
       Value<DateTime?>? lastAttemptedAt,
       Value<int>? rowid}) {
@@ -1734,6 +1814,8 @@ class ConflictsCompanion extends UpdateCompanion<Conflict> {
       baseRevision: baseRevision ?? this.baseRevision,
       serverRevision: serverRevision ?? this.serverRevision,
       userId: userId ?? this.userId,
+      reason: reason ?? this.reason,
+      message: message ?? this.message,
       createdAt: createdAt ?? this.createdAt,
       lastAttemptedAt: lastAttemptedAt ?? this.lastAttemptedAt,
       rowid: rowid ?? this.rowid,
@@ -1773,6 +1855,12 @@ class ConflictsCompanion extends UpdateCompanion<Conflict> {
     if (userId.present) {
       map['user_id'] = Variable<String>(userId.value);
     }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (message.present) {
+      map['message'] = Variable<String>(message.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1798,6 +1886,8 @@ class ConflictsCompanion extends UpdateCompanion<Conflict> {
           ..write('baseRevision: $baseRevision, ')
           ..write('serverRevision: $serverRevision, ')
           ..write('userId: $userId, ')
+          ..write('reason: $reason, ')
+          ..write('message: $message, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastAttemptedAt: $lastAttemptedAt, ')
           ..write('rowid: $rowid')
@@ -2431,6 +2521,8 @@ typedef $$ConflictsTableCreateCompanionBuilder = ConflictsCompanion Function({
   Value<int?> baseRevision,
   Value<int?> serverRevision,
   Value<String?> userId,
+  Value<String?> reason,
+  Value<String?> message,
   required DateTime createdAt,
   Value<DateTime?> lastAttemptedAt,
   Value<int> rowid,
@@ -2446,6 +2538,8 @@ typedef $$ConflictsTableUpdateCompanionBuilder = ConflictsCompanion Function({
   Value<int?> baseRevision,
   Value<int?> serverRevision,
   Value<String?> userId,
+  Value<String?> reason,
+  Value<String?> message,
   Value<DateTime> createdAt,
   Value<DateTime?> lastAttemptedAt,
   Value<int> rowid,
@@ -2490,6 +2584,12 @@ class $$ConflictsTableFilterComposer
 
   ColumnFilters<String> get userId => $composableBuilder(
       column: $table.userId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get reason => $composableBuilder(
+      column: $table.reason, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get message => $composableBuilder(
+      column: $table.message, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -2540,6 +2640,12 @@ class $$ConflictsTableOrderingComposer
   ColumnOrderings<String> get userId => $composableBuilder(
       column: $table.userId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get reason => $composableBuilder(
+      column: $table.reason, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get message => $composableBuilder(
+      column: $table.message, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -2587,6 +2693,12 @@ class $$ConflictsTableAnnotationComposer
   GeneratedColumn<String> get userId =>
       $composableBuilder(column: $table.userId, builder: (column) => column);
 
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<String> get message =>
+      $composableBuilder(column: $table.message, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -2631,6 +2743,8 @@ class $$ConflictsTableTableManager extends RootTableManager<
             Value<int?> baseRevision = const Value.absent(),
             Value<int?> serverRevision = const Value.absent(),
             Value<String?> userId = const Value.absent(),
+            Value<String?> reason = const Value.absent(),
+            Value<String?> message = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime?> lastAttemptedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -2646,6 +2760,8 @@ class $$ConflictsTableTableManager extends RootTableManager<
             baseRevision: baseRevision,
             serverRevision: serverRevision,
             userId: userId,
+            reason: reason,
+            message: message,
             createdAt: createdAt,
             lastAttemptedAt: lastAttemptedAt,
             rowid: rowid,
@@ -2661,6 +2777,8 @@ class $$ConflictsTableTableManager extends RootTableManager<
             Value<int?> baseRevision = const Value.absent(),
             Value<int?> serverRevision = const Value.absent(),
             Value<String?> userId = const Value.absent(),
+            Value<String?> reason = const Value.absent(),
+            Value<String?> message = const Value.absent(),
             required DateTime createdAt,
             Value<DateTime?> lastAttemptedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -2676,6 +2794,8 @@ class $$ConflictsTableTableManager extends RootTableManager<
             baseRevision: baseRevision,
             serverRevision: serverRevision,
             userId: userId,
+            reason: reason,
+            message: message,
             createdAt: createdAt,
             lastAttemptedAt: lastAttemptedAt,
             rowid: rowid,
