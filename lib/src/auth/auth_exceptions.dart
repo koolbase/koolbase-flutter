@@ -1,11 +1,11 @@
-class KoolbaseAuthException implements Exception {
-  final String message;
-  final String? code;
+import '../koolbase_exception.dart';
 
-  const KoolbaseAuthException(this.message, {this.code});
-
-  @override
-  String toString() => 'KoolbaseAuthException($code): $message';
+/// Something went wrong signing in, signing up, or maintaining a session.
+///
+/// Sits under [KoolbaseException] with the other families, so an application can
+/// catch any SDK failure in one place when it wants to.
+class KoolbaseAuthException extends KoolbaseException {
+  const KoolbaseAuthException(super.message, {super.code});
 }
 
 class InvalidCredentialsException extends KoolbaseAuthException {

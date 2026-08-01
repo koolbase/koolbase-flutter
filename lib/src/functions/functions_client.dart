@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../koolbase_exception.dart';
 import 'functions_models.dart';
 export 'functions_models.dart';
 
@@ -29,11 +30,16 @@ class KoolbaseFunctionsClient {
   final String publicKey;
   final Future<String?> Function()? _userAccessTokenProvider;
 
+  /// Called when the server rejects the caller's credentials.
+  final Future<void> Function()? _onSessionExpired;
+
   KoolbaseFunctionsClient({
     required this.baseUrl,
     required this.publicKey,
     Future<String?> Function()? userAccessTokenProvider,
-  }) : _userAccessTokenProvider = userAccessTokenProvider;
+    Future<void> Function()? onSessionExpired,
+  })  : _userAccessTokenProvider = userAccessTokenProvider,
+        _onSessionExpired = onSessionExpired;
 
   Future<Map<String, String>> _sdkHeaders() async {
     final headers = <String, String>{
@@ -76,6 +82,14 @@ class KoolbaseFunctionsClient {
       if (!success) {
         final message =
             data?['error'] as String? ?? 'Function invocation failed';
+        // A rejected credential is not a function failure. It stops the whole
+        // SDK working, so it raises the shared type and clears the session —
+        // otherwise an app whose calls are all Function invokes would keep
+        // believing it is signed in, and loop.
+        if (response.statusCode == 401) {
+          await _onSessionExpired?.call();
+          throw KoolbaseUnauthenticatedException(message);
+        }
         throw FunctionInvokeException(message, statusCode: response.statusCode);
       }
 
@@ -86,6 +100,8 @@ class KoolbaseFunctionsClient {
         success: success,
       );
     } on FunctionInvokeException {
+      rethrow;
+    } on KoolbaseException {
       rethrow;
     } catch (e) {
       throw FunctionInvokeException('Network error: $e');
@@ -158,6 +174,8 @@ class KoolbaseFunctionsClient {
 
       return raw;
     } on FunctionInvokeException {
+      rethrow;
+    } on KoolbaseException {
       rethrow;
     } catch (e) {
       throw FunctionInvokeException('Network error: $e');

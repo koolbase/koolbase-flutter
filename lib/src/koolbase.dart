@@ -214,6 +214,9 @@ class Koolbase {
       publicKey: config.publicKey,
       accessTokenProvider: () =>
           _auth?.validAccessToken() ?? Future<String?>.value(null),
+      // A rejected credential met during an upload is the same rejection as one
+      // met during a query: the session is gone for every surface at once.
+      onSessionExpired: () async => _auth?.clearStoredSession(),
     );
 
     // Initialize functions client
@@ -222,6 +225,7 @@ class Koolbase {
       publicKey: config.publicKey,
       userAccessTokenProvider: () =>
           _auth?.validAccessToken() ?? Future<String?>.value(null),
+      onSessionExpired: () async => _auth?.clearStoredSession(),
     );
 
     // Initialize code push client

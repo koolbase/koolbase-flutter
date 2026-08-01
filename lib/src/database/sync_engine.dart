@@ -3,6 +3,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../koolbase_exception.dart';
 import 'database_exceptions.dart';
 import 'offline/cache_store.dart';
 import 'offline/local_database.dart';
@@ -144,7 +145,7 @@ class SyncEngine {
         // then drop it anyway; keeping it would hold it forever.
         debugPrint('[Koolbase] Discarding unreplayable write ${write.id}: $e');
         await writeQueue.remove(write.id);
-      } on KoolbaseSessionExpiredException {
+      } on KoolbaseUnauthenticatedException {
         // The session is gone, so nothing else in the queue can succeed
         // either. Stop rather than spending a retry on every remaining write
         // against a token the server has already refused. onSessionExpired has

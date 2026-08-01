@@ -1017,7 +1017,7 @@ All data-layer failures extend `KoolbaseDataException` (which implements
 | `KoolbaseNotFoundException` | The record or collection doesn't exist (404). |
 | `KoolbaseValidationException` | The request was rejected as invalid (400). |
 | `KoolbasePermissionException` | An access rule denied the operation (403). The session is fine; this caller may not touch that resource. |
-| `KoolbaseSessionExpiredException` | The server refused the session token itself (401). **The SDK has already signed the user out by the time you catch this** — route to login rather than retrying. |
+| `KoolbaseUnauthenticatedException` | The server would not accept the caller's credentials (401) — an expired session, a revoked key, or none at all; it does not distinguish. Raised by any surface, since a session stops working for the whole SDK at once. **The SDK has already signed the user out by the time you catch this** — route to login rather than retrying. |
 | `KoolbaseOfflineBaselineUnavailableException` | An offline update or delete could not be queued: the record has never been read on this device, so there is nothing to apply the change against. Read it first, or make the change online. |
 | `KoolbaseRevisionMismatchException` | The record changed since it was read, and the write was refused rather than overwriting. Carries the server's current version. During offline replay this becomes a conflict instead of surfacing. |
 | `KoolbaseRateLimitException` | The caller is being rate-limited (429). |

@@ -6,9 +6,9 @@ void main() {
     // A session the server refuses is not a session. Before this, a 401 fell
     // through to a bare KoolbaseDataException, indistinguishable from any other
     // failure — so an app kept believing it was authenticated and looped.
-    test('a 401 is a session failure, not a generic one', () {
+    test('a 401 is an authentication failure, not a generic one', () {
       final err = koolbaseDataError(401, {'error': 'unauthorized'});
-      expect(err, isA<KoolbaseSessionExpiredException>());
+      expect(err, isA<KoolbaseUnauthenticatedException>());
     });
 
     // The distinction that makes clearing safe: a permission failure means the
@@ -17,7 +17,7 @@ void main() {
     test('a 403 is a permission failure, and does not clear the session', () {
       final err = koolbaseDataError(403, {'error': 'not allowed'});
       expect(err, isA<KoolbasePermissionException>());
-      expect(err, isNot(isA<KoolbaseSessionExpiredException>()));
+      expect(err, isNot(isA<KoolbaseUnauthenticatedException>()));
     });
 
     test('permission_denied is a permission failure whatever the status', () {
@@ -35,7 +35,7 @@ void main() {
       for (final code in ['session_expired', 'invalid_token']) {
         expect(
           koolbaseDataError(400, {'code': code, 'error': 'nope'}),
-          isA<KoolbaseSessionExpiredException>(),
+          isA<KoolbaseUnauthenticatedException>(),
           reason: code,
         );
       }
@@ -87,5 +87,20 @@ void main() {
       expect(rec.revision, isNull);
       expect(rec.toJson().containsKey(r'$revision'), isFalse);
     });
+  });
+
+  // The point of the shared root: a rejected credential is not a data problem or
+  // a storage problem, and an application should not need a handler per
+  // subsystem to notice one.
+  test('a 401 from any surface is the same type', () {
+    final fromData = koolbaseDataError(401, {'error': 'unauthorized'});
+    final fromStorage = koolbaseStorageError(401, {'error': 'unauthorized'});
+
+    expect(fromData, isA<KoolbaseUnauthenticatedException>());
+    expect(fromStorage, isA<KoolbaseUnauthenticatedException>());
+
+    // And both are still catchable as any SDK failure.
+    expect(fromData, isA<KoolbaseException>());
+    expect(fromStorage, isA<KoolbaseException>());
   });
 }

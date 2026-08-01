@@ -1,3 +1,51 @@
+# 10.0.0
+
+## Breaking — one exception hierarchy
+
+The three exception families were unrelated roots, each implementing `Exception`
+directly. They now share one:
+
+```text
+KoolbaseException
+├── KoolbaseAuthException
+├── KoolbaseDataException
+├── KoolbaseStorageException
+└── KoolbaseUnauthenticatedException
+```
+
+**A rejected credential is no longer a data error.** It was
+`KoolbaseSessionExpiredException extends KoolbaseDataException`, so code
+catching `KoolbaseDataException` around a query caught it too. It is now
+`KoolbaseUnauthenticatedException`, a sibling. Catch it explicitly:
+
+```dart
+try {
+  await Koolbase.db.collection('posts').get();
+} on KoolbaseUnauthenticatedException {
+  await goToLogin();
+} on KoolbaseDataException catch (e) {
+  showError(e.message);
+}
+```
+
+`KoolbaseSessionExpiredException` remains as a deprecated subclass, so existing
+catches still match. It will be removed in 11.0.0.
+
+**Renamed because the old name overclaimed.** A 401 covers an expired session, a
+revoked key, and malformed or missing credentials, and the server does not
+distinguish them. Signing a user out on a revoked API key would be acting on a
+precision that never existed.
+
+## Fixed — every surface clears the session
+
+Only database calls cleared a rejected session. Storage, Functions, and
+background sync did not, so an app whose failing call happened to be an upload
+or a Function invoke kept believing it was signed in — the loop 9.7.0 fixed, on
+three other surfaces.
+
+All four now clear it and raise `KoolbaseUnauthenticatedException`, so one
+handler covers the SDK rather than one per subsystem.
+
 # 9.9.0
 
 ## Added — conditional writes

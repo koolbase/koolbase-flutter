@@ -1,3 +1,4 @@
+import '../koolbase_exception.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -9,17 +10,12 @@ import 'package:http/http.dart' as http;
 /// Catch this to handle any data-layer failure generically, or catch a
 /// specific subtype ([KoolbaseConflictException], [KoolbaseNotFoundException],
 /// …) to branch on the kind of failure.
-class KoolbaseDataException implements Exception {
-  /// Human-readable message from the server (or a sensible default).
-  final String message;
-
-  /// The server's stable error code, when present.
-  final String? code;
-
-  const KoolbaseDataException(this.message, {this.code});
-
-  @override
-  String toString() => 'KoolbaseDataException($code): $message';
+/// Something went wrong reading or writing records.
+///
+/// Sits under [KoolbaseException] with the other families, so an application can
+/// catch any SDK failure in one place when it wants to.
+class KoolbaseDataException extends KoolbaseException {
+  const KoolbaseDataException(super.message, {super.code});
 }
 
 /// Thrown when a write (insert, update, or upsert) is rejected because the
@@ -184,7 +180,12 @@ class KoolbaseRevisionMismatchException extends KoolbaseDataException {
   }) : super(code: 'revision_mismatch');
 }
 
-class KoolbaseSessionExpiredException extends KoolbaseDataException {
+@Deprecated(
+    'Use KoolbaseUnauthenticatedException. A 401 covers an expired session, a '
+    'revoked key, and malformed or missing credentials, and the server does not '
+    'distinguish them — the old name claimed a precision that does not exist. '
+    'Kept so existing catches keep working; will be removed in 11.0.0.')
+class KoolbaseSessionExpiredException extends KoolbaseUnauthenticatedException {
   const KoolbaseSessionExpiredException(super.message)
       : super(code: 'session_expired');
 }
@@ -193,7 +194,7 @@ class KoolbaseSessionExpiredException extends KoolbaseDataException {
 /// convenience wrapper.
 ///
 /// Always returns an exception to throw — never null.
-KoolbaseDataException koolbaseDataError(
+KoolbaseException koolbaseDataError(
   int statusCode,
   Map<String, dynamic> body, {
   String fallbackMessage = 'Request failed',
@@ -221,7 +222,8 @@ KoolbaseDataException koolbaseDataError(
       );
     case 'session_expired':
     case 'invalid_token':
-      return KoolbaseSessionExpiredException(message);
+    case 'unauthenticated':
+      return KoolbaseUnauthenticatedException(message);
     case 'permission_denied':
       return KoolbasePermissionException(message);
     case 'rate_limit':
@@ -241,10 +243,12 @@ KoolbaseDataException koolbaseDataError(
     case 404:
       return KoolbaseNotFoundException(message);
     case 401:
-      // Servers do not currently send a code here, so the status carries the
-      // meaning. Safe because a permission failure is 403: a 401 means the
-      // token itself was not accepted, not that this caller may not proceed.
-      return KoolbaseSessionExpiredException(message);
+      // The status carries the meaning: every 401 from this server reports the
+      // same code, so it cannot say whether the session expired, the key was
+      // revoked, or the header was malformed. Safe to treat uniformly because a
+      // permission failure is 403 — a 401 means the credentials were not
+      // accepted, not that this caller may not proceed.
+      return KoolbaseUnauthenticatedException(message);
     case 403:
       return KoolbasePermissionException(message);
     case 429:
@@ -258,7 +262,7 @@ KoolbaseDataException koolbaseDataError(
 
 /// Convenience wrapper over [koolbaseDataError] that decodes the response
 /// body for you. Use at call sites that have the raw [http.Response].
-KoolbaseDataException koolbaseDataErrorFromResponse(
+KoolbaseException koolbaseDataErrorFromResponse(
   http.Response res, {
   String fallbackMessage = 'Request failed',
 }) {
@@ -280,13 +284,13 @@ KoolbaseDataException koolbaseDataErrorFromResponse(
 /// Shared by every client rather than duplicated: a path that forgot to notify
 /// would leave an app authenticated against a token the server refuses, which is
 /// the failure this exists to prevent.
-Future<KoolbaseDataException> koolbaseDataErrorNotifying(
+Future<KoolbaseException> koolbaseDataErrorNotifying(
   http.Response res, {
   String fallbackMessage = 'Request failed',
   Future<void> Function()? onSessionExpired,
 }) async {
   final err = koolbaseDataErrorFromResponse(res, fallbackMessage: fallbackMessage);
-  if (err is KoolbaseSessionExpiredException) {
+  if (err is KoolbaseUnauthenticatedException) {
     await onSessionExpired?.call();
   }
   return err;

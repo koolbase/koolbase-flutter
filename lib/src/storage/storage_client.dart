@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import '../koolbase_exception.dart';
 import 'storage_exceptions.dart';
 import 'storage_models.dart';
 
@@ -12,11 +13,34 @@ class KoolbaseStorageClient {
   /// so storage calls carry the logged-in user's identity automatically.
   final Future<String?> Function()? _accessTokenProvider;
 
+  /// Called when the server rejects the caller's credentials.
+  ///
+  /// A session stops working for the whole SDK at once, not one subsystem at a
+  /// time, so a 401 met during an upload has to clear it just as one met during
+  /// a query does. Otherwise the app keeps believing it is signed in for every
+  /// call that happens not to touch the database.
+  final Future<void> Function()? _onSessionExpired;
+
   KoolbaseStorageClient({
     required this.baseUrl,
     required this.publicKey,
     Future<String?> Function()? accessTokenProvider,
-  }) : _accessTokenProvider = accessTokenProvider;
+    Future<void> Function()? onSessionExpired,
+  })  : _accessTokenProvider = accessTokenProvider,
+        _onSessionExpired = onSessionExpired;
+
+  /// Builds the error for a failed response and clears the session when the
+  /// credentials were refused, before the exception reaches the caller.
+  Future<KoolbaseException> _error(
+    http.Response res, {
+    String fallbackMessage = 'Storage request failed',
+  }) async {
+    final err = koolbaseStorageErrorFromResponse(res, fallbackMessage: fallbackMessage);
+    if (err is KoolbaseUnauthenticatedException) {
+      await _onSessionExpired?.call();
+    }
+    return err;
+  }
 
   Future<Map<String, String>> _headers() async {
     final headers = <String, String>{
@@ -80,7 +104,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (urlRes.statusCode != 200) {
-      throw koolbaseStorageErrorFromResponse(urlRes,
+      throw await _error(urlRes,
           fallbackMessage: 'Failed to get upload URL');
     }
 
@@ -132,7 +156,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (confirmRes.statusCode != 201) {
-      throw koolbaseStorageErrorFromResponse(confirmRes,
+      throw await _error(confirmRes,
           fallbackMessage: 'Failed to confirm upload');
     }
 
@@ -194,7 +218,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseStorageErrorFromResponse(res,
+      throw await _error(res,
           fallbackMessage: 'Failed to update metadata');
     }
 
@@ -227,7 +251,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseStorageErrorFromResponse(res,
+      throw await _error(res,
           fallbackMessage: 'Failed to get download URL');
     }
 
@@ -315,7 +339,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      throw koolbaseStorageErrorFromResponse(res,
+      throw await _error(res,
           fallbackMessage: 'Failed to delete file');
     }
   }
@@ -358,7 +382,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseStorageErrorFromResponse(res,
+      throw await _error(res,
           fallbackMessage: 'Failed to list versions');
     }
     final json = jsonDecode(res.body) as Map<String, dynamic>;
@@ -386,7 +410,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseStorageErrorFromResponse(res,
+      throw await _error(res,
           fallbackMessage: 'Failed to fetch version');
     }
     return KoolbaseObjectVersion.fromJson(
@@ -415,7 +439,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw koolbaseStorageErrorFromResponse(res,
+      throw await _error(res,
           fallbackMessage: 'Failed to restore version');
     }
     return KoolbaseObject.fromJson(
@@ -440,7 +464,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      throw koolbaseStorageErrorFromResponse(res,
+      throw await _error(res,
           fallbackMessage: 'Failed to purge version');
     }
   }

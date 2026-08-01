@@ -1,3 +1,4 @@
+import '../koolbase_exception.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -9,17 +10,12 @@ import 'package:http/http.dart' as http;
 /// Catch this to handle any storage failure generically, or catch a
 /// specific subtype ([KoolbaseStorageConflictException],
 /// [KoolbaseStorageNotFoundException], …) to branch on the kind of failure.
-class KoolbaseStorageException implements Exception {
-  /// Human-readable message from the server (or a sensible default).
-  final String message;
-
-  /// The server's stable error code, when present.
-  final String? code;
-
-  const KoolbaseStorageException(this.message, {this.code});
-
-  @override
-  String toString() => 'KoolbaseStorageException($code): $message';
+/// Something went wrong uploading, downloading, or managing stored objects.
+///
+/// Sits under [KoolbaseException] with the other families, so an application can
+/// catch any SDK failure in one place when it wants to.
+class KoolbaseStorageException extends KoolbaseException {
+  const KoolbaseStorageException(super.message, {super.code});
 }
 
 /// Thrown when an upload is rejected because an object already exists at
@@ -207,7 +203,7 @@ class KoolbaseStorageMetadataInvalidException extends KoolbaseStorageException {
 /// [KoolbaseStorageConflictException] since path collisions are the more
 /// common case. Modern Koolbase servers always emit `code`, so this only
 /// matters for very old API responses or non-Koolbase 409s.
-KoolbaseStorageException koolbaseStorageError(
+KoolbaseException koolbaseStorageError(
   int statusCode,
   Map<String, dynamic> body, {
   String fallbackMessage = 'Storage request failed',
@@ -245,6 +241,11 @@ KoolbaseStorageException koolbaseStorageError(
       return KoolbaseStorageMimeTypeException(message);
     case 404:
       return KoolbaseStorageNotFoundException(message);
+    case 401:
+      // A rejected credential is not a storage problem, so it raises the shared
+      // type: a session stops working for the whole SDK at once, and an
+      // application should not need a handler per subsystem to notice.
+      return KoolbaseUnauthenticatedException(message);
     case 403:
       return KoolbaseStoragePermissionException(message);
     case 400:
@@ -256,7 +257,7 @@ KoolbaseStorageException koolbaseStorageError(
 
 /// Convenience wrapper over [koolbaseStorageError] that decodes the
 /// response body for you. Use at call sites that have the raw [http.Response].
-KoolbaseStorageException koolbaseStorageErrorFromResponse(
+KoolbaseException koolbaseStorageErrorFromResponse(
   http.Response res, {
   String fallbackMessage = 'Storage request failed',
 }) {

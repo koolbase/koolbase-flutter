@@ -1,3 +1,7 @@
+// The root of the exception hierarchy, and the authentication failure any
+// surface can raise. Exported first: an application catching broadly needs
+// these more than it needs any single subsystem's types.
+export 'src/koolbase_exception.dart';
 export 'src/koolbase.dart';
 export 'src/auth/auth_models.dart';
 export 'src/auth/auth_exceptions.dart';
