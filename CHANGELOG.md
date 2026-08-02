@@ -1,3 +1,15 @@
+# 10.1.1
+## Changed — signed out is a refusal, not an empty list
+- `pendingWrites()` and `watchPendingWrites()` now throw
+  `KoolbaseUnauthenticatedException` when no user is signed in (the stream
+  emits it as an error event, per emission — a sign-out under a live badge
+  becomes an error, not a fake zero). Previously the null identity filtered to
+  a silent empty — indistinguishable from "all synced" — and could even match
+  legacy null-owner writes. Found on device: a signed-out display showed 0
+  pending while a user's queued writes sat unsent.
+- Check pending writes BEFORE signing out (as the README example always
+  showed); after sign-out the question has no answer and now says so.
+
 # 10.1.0
 
 ## Added — the queue is observable

@@ -6,6 +6,7 @@ import 'package:koolbase_flutter/src/database/offline/local_database.dart'
     hide PendingWrite;
 import 'package:koolbase_flutter/src/database/offline/write_queue.dart';
 import 'package:koolbase_flutter/src/database/sync_engine.dart';
+import 'package:koolbase_flutter/src/koolbase_exception.dart';
 
 /// The queue is the same durable state as conflicts, one step earlier: changes
 /// the user believes are saved, existing only on this device. conflicts() got
@@ -91,16 +92,77 @@ void main() {
     await seed();
     expect(await client.pendingWrites(), hasLength(2));
 
-    // Sign out: nothing visible. The writes still exist — they are u1's, held
-    // for whenever u1 next signs in on this device.
+    // Sign out: refusal, not a fake zero. (This test originally expected
+    // isEmpty here — the device session then proved silent-empty is a lie
+    // that hides queued work, and the contract changed to a throw.)
     fakeUser = null;
-    expect(await client.pendingWrites(), isEmpty);
+    expect(client.pendingWrites(), throwsA(isA<KoolbaseUnauthenticatedException>()));
 
     // A different user sees only their own.
     fakeUser = 'u2';
     final pending = await client.pendingWrites();
     expect(pending, hasLength(1));
     expect(pending[0].recordId, 'rec-3');
+  });
+
+  test('signed out, pendingWrites refuses — no answer is not empty', () async {
+    await seed();
+    fakeUser = null;
+    expect(client.pendingWrites(), throwsA(isA<KoolbaseUnauthenticatedException>()));
+  });
+
+  test('legacy null-owner writes are not shown signed out', () async {
+    // Pre-9.7.0 writes have no recorded owner. A null == null filter would
+    // have shown them to nobody-in-particular — worse than a fake zero:
+    // someone else's rows. The refusal covers both lies.
+    await queue.enqueue(
+      collection: 'expenses',
+      operation: 'insert',
+      payload: {'amount': 1},
+      recordId: 'rec-legacy',
+      userId: null,
+    );
+    fakeUser = null;
+    expect(client.pendingWrites(), throwsA(isA<KoolbaseUnauthenticatedException>()));
+  });
+
+  test('the queue survives a sign-out/sign-in cycle — the device timeline',
+      () async {
+    await seed();
+    expect(await client.pendingWrites(), hasLength(2));
+    fakeUser = null;
+    expect(client.pendingWrites(), throwsA(isA<KoolbaseUnauthenticatedException>()));
+    fakeUser = 'u1';
+    expect(await client.pendingWrites(), hasLength(2));
+  });
+
+  test('a mid-stream sign-out becomes an error event, not a fake empty',
+      () async {
+    final events = <Object>[];
+    final sub = client.watchPendingWrites().listen(
+          (w) => events.add(w.length),
+          onError: (Object e) => events.add(e),
+        );
+    await queue.enqueue(
+      collection: 'expenses',
+      operation: 'insert',
+      payload: {'amount': 10},
+      recordId: 'rec-9',
+      userId: 'u1',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    fakeUser = null;
+    // Any change re-emits; the emission under a dead session must error.
+    await queue.enqueue(
+      collection: 'expenses',
+      operation: 'insert',
+      payload: {'amount': 11},
+      recordId: 'rec-10',
+      userId: 'u1',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await sub.cancel();
+    expect(events.whereType<KoolbaseUnauthenticatedException>(), isNotEmpty);
   });
 
   test('watchPendingWrites emits on enqueue', () async {

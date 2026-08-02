@@ -12,6 +12,7 @@ import 'pending_write.dart';
 import 'sync_engine.dart';
 import 'offline/write_queue.dart';
 import 'database_exceptions.dart';
+import '../koolbase_exception.dart';
 
 class KoolbaseDatabaseClient {
   final String baseUrl;
@@ -105,6 +106,15 @@ class KoolbaseDatabaseClient {
     // The same identity replay consults, read from the same object — the
     // filter here must not be able to drift from the skip at replay.
     final currentUser = _syncEngine?.currentUserId?.call();
+    // Signed out, per-user state has no answer — and a null filter would not
+    // even be empty: it matches legacy null-owner writes. "No user" must be a
+    // refusal, never a fake zero (or worse, someone else's rows). Found on
+    // device: a signed-out display showed 0 while a user's writes sat queued.
+    if (currentUser == null) {
+      throw const KoolbaseUnauthenticatedException(
+        'Signed out — pending writes are per-user state.',
+      );
+    }
     final rows = await queue.getPending();
     return [
       for (final r in rows)
@@ -119,8 +129,15 @@ class KoolbaseDatabaseClient {
     final queue = _writeQueue;
     if (queue == null) return Stream.value(const []);
     return queue.watchPending().map((rows) {
-      // Read per emission: the signed-in user can change under a live stream.
+      // Read per emission: the signed-in user can change under a live stream —
+      // and a sign-out mid-stream becomes an error event, not a fake-empty
+      // emission. The badge stops lying the moment the session dies.
       final currentUser = _syncEngine?.currentUserId?.call();
+      if (currentUser == null) {
+        throw const KoolbaseUnauthenticatedException(
+          'Signed out — pending writes are per-user state.',
+        );
+      }
       return [
         for (final r in rows)
           if (r.userId == currentUser) _mapPending(r),
