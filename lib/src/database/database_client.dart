@@ -7,6 +7,8 @@ import 'database_query.dart';
 import 'conflict.dart';
 import 'offline/cache_store.dart';
 import 'offline/local_database.dart' show Conflict;
+import 'offline/local_database.dart' as drift_rows show PendingWrite;
+import 'pending_write.dart';
 import 'sync_engine.dart';
 import 'offline/write_queue.dart';
 import 'database_exceptions.dart';
@@ -90,6 +92,54 @@ class KoolbaseDatabaseClient {
     if (queue == null) return Stream.value(const []);
     return queue.watchConflicts().map((rows) => rows.map(_mapConflict).toList());
   }
+
+  /// Changes made offline, waiting to be sent. Oldest first.
+  ///
+  /// For sync indicators ("3 changes waiting") and for warning a user who is
+  /// about to log out with unsynced edits — see [PendingWrite] for why that
+  /// moment matters. Snapshot; per-user. [watchPendingWrites] is the live
+  /// version.
+  Future<List<PendingWrite>> pendingWrites() async {
+    final queue = _writeQueue;
+    if (queue == null) return const [];
+    // The same identity replay consults, read from the same object — the
+    // filter here must not be able to drift from the skip at replay.
+    final currentUser = _syncEngine?.currentUserId?.call();
+    final rows = await queue.getPending();
+    return [
+      for (final r in rows)
+        if (r.userId == currentUser) _mapPending(r),
+    ];
+  }
+
+  /// Emits the pending writes, and again whenever they change.
+  ///
+  /// For a sync badge that reflects reality. Per-user, like [pendingWrites].
+  Stream<List<PendingWrite>> watchPendingWrites() {
+    final queue = _writeQueue;
+    if (queue == null) return Stream.value(const []);
+    return queue.watchPending().map((rows) {
+      // Read per emission: the signed-in user can change under a live stream.
+      final currentUser = _syncEngine?.currentUserId?.call();
+      return [
+        for (final r in rows)
+          if (r.userId == currentUser) _mapPending(r),
+      ];
+    });
+  }
+
+  /// Named fields, deliberately not the row: baseline, baseRevision, and the
+  /// raw payload are replay mechanics, and naming each public field keeps new
+  /// internals internal until someone chooses otherwise.
+  PendingWrite _mapPending(drift_rows.PendingWrite row) => PendingWrite(
+        id: row.id,
+        operation: row.operation,
+        collection: row.collection,
+        recordId: row.recordId,
+        data: row.operation == 'delete' ? null : _writeQueue?.decodePayload(row),
+        enqueuedAt: row.createdAt,
+        attempts: row.retryCount,
+      );
 
   KoolbaseConflict _mapConflict(Conflict row) => KoolbaseConflict(
         id: row.id,

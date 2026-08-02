@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^10.0.0
+     koolbase_flutter: ^10.0.1
 ```
 
 4. Initialize before `runApp()`:
@@ -287,6 +287,45 @@ under another's name. Sign back in as the same user and they sync normally.
 > edited offline until they are read again. Neither is lost; both are logged when
 > skipped.
 
+
+#### Observing the queue
+
+The counterpart to `conflicts()`, one step earlier in the lifecycle: a conflict
+is a write the server refused; a pending write is one the server has not seen
+yet. Both are durable state worth surfacing — a queue nobody can see
+accumulates invisibly, and the changes it holds feel saved to the user while
+existing only on this device.
+
+```dart
+// Snapshot — "3 changes waiting"
+final pending = await Koolbase.db.pendingWrites();
+
+// Live, for a sync badge
+Koolbase.db.watchPendingWrites().listen((writes) {
+  syncBadge.count = writes.length;
+});
+```
+
+The moment this API exists for is logout. The queue outlives the session (see
+above), so a user signing out with pending writes walks away believing their
+edits saved — and they sync whenever that user next signs in on this device,
+which may be never. Warn first:
+
+```dart
+final pending = await Koolbase.db.pendingWrites();
+if (pending.isNotEmpty) {
+  // "You have ${pending.length} unsynced changes. Sync now, or they wait
+  //  until you next sign in on this device."
+  await Koolbase.db.syncPendingWrites();
+}
+```
+
+Each `PendingWrite` carries what an app needs to display — operation,
+collection, record id, the changed data, when it was queued, and how many send
+attempts have failed. Replay internals (baselines, revisions) are deliberately
+not exposed, and a delete carries no `data`: there is nothing the user
+"changed", only a removal. Both methods are per-user — another account's queue
+on this device is not visible.
 
 ### Handling unique-constraint conflicts
 

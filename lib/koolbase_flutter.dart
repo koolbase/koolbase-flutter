@@ -9,6 +9,7 @@ export 'src/auth/auth_client.dart';
 export 'src/storage/storage_client.dart';
 export 'src/database/database_client.dart';
 export 'src/database/conflict.dart';
+export 'src/database/pending_write.dart';
 export 'src/database/database_models.dart';
 export 'src/database/database_query.dart';
 export 'src/realtime/realtime_client.dart';

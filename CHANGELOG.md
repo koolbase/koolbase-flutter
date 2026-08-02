@@ -1,3 +1,21 @@
+# 10.1.0
+
+## Added — the queue is observable
+
+- **`Koolbase.db.pendingWrites()`** — changes made offline, waiting to be sent,
+  oldest first. For sync indicators and for warning a user about to log out
+  with unsynced edits: queues are per-user and survive logout by design, so
+  those edits sync whenever that user next signs in on this device — possibly
+  never. `conflicts()` got this treatment; the queue, the same durable state
+  one step earlier, now has it too.
+- **`Koolbase.db.watchPendingWrites()`** — the live version, for a sync badge,
+  mirroring `watchConflicts()`.
+- Both are per-user, reading identity through the sync engine — the same object
+  replay consults, so the filter and the replay skip can never disagree.
+- The returned `PendingWrite` deliberately excludes replay internals (baselines,
+  revisions, raw payloads). A delete carries no `data`: there is nothing the
+  user "changed", only a removal.
+
 # 10.0.0
 
 ## Breaking — one exception hierarchy

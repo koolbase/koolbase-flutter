@@ -269,6 +269,13 @@ class WriteQueue {
         .get();
   }
 
+  /// Emits the pending writes and again whenever they change.
+  Stream<List<PendingWrite>> watchPending() {
+    return (_db.select(_db.pendingWrites)
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+        .watch();
+  }
+
   // ─── Increment Retry ───────────────────────────────────────────────────────
 
   Future<void> incrementRetry(String id) async {
