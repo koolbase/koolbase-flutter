@@ -1,3 +1,19 @@
+# 10.1.2
+## Fixed — a refused resolution now teaches the stored conflict
+- Resolving a conflict is conditional on the server revision the refusal
+  reported. When the record moved AGAIN while someone was deciding, the
+  resolution was correctly refused — but the stored conflict never absorbed the
+  409's current revision, so every retry replayed the stale condition and a
+  conflict whose resolution failed once was permanently unresolvable except by
+  abandon. Device-proven on the React Native side; identical defect here.
+- The refusal now updates the stored conflict (revision and fresh server
+  snapshot — divergence recomputes automatically) and rethrows
+  `KoolbaseRevisionMismatchException` with "review and retry": the next attempt
+  is conditional against reality, and succeeds if the user re-decides.
+- Internal: the conflict-resolution HTTP path is now injectable
+  (`httpClient` constructor parameter) — an unmockable resolution path is why
+  this bug had no test to catch it.
+
 # 10.1.1
 ## Changed — signed out is a refusal, not an empty list
 - `pendingWrites()` and `watchPendingWrites()` now throw

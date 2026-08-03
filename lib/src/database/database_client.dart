@@ -33,14 +33,22 @@ class KoolbaseDatabaseClient {
   SyncEngine? _syncEngine;
   static const _uuid = Uuid();
 
+  /// Injectable for tests; a real client otherwise. Only the conflict
+  /// resolution path uses it so far — the bare http.* calls elsewhere migrate
+  /// opportunistically. An unmockable resolution path is why the
+  /// refusal-never-teaches bug had no test to catch it.
+  final http.Client _http;
+
   KoolbaseDatabaseClient({
     required this.baseUrl,
     required this.publicKey,
+    http.Client? httpClient,
     Future<String?> Function()? accessTokenProvider,
     Future<void> Function()? onSessionExpired,
     CacheStore? cacheStore,
     WriteQueue? writeQueue,
-  })  : _accessTokenProvider = accessTokenProvider,
+  })  : _http = httpClient ?? http.Client(),
+        _accessTokenProvider = accessTokenProvider,
         _onSessionExpired = onSessionExpired,
         _cacheStore = cacheStore,
         _writeQueue = writeQueue;
@@ -204,10 +212,39 @@ class KoolbaseDatabaseClient {
   /// must send the conflict's own revision and leave the conflict standing if it
   /// cannot be delivered.
   Future<void> _resolveWrite(Conflict row, Map<String, dynamic> payload) async {
+    try {
+      await _resolveWriteInner(row, payload);
+    } on KoolbaseRevisionMismatchException catch (e) {
+      // A refusal must teach the stored conflict, not just gate it. Without
+      // this, the resolving write stays conditional on the revision the
+      // ORIGINAL refusal reported, and a conflict whose resolution fails once
+      // is permanently unresolvable except by abandon — every retry replays
+      // the stale condition. Device-proven on the RN side; same defect here.
+      final current = e.currentRevision;
+      if (current != null) {
+        await _writeQueue?.refreshConflict(
+          row.id,
+          serverRevision: current,
+          serverState: e.currentRecord,
+        );
+        throw KoolbaseRevisionMismatchException(
+          'The record has changed again while deciding. The conflict now '
+          'reflects the server\'s current state — review and retry.',
+          expectedRevision: e.expectedRevision,
+          currentRevision: current,
+          currentRecord: e.currentRecord,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _resolveWriteInner(
+      Conflict row, Map<String, dynamic> payload) async {
     final rev = row.serverRevision;
     final http.Response res;
     if (row.operation == 'delete') {
-      res = await http
+      res = await _http
           .delete(
             Uri.parse(
                 '$baseUrl/v1/sdk/db/records/${row.recordId}${rev != null ? '?expected_revision=$rev' : ''}'),
@@ -220,7 +257,7 @@ class KoolbaseDatabaseClient {
             fallbackMessage: 'Resolving the conflict failed');
       }
     } else {
-      res = await http
+      res = await _http
           .patch(
             Uri.parse('$baseUrl/v1/sdk/db/records/${row.recordId}'),
             headers: await _headers(),
