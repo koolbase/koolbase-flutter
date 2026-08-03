@@ -266,8 +266,11 @@ Koolbase.db.watchConflicts().listen(...);
 ```
 
 Resolving is itself conditional: if the record has moved again while someone was
-deciding, resolution produces a new conflict rather than overwriting a change
-nobody has seen.
+deciding, the resolution is refused rather than overwriting a change nobody has
+seen — and the refusal updates the conflict in place to the server's current
+state (revision and record), so the retry is conditional against reality.
+Review what changed and decide again; the second attempt succeeds unless the
+record moves yet again.
 
 > **Conflicts do not expire.** An app that never reads `conflicts()` accumulates
 > them in local storage indefinitely, invisible to the user, with the changes

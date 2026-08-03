@@ -151,6 +151,26 @@ class WriteQueue {
   /// application has explicitly chosen the server's version or abandoned the
   /// change. Removing it before a write lands would lose the change if the write
   /// then failed.
+  /// Absorbs a refused resolution's 409 into the stored conflict, so the next
+  /// attempt is conditional against reality. The serverState column's own
+  /// contract — "as returned with the refusal, so resolving does not need a
+  /// fetch" — was honored by the refusal that CREATED the conflict and violated
+  /// by the refusal of its resolution: the fresh revision arrived and was
+  /// discarded, leaving every retry to replay the stale condition forever.
+  Future<void> refreshConflict(
+    String id, {
+    required int serverRevision,
+    Map<String, dynamic>? serverState,
+  }) async {
+    await (_db.update(_db.conflicts)..where((t) => t.id.equals(id)))
+        .write(ConflictsCompanion(
+      serverRevision: Value(serverRevision),
+      serverState: serverState != null
+          ? Value(jsonEncode(serverState))
+          : const Value.absent(),
+    ));
+  }
+
   Future<void> removeConflict(String id) async {
     await (_db.delete(_db.conflicts)..where((c) => c.id.equals(id))).go();
   }
