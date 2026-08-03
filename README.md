@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^10.1.1
+     koolbase_flutter: ^10.1.2
 ```
 
 4. Initialize before `runApp()`:
