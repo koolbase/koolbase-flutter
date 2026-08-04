@@ -92,7 +92,7 @@ class Conflicts extends Table {
   TextColumn get id => text()();
   TextColumn get collection => text()();
   TextColumn get recordId => text()();
-  TextColumn get operation => text()(); // update | delete
+  TextColumn get operation => text()(); // insert | update | delete
 
   /// What the write wanted to apply.
   TextColumn get payload => text()();

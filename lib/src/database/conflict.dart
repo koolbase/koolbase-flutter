@@ -1,5 +1,10 @@
 /// What the user was trying to do when the write was refused.
-enum ConflictOperation { update, delete }
+/// `insert` since unique constraints made insert-conflicts real: a queued
+/// insert refused as a duplicate is held like any other terminal refusal.
+/// Resolving one IS the insert, retried — resolveWithMerge carries amended
+/// data (the "fix the colliding title" path); resolveWithServer means the
+/// colliding row stands, and clears without a request.
+enum ConflictOperation { insert, update, delete }
 
 /// Why a write is waiting for a decision.
 ///

@@ -170,9 +170,11 @@ class KoolbaseDatabaseClient {
         id: row.id,
         collection: row.collection,
         recordId: row.recordId,
-        operation: row.operation == 'delete'
-            ? ConflictOperation.delete
-            : ConflictOperation.update,
+        operation: switch (row.operation) {
+          'insert' => ConflictOperation.insert,
+          'delete' => ConflictOperation.delete,
+          _ => ConflictOperation.update,
+        },
         // A null reason predates the distinction. Those were all concurrent
         // modifications, since a refusal used to be retried until dropped
         // rather than held — but it is recorded as unknown rather than
@@ -243,7 +245,30 @@ class KoolbaseDatabaseClient {
       Conflict row, Map<String, dynamic> payload) async {
     final rev = row.serverRevision;
     final http.Response res;
-    if (row.operation == 'delete') {
+    if (row.operation == 'insert') {
+      // Resolving a rejected insert IS the insert, retried — with amended data
+      // via resolveWithMerge (the "fix the colliding title" path).
+      // Unconditional: there is no revision to be conditional against, because
+      // there is no record. The conflict's id rides as the idempotency key, so
+      // a resolution whose response is lost returns the original on retry
+      // rather than duplicating. Wire-proven on this exact route.
+      res = await _http
+          .post(
+            Uri.parse('$baseUrl/v1/sdk/db/insert'),
+            headers: await _headers(),
+            body: jsonEncode({
+              'collection': row.collection,
+              'data': payload,
+              'idempotency_key': row.id,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200 && res.statusCode != 201) {
+        throw await koolbaseDataErrorNotifying(res,
+            onSessionExpired: _onSessionExpired,
+            fallbackMessage: 'Resolving the conflict failed');
+      }
+    } else if (row.operation == 'delete') {
       res = await _http
           .delete(
             Uri.parse(

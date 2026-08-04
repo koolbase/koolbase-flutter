@@ -265,6 +265,11 @@ for (final c in conflicts) {
 Koolbase.db.watchConflicts().listen(...);
 ```
 
+A rejected **insert** — a duplicate under a unique constraint — is held the
+same way, as an insert-conflict. Resolving it is the insert, retried:
+`resolveWithMerge` carries the amended data (fix the colliding value and go);
+`resolveWithServer` means the colliding row stands, clearing without a request.
+
 Resolving is itself conditional: if the record has moved again while someone was
 deciding, the resolution is refused rather than overwriting a change nobody has
 seen — and the refusal updates the conflict in place to the server's current

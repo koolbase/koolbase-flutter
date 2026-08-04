@@ -1,3 +1,17 @@
+# 10.2.0
+## Added — insert-conflicts are real, and resolvable
+- `ConflictOperation.insert`: a queued insert refused as a duplicate (unique
+  constraint) is held like any other terminal refusal — previously its
+  operation was coerced to `update`, and resolving it issued a PATCH against a
+  record id that exists nowhere.
+- Resolving a rejected insert IS the insert, retried. `resolveWithMerge`
+  carries amended data (the "fix the colliding title" path). Unconditional —
+  no record, no revision to be conditional against. The conflict's id rides as
+  the idempotency key, so a resolution whose response is lost returns the
+  original on retry rather than duplicating.
+- `resolveWithServer` on an insert-conflict means the colliding row stands:
+  the conflict clears without a request.
+
 # 10.1.2
 ## Fixed — a refused resolution now teaches the stored conflict
 - Resolving a conflict is conditional on the server revision the refusal
