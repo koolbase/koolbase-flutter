@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^10.1.2
+     koolbase_flutter: ^10.3.0
 ```
 
 4. Initialize before `runApp()`:
@@ -783,6 +783,64 @@ A few behaviors worth knowing:
 
 ---
 
+## Widgets
+
+The SDK ships behavioral widgets that encode the semantics above correctly —
+auth branching, stale-while-revalidate lists — so you compose them instead of
+hand-writing the same state machines.
+
+### Auth gate
+
+```dart
+KoolbaseAuthGate(
+  signedIn: (context, user) => HomeScreen(user: user),
+  signedOut: (context) => const LoginScreen(),
+  // restoring: optional — defaults to a spinner while the persisted
+  // session restores, so returning users never see a login flash.
+)
+```
+
+The gate calls `restoreSession()` once at mount, seeds synchronously from
+`currentUser`, follows `authStateChanges`, and treats an offline restore as
+signed-in (`RestoreResult.offline` is optimistic by design). Descendants read
+auth state without statics, rebuilding when it changes:
+
+```dart
+final scope = KoolbaseAuthScope.of(context);
+scope.user;            // KoolbaseUser? — null when signed out
+scope.restoredOffline; // true after an offline restore, for a banner
+```
+
+### Collection list
+
+```dart
+KoolbaseCollectionList(
+  collection: 'expenses',
+  query: (q) => q
+      .where('user_id', isEqualTo: user.id)
+      .orderBy('created_at', descending: true),
+  itemBuilder: (context, record) => ExpenseTile(record),
+)
+```
+
+An opinionated scrollable list with pull-to-refresh over a collection. The
+stale-while-revalidate contract is handled: the cached result renders first,
+the network refresh replaces it, and a failed refresh keeps the records —
+only a first load with nothing to show is an error state (with a retry slot).
+`empty`, `error`, and `loading` are optional slots; per-item appearance is
+entirely yours.
+
+The `query` callback runs for **every** fetch with a fresh query instance and
+must be deterministic — never retain or reuse a query (builders mutate). For
+scoped collections, filter on the rule's owner field; the server enforces the
+rule either way, but the filter is what returns the caller's records.
+
+For grids, slivers, or custom scroll layouts, drive
+`KoolbaseCollectionController` directly — it owns the fetch and stream
+lifecycle, widget-free.
+
+---
+
 ## Realtime
 
 Stream live changes on a collection. Uses the signed-in user's session, so
@@ -1184,6 +1242,7 @@ Safe in any state, including with no session at all.
 
 - Authentication: email + password, Apple Sign-In, Google Sign-In, phone + OTP
 - Database with offline-first cache (Drift), realtime subscriptions, populate for related records, semantic search over vectors
+- Behavioral widgets (`KoolbaseAuthGate`, `KoolbaseCollectionList`) — auth branching and stale-while-revalidate lists, correct by construction
 - Storage with presigned uploads and downloads, safe-by-default conflict handling, image transforms, object versioning (history + restore + soft-delete)
 - Realtime subscriptions over WebSocket
 - Authenticated Dart functions (`ctx.auth` exposes the caller automatically)

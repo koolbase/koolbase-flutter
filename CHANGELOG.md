@@ -1,5 +1,51 @@
-# 10.2.0
+# 10.3.0
+
+## Added — behavioral widgets: the SDK now ships correctness, not just calls
+
+- `KoolbaseAuthGate`: branches the tree on auth state correctly. Calls
+  `restoreSession()` once at mount behind a `restoring` slot, so a returning
+  user never sees a login-screen flash; seeds synchronously from
+  `currentUser` (the auth stream is a broadcast with no replay — a
+  listen-only gate would hang forever); maps `RestoreResult.offline` to
+  signed-IN per its optimistic semantics, exposing `restoredOffline`; a
+  restore that throws lands on signed-out, never a crash. Headless with
+  slots: `signedIn` and `signedOut` required, `restoring` optional.
+- `KoolbaseAuthScope` (InheritedWidget): descendants read
+  `user`/`status`/`restoredOffline` without statics, rebuilding on identity
+  change.
+- `KoolbaseCollectionList`: an opinionated list over a collection —
+  `ListView.separated` inside a `RefreshIndicator` — with the
+  stale-while-revalidate contract handled: the cached first arrival renders
+  (`isFromCache` exposed), the background network arrival replaces it, a
+  failed refresh keeps the records (stale beats blank; only a first load
+  with nothing to show is an error state, with a retry slot). Per-item
+  appearance is the caller's `itemBuilder`; `empty`/`error`/`loading` are
+  slotted, and the empty state stays pull-refreshable.
+- `KoolbaseCollectionController`: the list's data half, widget-free —
+  fetch, stream subscription, and refresh lifecycle for custom scroll
+  layouts (grids, slivers) without re-implementing the SWR discipline.
+
+## Fixed — query streams are per-query, matching their documented contract
+
+- Query refresh streams were keyed by collection name alone, so two
+  DIFFERENT queries on one collection shared a controller: each background
+  refresh emitted its records to both listeners — silently wrong data on
+  any screen with two lists over the same collection. Streams are now keyed
+  by query identity (collection + filters + user), the same construction as
+  the cache key. `KoolbaseQuery.streamKey` exposes the identity for
+  consumers managing subscriptions across rebuilt query instances.
+- Behavior note: a stream on a never-fetched query no longer receives
+  refreshes triggered by OTHER queries on the same collection — that was
+  the contamination, not a feature. The common pattern (build a query,
+  `get()`, listen to the same query's `stream`) is unchanged.
+- Reminder: `KoolbaseQuery`'s builder methods mutate their instance —
+  construct a fresh query per fetch. `KoolbaseCollectionList`'s `query`
+  callback does this for you and must be deterministic.
+
+## 10.2.0
+
 ## Added — insert-conflicts are real, and resolvable
+
 - `ConflictOperation.insert`: a queued insert refused as a duplicate (unique
   constraint) is held like any other terminal refusal — previously its
   operation was coerced to `update`, and resolving it issued a PATCH against a
@@ -12,8 +58,10 @@
 - `resolveWithServer` on an insert-conflict means the colliding row stands:
   the conflict clears without a request.
 
-# 10.1.2
+## 10.1.2
+
 ## Fixed — a refused resolution now teaches the stored conflict
+
 - Resolving a conflict is conditional on the server revision the refusal
   reported. When the record moved AGAIN while someone was deciding, the
   resolution was correctly refused — but the stored conflict never absorbed the
@@ -28,8 +76,10 @@
   (`httpClient` constructor parameter) — an unmockable resolution path is why
   this bug had no test to catch it.
 
-# 10.1.1
+## 10.1.1
+
 ## Changed — signed out is a refusal, not an empty list
+
 - `pendingWrites()` and `watchPendingWrites()` now throw
   `KoolbaseUnauthenticatedException` when no user is signed in (the stream
   emits it as an error event, per emission — a sign-out under a live badge
@@ -40,7 +90,7 @@
 - Check pending writes BEFORE signing out (as the README example always
   showed); after sign-out the question has no answer and now says so.
 
-# 10.1.0
+## 10.1.0
 
 ## Added — the queue is observable
 
@@ -58,7 +108,7 @@
   revisions, raw payloads). A delete carries no `data`: there is nothing the
   user "changed", only a removal.
 
-# 10.0.0
+## 10.0.0
 
 ## Breaking — one exception hierarchy
 
@@ -91,7 +141,7 @@ try {
 `KoolbaseSessionExpiredException` remains as a deprecated subclass, so existing
 catches still match. It will be removed in 11.0.0.
 
-**Renamed because the old name overclaimed.** A 401 covers an expired session, a
+**Renamed because the old name over claimed.** A 401 covers an expired session, a
 revoked key, and malformed or missing credentials, and the server does not
 distinguish them. Signing a user out on a revoked API key would be acting on a
 precision that never existed.
@@ -127,7 +177,7 @@ three other surfaces.
 All four now clear it and raise `KoolbaseUnauthenticatedException`, so one
 handler covers the SDK rather than one per subsystem.
 
-# 9.9.0
+## 9.9.0
 
 ## Added — conditional writes
 
@@ -152,7 +202,7 @@ Worth reaching for where two things can write the same record. Without it, the
 second write replaces the first and neither writer learns that it happened.
 
 
-# 9.8.0
+## 9.8.0
 
 ## Added — offline update and delete
 
@@ -215,7 +265,7 @@ records gain their revision; conflicts get their own table.
 Records cached before this version have no revision and cannot be edited offline
 until they are read again. Nothing is lost, and skipped writes are logged.
 
-# 9.7.0
+## 9.7.0
 
 ## Changed — read this before upgrading
 
@@ -267,7 +317,7 @@ until they are read again. Nothing is lost, and skipped writes are logged.
 
 ## 9.6.0
 
-### Added
+## Added
 
 - **`auth.resendVerificationEmail()`** — re-send the email-verification link
   to the current authenticated-but-unverified user. Returns
@@ -341,7 +391,7 @@ reports "engine not present" through existing failure paths (`koolbaseBuildId()`
   the conceptual expansion of the search contract (three retrieval modes
   instead of one), not API-breaking removals.
 
-### Added
+## Added
 
 - `KoolbaseQuery.searchSemantic` accepts a new `mode` parameter of type
   `KoolbaseSearchMode`. Three retrieval strategies are supported:
