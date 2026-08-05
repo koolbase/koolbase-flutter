@@ -114,7 +114,10 @@ class KoolbaseQuery {
   /// so a stream only ever carries refreshes for THIS query. Keying by
   /// collection name alone let two different queries on one collection
   /// contaminate each other's listeners with the wrong records.
-  @visibleForTesting
+  ///
+  /// Public API: consumers that manage subscriptions across rebuilt query
+  /// instances (e.g. KoolbaseCollectionController) compare identities with
+  /// this rather than object identity.
   String get streamKey =>
       CacheStore.buildKey(collectionName, _filters, _userId);
 

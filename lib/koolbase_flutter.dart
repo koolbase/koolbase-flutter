@@ -22,3 +22,4 @@ export 'src/storage/storage_exceptions.dart';
 export 'src/code_push/code_push_client.dart' show KoolbaseCodePushClient;
 export 'src/code_push/patch_client.dart' show KoolbaseVmPatchClient;
 export 'src/widgets/auth_gate.dart';
+export 'src/widgets/collection_list.dart';
