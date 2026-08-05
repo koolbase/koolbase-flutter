@@ -7,8 +7,11 @@ import 'package:koolbase_flutter/koolbase_flutter.dart';
 import 'offline/cache_store.dart';
 import 'offline/write_queue.dart';
 
-/// Broadcast stream controller for background refresh notifications
-/// Keyed by collection name
+/// Broadcast stream controllers for background refresh notifications.
+/// Keyed by QUERY identity (collection + filters + user — see streamKey),
+/// so distinct queries on one collection never share a stream. Controllers
+/// live for the process lifetime; the map is bounded by the number of
+/// distinct query shapes an app uses.
 final Map<String, StreamController<QueryResult>> _refreshControllers = {};
 
 StreamController<QueryResult> _getController(String collection) {
