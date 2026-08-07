@@ -1,4 +1,39 @@
-# 10.3.0
+# 10.4.0
+
+## Fixed — streams now behave the way they read
+
+Two gaps that both surfaced as "the UI just doesn't update". Nothing
+errored, nothing logged, the data was simply absent — the worst kind of
+bug to hand a developer, and both were found by building an app against
+the SDK rather than by reading it.
+
+- **`.stream` now fetches on first listen.** It was a bare relay off a
+  broadcast controller: `get()` performed the fetch and pushed refreshes
+  into it, so a stream-only listener waited forever on a collection
+  nothing else had read. A stream that stays silent until an unrelated
+  call happens to populate the cache is indistinguishable from a broken
+  one, and the caller has no way to tell the difference. The initial
+  fetch is cache-first, exactly as `get()` is.
+
+- **Writes now refresh open streams.** `insert`, `upsert`, `deleteWhere`,
+  `batch`, and conflict resolution all invalidated the collection cache
+  and stopped — which only affects the NEXT query. A listener already
+  watching sat unchanged until something happened to re-fetch, so a
+  message sent into a chat thread did not appear in that thread.
+
+  Each open query re-runs ITSELF and pushes its own result, so a stream
+  only ever receives records matching its own filters. The refresh is a
+  registered closure per stream rather than something rebuilt from the
+  stream key: a key carries collection, filters, and user — not ordering,
+  limit, or populated fields — so a reconstructed query would run
+  differently and push the wrong records into a stream that never asked
+  for them. Mutation-verified: dropping the collection filter refreshes
+  every query in the process.
+
+Neither is breaking. Code that called `get()` before listening still
+works; it simply no longer has to.
+
+## 10.3.0
 
 ## Added — behavioral widgets: the SDK now ships correctness, not just calls
 

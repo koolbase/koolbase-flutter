@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^10.3.0
+     koolbase_flutter: ^10.4.0
 ```
 
 4. Initialize before `runApp()`:
@@ -174,7 +174,7 @@ for (final post in posts.records) {
 // Filter
 final filtered = await Koolbase.db
     .collection('posts')
-    .where('status', 'published')
+    .where('status', isEqualTo: 'published')
     .get();
 
 // Relational data
@@ -189,6 +189,31 @@ await Koolbase.db.collection('posts').doc('record-id').update({'title': 'Updated
 // Delete
 await Koolbase.db.collection('posts').doc('record-id').delete();
 ```
+
+### Live queries
+
+`.stream` gives you the same query as results change. It fetches on first
+listen — cache-first, like `get()` — and emits again whenever anything writes
+to that collection.
+
+```dart
+Koolbase.db
+    .collection('messages')
+    .where('room_id', isEqualTo: roomId)
+    .orderBy('created_at')
+    .stream
+    .listen((result) {
+      // Arrives twice on a cold start: a cached result, then a fresh one.
+      setState(() => messages = result.records);
+    });
+```
+
+A stream carries only records matching its own filters, so two lists over one
+collection never contaminate each other. A write from anywhere in the app —
+including another screen — refreshes every open query on that collection.
+
+`result.isFromCache` tells you which kind of result you have, if a screen
+wants to distinguish the two.
 
 ### Offline writes
 

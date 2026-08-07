@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koolbase_flutter/src/database/offline/local_database.dart';
@@ -31,17 +30,21 @@ void main() {
       VALUES ('w1', 'weights', 'insert', '{"kg":68}', 'user-1', 0, 1700000000)
     ''');
 
-    await db.customStatement('ALTER TABLE pending_writes ADD COLUMN baseline TEXT NULL');
-    await db.customStatement('ALTER TABLE pending_writes ADD COLUMN base_revision INTEGER NULL');
+    await db.customStatement(
+        'ALTER TABLE pending_writes ADD COLUMN baseline TEXT NULL');
+    await db.customStatement(
+        'ALTER TABLE pending_writes ADD COLUMN base_revision INTEGER NULL');
 
     final rows = await db.customSelect('SELECT * FROM pending_writes').get();
-    expect(rows, hasLength(1), reason: 'the queued write did not survive the migration');
+    expect(rows, hasLength(1),
+        reason: 'the queued write did not survive the migration');
     expect(rows.first.data['id'], 'w1');
     expect(rows.first.data['user_id'], 'user-1',
         reason: 'ownership recorded in v3 must survive into v4');
     expect(rows.first.data.containsKey('baseline'), isTrue);
     expect(rows.first.data['baseline'], isNull,
-        reason: 'a write queued before v4 has no baseline, and must not be invented');
+        reason:
+            'a write queued before v4 has no baseline, and must not be invented');
 
     await db.close();
   });

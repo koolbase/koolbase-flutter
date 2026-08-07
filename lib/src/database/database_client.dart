@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -99,7 +100,9 @@ class KoolbaseDatabaseClient {
   Stream<List<KoolbaseConflict>> watchConflicts() {
     final queue = _writeQueue;
     if (queue == null) return Stream.value(const []);
-    return queue.watchConflicts().map((rows) => rows.map(_mapConflict).toList());
+    return queue
+        .watchConflicts()
+        .map((rows) => rows.map(_mapConflict).toList());
   }
 
   /// Changes made offline, waiting to be sent. Oldest first.
@@ -161,7 +164,8 @@ class KoolbaseDatabaseClient {
         operation: row.operation,
         collection: row.collection,
         recordId: row.recordId,
-        data: row.operation == 'delete' ? null : _writeQueue?.decodePayload(row),
+        data:
+            row.operation == 'delete' ? null : _writeQueue?.decodePayload(row),
         enqueuedAt: row.createdAt,
         attempts: row.retryCount,
       );
@@ -311,6 +315,7 @@ class KoolbaseDatabaseClient {
         row.recordId, payload, applied ?? row.serverRevision);
 
     await _cacheStore?.invalidateCollection(row.collection);
+    unawaited(refreshCollectionStreams(row.collection));
   }
 
   /// Points writes still queued for a record at the server's version, after a
@@ -395,7 +400,8 @@ class KoolbaseDatabaseClient {
           .timeout(const Duration(seconds: 10));
 
       if (res.statusCode != 201) {
-        throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
+        throw await koolbaseDataErrorNotifying(res,
+            onSessionExpired: _onSessionExpired,
             fallbackMessage: 'Insert failed');
       }
 
@@ -413,6 +419,16 @@ class KoolbaseDatabaseClient {
 
       // Invalidate collection cache so next query is fresh
       await _cacheStore?.invalidateCollection(collection);
+
+      // And tell open streams. Invalidating the cache only affects the NEXT
+      // query — a listener already watching this collection sits unchanged
+      // until something happens to re-fetch, which is how a sent message
+      // failed to appear in its own thread.
+      //
+      // Not awaited: a write should not block on refreshing other queries,
+      // and a failed refresh is logged rather than surfaced — the write
+      // itself succeeded.
+      unawaited(refreshCollectionStreams(collection));
 
       return record;
     } catch (e) {
@@ -440,6 +456,7 @@ class KoolbaseDatabaseClient {
         // against the queued insert rather than a cached revision.
         await _cacheStore?.saveRecord(tempId, collection, data, _userId);
         await _cacheStore?.invalidateCollection(collection);
+        unawaited(refreshCollectionStreams(collection));
 
         // Return optimistic record
         return KoolbaseRecord(
@@ -485,7 +502,8 @@ class KoolbaseDatabaseClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200 && res.statusCode != 201) {
-      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
+      throw await koolbaseDataErrorNotifying(res,
+          onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Upsert failed');
     }
 
@@ -497,6 +515,7 @@ class KoolbaseDatabaseClient {
     await _cacheStore?.saveRecord(record.id, collection, record.data, _userId,
         revision: record.revision);
     await _cacheStore?.invalidateCollection(collection);
+    unawaited(refreshCollectionStreams(collection));
 
     return KoolbaseUpsertResult(record: record, created: created);
   }
@@ -523,7 +542,8 @@ class KoolbaseDatabaseClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired,
+      throw await koolbaseDataErrorNotifying(res,
+          onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Delete failed');
     }
 
@@ -531,6 +551,7 @@ class KoolbaseDatabaseClient {
     final deleted = (body['deleted'] as num?)?.toInt() ?? 0;
 
     await _cacheStore?.invalidateCollection(collection);
+    unawaited(refreshCollectionStreams(collection));
 
     return deleted;
   }
@@ -575,7 +596,8 @@ class KoolbaseDatabaseClient {
         .timeout(const Duration(seconds: 15));
 
     if (res.statusCode != 200) {
-      throw await koolbaseDataErrorNotifying(res, onSessionExpired: _onSessionExpired, fallbackMessage: 'Batch failed');
+      throw await koolbaseDataErrorNotifying(res,
+          onSessionExpired: _onSessionExpired, fallbackMessage: 'Batch failed');
     }
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -592,6 +614,7 @@ class KoolbaseDatabaseClient {
         await _cacheStore?.saveRecord(rec.id, col, rec.data, _userId,
             revision: rec.revision);
         await _cacheStore?.invalidateCollection(col);
+        unawaited(refreshCollectionStreams(col));
       }
     }
 
@@ -664,7 +687,8 @@ class _ConflictResolver implements ConflictResolver {
     // is the server's version, so rebase them onto that — otherwise each would
     // replay against a revision that moved and conflict in turn.
     await _client._rebaseOntoServerState(row);
-    debugPrint('[Koolbase] Conflict ${row.id} resolved in favour of the server');
+    debugPrint(
+        '[Koolbase] Conflict ${row.id} resolved in favour of the server');
   }
 
   @override

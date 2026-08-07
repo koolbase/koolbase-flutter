@@ -14,6 +14,52 @@ import 'offline/write_queue.dart';
 /// distinct query shapes an app uses.
 final Map<String, StreamController<QueryResult>> _refreshControllers = {};
 
+/// Re-fetch closures for open streams, keyed the same way as the controllers.
+///
+/// A write needs to refresh every open query on that collection, and the only
+/// thing that knows how to re-run a query is the query itself. A key carries
+/// the collection, filters, and user — but not the ordering, limit, or
+/// populated fields — so a refresh rebuilt from a key alone would be a
+/// DIFFERENT query, pushing the wrong records into someone's stream.
+final Map<String, Future<void> Function()> _refreshers = {};
+
+/// Refreshes every open query on a collection, after a write.
+///
+/// Each query re-runs itself and pushes its own result, so a stream only ever
+/// receives records matching its own filters.
+Future<void> refreshCollectionStreams(String collection) async {
+  final prefix = '$collection:';
+  final refreshers = _refreshers.entries
+      .where((e) => e.key.startsWith(prefix))
+      .map((e) => e.value)
+      .toList();
+
+  for (final refresh in refreshers) {
+    try {
+      await refresh();
+    } catch (e) {
+      debugPrint('[Koolbase] Stream refresh failed after write: $e');
+    }
+  }
+}
+
+/// Registers a refresher directly.
+///
+/// Tests only — in production this happens when a query's stream is first
+/// listened to. Exposed because the registry is private to this library and
+/// the property worth testing is which refreshers a write runs.
+@visibleForTesting
+void debugRegisterStreamRefresher(String key, Future<void> Function() refresh) {
+  _refreshers[key] = refresh;
+}
+
+/// Clears the registry between tests. It lives for the process, so without
+/// this one test's registrations leak into the next.
+@visibleForTesting
+void debugClearStreamRefreshers() {
+  _refreshers.clear();
+}
+
 StreamController<QueryResult> _getController(String collection) {
   if (!_refreshControllers.containsKey(collection) ||
       _refreshControllers[collection]!.isClosed) {
@@ -111,7 +157,31 @@ class KoolbaseQuery {
   /// });
   /// ```
 
-  Stream<QueryResult> get stream => _getController(streamKey).stream;
+  /// Results for this query as they change.
+  ///
+  /// Fetches on first listen rather than waiting for someone else to call
+  /// [get]. A stream that stays silent until an unrelated call happens to
+  /// populate the cache is indistinguishable from a broken one.
+  Stream<QueryResult> get stream {
+    final controller = _getController(streamKey);
+
+    // Registered so a write to this collection can refresh THIS query,
+    // with its ordering and limit intact.
+    _refreshers[streamKey] = () => _refreshFromNetwork(streamKey);
+
+    // Seed on first listen. Scheduled rather than awaited so the caller gets
+    // a stream back synchronously.
+    scheduleMicrotask(() async {
+      try {
+        final seed = await get();
+        if (!controller.isClosed) controller.add(seed);
+      } catch (e) {
+        if (!controller.isClosed) controller.addError(e);
+      }
+    });
+
+    return controller.stream;
+  }
 
   /// The per-query stream identity: same construction as [get]'s cache key,
   /// so a stream only ever carries refreshes for THIS query. Keying by
@@ -154,9 +224,13 @@ class KoolbaseQuery {
     return await _fetchFromNetwork(cacheKey);
   }
 
-  /// Background network refresh — updates cache and notifies stream
-  void _refreshFromNetwork(String cacheKey) {
-    _fetchFromNetwork(cacheKey).then((result) {
+  /// Re-fetches and pushes the result to this query's stream.
+  ///
+  /// Returns the future so a caller that needs the refresh to have LANDED —
+  /// the post-write refresh does — can await it. Fire-and-forget callers
+  /// simply ignore it, as before.
+  Future<void> _refreshFromNetwork(String cacheKey) {
+    return _fetchFromNetwork(cacheKey).then((result) {
       _getController(cacheKey).add(result);
     }).catchError((e) {
       debugPrint('[Koolbase] Background refresh failed: $e');
