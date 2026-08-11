@@ -860,7 +860,28 @@ must be deterministic — never retain or reuse a query (builders mutate). For
 scoped collections, filter on the rule's owner field; the server enforces the
 rule either way, but the filter is what returns the caller's records.
 
-For grids, slivers, or custom scroll layouts, drive
+### Collection grid
+
+```dart
+KoolbaseCollectionGrid(
+  collection: 'products',
+  crossAxisCount: 2,
+  query: (q) => q.orderBy('created_at', descending: true),
+  itemBuilder: (context, record) => ProductTile(record),
+)
+```
+
+The same collection laid out as a grid. It shares
+`KoolbaseCollectionController` with the list, so stale-while-revalidate,
+pull-to-refresh and the loading/empty/error slots behave identically — the two
+differ only in layout. `crossAxisCount`, `spacing` and `childAspectRatio` are
+yours; the fetch is not.
+
+Fixed cross-axis count rather than responsive reflow: vary `crossAxisCount`
+from a `LayoutBuilder` if you need it, rather than the widget guessing at tile
+sizing for everyone.
+
+For slivers or other custom scroll layouts, drive
 `KoolbaseCollectionController` directly — it owns the fetch and stream
 lifecycle, widget-free.
 
@@ -1267,8 +1288,7 @@ Safe in any state, including with no session at all.
 
 - Authentication: email + password, Apple Sign-In, Google Sign-In, phone + OTP
 - Database with offline-first cache (Drift), realtime subscriptions, populate for related records, semantic search over vectors
-- Behavioral widgets (`KoolbaseAuthGate`, `KoolbaseCollectionList`) — auth branching and stale-while-revalidate lists, correct by construction
-- Storage with presigned uploads and downloads, safe-by-default conflict handling, image transforms, object versioning (history + restore + soft-delete)
+- Behavioral widgets (`KoolbaseAuthGate`, `KoolbaseCollectionList`, `KoolbaseCollectionGrid`) — auth branching and stale-while-revalidate collections, correct by construction- Storage with presigned uploads and downloads, safe-by-default conflict handling, image transforms, object versioning (history + restore + soft-delete)
 - Realtime subscriptions over WebSocket
 - Authenticated Dart functions (`ctx.auth` exposes the caller automatically)
 - Feature flags and remote config

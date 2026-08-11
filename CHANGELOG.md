@@ -1,4 +1,23 @@
-# 10.4.0
+# 10.5.0
+
+## Added — KoolbaseCollectionGrid
+
+The same collection, laid out as a grid rather than a list. Shares
+KoolbaseCollectionController with KoolbaseCollectionList, so
+stale-while-revalidate, pull-to-refresh and the loading/empty/error slots
+behave identically — the two widgets differ only in layout.
+
+    KoolbaseCollectionGrid(
+      collection: 'products',
+      crossAxisCount: 2,
+      itemBuilder: (context, record) => ProductTile(record),
+    )
+
+Fixed cross-axis count rather than responsive reflow: a caller who needs
+reflow can vary crossAxisCount from a LayoutBuilder, and building that in
+would have meant guessing at tile sizing for everyone else.
+
+## 10.4.0
 
 ## Fixed — streams now behave the way they read
 
