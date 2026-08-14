@@ -203,3 +203,41 @@ class AppleFullName {
     return result;
   }
 }
+
+/// Result of [KoolbaseAuthClient.signUp].
+///
+/// A project can require a verified contact channel before issuing sessions
+/// (Koolbase dashboard → auth settings → require verified contact). When that
+/// is on, signup CREATES THE ACCOUNT but returns no session — the user must
+/// verify before their first sign-in.
+///
+/// Branch on [verificationRequired]:
+///
+/// ```dart
+/// final result = await Koolbase.auth.signUp(email: e, password: p);
+/// if (result.verificationRequired) {
+///   // Account exists but is not signed in. Show "check your email".
+///   showVerifyScreen(result.user.email);
+/// } else {
+///   // Signed in — session is stored and the app can proceed.
+///   goHome(result.user);
+/// }
+/// ```
+///
+/// [user] is always present: the account was created either way. Only the
+/// session differs. This is deliberately not a nullable user — returning null
+/// would push the same null-check onto every caller and invite the crash this
+/// type exists to prevent.
+class SignUpResult {
+  /// The created account. Present in both cases.
+  final KoolbaseUser user;
+
+  /// True when the project requires a verified contact channel and no session
+  /// was issued. The app must NOT treat the user as signed in.
+  final bool verificationRequired;
+
+  const SignUpResult({
+    required this.user,
+    required this.verificationRequired,
+  });
+}

@@ -126,19 +126,34 @@ class KoolbaseAuthClient {
     }
   }
 
-  Future<KoolbaseUser> signUp({
+  /// Create an account.
+  ///
+  /// BREAKING (11.0.0): returns [SignUpResult], not [KoolbaseUser]. A project
+  /// can require a verified contact channel before issuing sessions, in which
+  /// case the account is created but NOT signed in. Branch on
+  /// [SignUpResult.verificationRequired]; the user is present either way.
+  ///
+  /// The session is only persisted when one was issued — storing a null
+  /// session would leave the SDK half-authenticated, reporting a signed-in
+  /// user with no token.
+  Future<SignUpResult> signUp({
     required String email,
     required String password,
     String? fullName,
   }) async {
     if (password.length < 8) throw const WeakPasswordException();
-    final session = await _api.signUp(
+    final result = await _api.signUp(
       email: email,
       password: password,
       fullName: fullName,
     );
-    await _setSession(session);
-    return session.user;
+
+    if (result.session == null) {
+      return SignUpResult(user: result.user, verificationRequired: true);
+    }
+
+    await _setSession(result.session!);
+    return SignUpResult(user: result.user, verificationRequired: false);
   }
 
   Future<KoolbaseUser> login({

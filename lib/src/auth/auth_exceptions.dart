@@ -207,3 +207,21 @@ class GoogleEmailRequiredException extends KoolbaseAuthException {
           code: 'google_email_required',
         );
 }
+
+/// Thrown when a project requires a verified contact channel and the account
+/// has none. The credentials were CORRECT — the project's policy refused.
+///
+/// Distinct from [InvalidCredentialsException] so apps route the user to
+/// "resend verification" rather than "check your password". A project enables
+/// this from its Koolbase dashboard (auth settings → require verified
+/// contact); it is off by default for existing projects.
+///
+/// A verified email, a verified phone, or a federated provider identity all
+/// satisfy the requirement.
+class ContactNotVerifiedException extends KoolbaseAuthException {
+  const ContactNotVerifiedException()
+      : super(
+          'Verify your email or phone before signing in',
+          code: 'contact_not_verified',
+        );
+}

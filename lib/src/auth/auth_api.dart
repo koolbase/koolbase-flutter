@@ -67,7 +67,14 @@ class AuthApi {
         ...?deviceMetadata?.toHeaders(),
       };
 
-  Future<AuthSession> signUp({
+  /// POST /v1/sdk/auth/register.
+  ///
+  /// Returns (session, user). When the project requires a verified contact
+  /// channel the server creates the account and returns NO session — the
+  /// record is `(null, user)`. Callers must branch rather than assume a
+  /// session; routing this through _parseSession would throw on the absent
+  /// access_token, which is exactly the failure this shape prevents.
+  Future<({AuthSession? session, KoolbaseUser user})> signUp({
     required String email,
     required String password,
     String? fullName,
@@ -83,7 +90,22 @@ class AuthApi {
           }),
         )
         .timeout(timeout);
-    return _parseSession(res);
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      _checkError(res); // never returns
+    }
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+
+    if (body['verification_required'] == true) {
+      return (
+        session: null,
+        user: KoolbaseUser.fromJson(body['user'] as Map<String, dynamic>),
+      );
+    }
+
+    final session = AuthSession.fromJson(body);
+    return (session: session, user: session.user);
   }
 
   Future<AuthSession> login({
@@ -265,6 +287,14 @@ class AuthApi {
         throw const EmailAlreadyInUseException();
       case 'account_disabled':
         throw const UserDisabledException();
+      case 'contact_not_verified':
+        // Credentials were correct; the project requires a verified contact
+        // channel. Route the user to resend-verification, not to re-enter
+        // their password. Not added to the Apple/Google parsers: OAuth
+        // sign-in satisfies the requirement by definition (a provider
+        // attestation IS a verified contact), so the server never emits this
+        // code on those paths.
+        throw const ContactNotVerifiedException();
       case 'account_locked':
         throw const AccountLockedException();
       case 'invalid_refresh_token':

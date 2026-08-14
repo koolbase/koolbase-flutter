@@ -1,4 +1,47 @@
-# 10.5.0
+# 11.0.0
+
+## BREAKING — `signUp` returns `SignUpResult`, not `KoolbaseUser`
+
+A project can now require a verified contact channel before any session is
+issued (Koolbase dashboard → auth settings). When that is on, signup creates
+the account but returns NO session — the user must verify first. The old
+return type could not express that, and a null session reached
+`AuthSession.fromJson` and threw.
+
+Branch on `verificationRequired`; `user` is present either way:
+
+    final result = await Koolbase.auth.signUp(email: e, password: p);
+    if (result.verificationRequired) {
+      showVerifyScreen(result.user.email);   // account exists, NOT signed in
+    } else {
+      goHome(result.user);                    // signed in, session stored
+    }
+
+Migration from 10.x — `signUp` previously returned the user directly:
+
+    // before
+    final user = await Koolbase.auth.signUp(email: e, password: p);
+    goHome(user);
+
+    // after
+    final result = await Koolbase.auth.signUp(email: e, password: p);
+    goHome(result.user);
+
+If your project does not require verified contact — the default for every
+project that existed before this release — `verificationRequired` is always
+false and `result.user` behaves exactly as the old return value.
+
+## Added — `ContactNotVerifiedException`
+
+Thrown by `login` when the project requires a verified contact channel and the
+account has none. The credentials were CORRECT; the policy refused. Distinct
+from `InvalidCredentialsException` so apps can route to resend-verification
+rather than telling the user to re-check a password that was right.
+
+A verified email, a verified phone, or a federated provider identity all
+satisfy the requirement — OAuth and phone sign-in are unaffected.
+
+## 10.5.0
 
 ## Added — KoolbaseCollectionGrid
 
