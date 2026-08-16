@@ -1,5 +1,13 @@
+# 11.1.1
 
-# 11.1.0
+- Offline writes now refuse with `KoolbaseUnauthenticatedException` when no
+  user is signed in, instead of enqueueing under a null owner. A null-owner
+  queue row is invisible to every per-user read and replay — the write
+  neither fails nor succeeds; it vanishes. Found on device as a parked
+  ticket that never reached the server. Signed-in offline behavior is
+  unchanged. Mirrors the React Native SDK's fix of the same bug.
+
+## 11.1.0
 
 - `KoolbaseQuery.get()` gains `fresh: true` — skips the cache and returns
   the network's answer directly. Required for read-after-write (verifying

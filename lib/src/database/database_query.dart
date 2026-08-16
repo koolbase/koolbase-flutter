@@ -614,6 +614,13 @@ class KoolbaseDocRef {
       throw const KoolbaseOfflineBaselineUnavailableException(
           'This record must be read at least once before it can be updated offline.');
     }
+    // Signed out and offline: refuse rather than file an orphaned write —
+    // a null-owner queue row is invisible to every per-user read and replay.
+    if (_userId == null) {
+      throw const KoolbaseUnauthenticatedException(
+        'Signed out and offline — this change cannot be queued for sync.',
+      );
+    }
     await _writeQueue!.enqueue(
       collection: collection,
       operation: 'update',
@@ -646,6 +653,13 @@ class KoolbaseDocRef {
     if (baseline == null || collection == null) {
       throw const KoolbaseOfflineBaselineUnavailableException(
           'This record must be read at least once before it can be deleted offline.');
+    }
+    // Signed out and offline: refuse rather than file an orphaned write —
+    // a null-owner queue row is invisible to every per-user read and replay.
+    if (_userId == null) {
+      throw const KoolbaseUnauthenticatedException(
+        'Signed out and offline — this change cannot be queued for sync.',
+      );
     }
     await _writeQueue!.enqueue(
       collection: collection,

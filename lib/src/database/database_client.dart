@@ -438,6 +438,21 @@ class KoolbaseDatabaseClient {
 
       // Genuine network/timeout failure — queue the write for later sync.
       if (_writeQueue != null) {
+        // Signed out and offline: refusing is the only honest response.
+        // Enqueueing under a null user files real work into a bucket no
+        // signed-in read or replay ever consults — an orphaned write, found
+        // on device as a parked ticket that never reached the server and was
+        // invisible to pendingWrites() and conflicts() alike.
+        if (_userId == null) {
+          throw const KoolbaseUnauthenticatedException(
+            'Signed out and offline — this change cannot be queued for sync.',
+          );
+        }
+        // Signed out and offline: refusing is the only honest response.
+        // Enqueueing under a null user files real work into a bucket no
+        // signed-in read or replay ever consults — an orphaned write, found
+        // on device as a parked ticket that never reached the server and was
+        // invisible to pendingWrites() and conflicts() alike.
         debugPrint('[Koolbase] Offline insert queued for $collection');
         final tempId = _uuid.v4();
 
