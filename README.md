@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^11.0.0
+     koolbase_flutter: ^11.1.0
 ```
 
 4. Initialize before `runApp()`:
@@ -214,6 +214,23 @@ including another screen — refreshes every open query on that collection.
 
 `result.isFromCache` tells you which kind of result you have, if a screen
 wants to distinguish the two.
+
+### Fresh reads
+
+`get()` is cache-first by design: a cached answer returns instantly, and the
+network's answer follows on `.stream`. That's the right default for screens —
+and the wrong tool for verifying a write you just made, since the cached
+answer is by definition the state from *before* your write. When you need the
+network's answer directly — read-after-write, reconciliation, or feeding a
+local projection that must only ingest server-confirmed data — pass `fresh`:
+
+```dart
+final result = await Koolbase.db.collection('stock').get(fresh: true);
+// result.isFromCache is always false: this is the server's current answer.
+```
+
+A fresh read still updates the cache on its way through, so cache-first
+callers benefit from it rather than fighting it.
 
 ### Offline writes
 

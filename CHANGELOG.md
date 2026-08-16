@@ -1,4 +1,14 @@
-# 11.0.0
+
+# 11.1.0
+
+- `KoolbaseQuery.get()` gains `fresh: true` — skips the cache and returns
+  the network's answer directly. Required for read-after-write (verifying
+  the effect of a write you just made), reconciliation, and local
+  projections that must only ingest server-provenance data. A fresh read
+  still updates the cache, so SWR callers benefit from it. Plain `get()`
+  behavior is unchanged.
+
+## 11.0.0
 
 ## BREAKING — `signUp` returns `SignUpResult`, not `KoolbaseUser`
 

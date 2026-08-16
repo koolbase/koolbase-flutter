@@ -42,7 +42,7 @@ class _FakeQuery extends KoolbaseQuery {
   int listens = 0;
 
   @override
-  Future<QueryResult> get() => onGet();
+  Future<QueryResult> get({bool fresh = false}) => onGet();
 
   @override
   Stream<QueryResult> get stream {

@@ -198,12 +198,25 @@ class KoolbaseQuery {
   ///
   /// Returns cached data immediately if available, then refreshes
   /// from the network in the background and emits via [stream].
-  Future<QueryResult> get() async {
+  /// Runs the query.
+  ///
+  /// By default this is cache-first (SWR): a cached result returns
+  /// immediately with [QueryResult.isFromCache] true, and a background
+  /// network refresh lands in [stream]. Pass [fresh] to skip the cache and
+  /// return the network's answer directly — required for read-after-write
+  /// (verifying the effect of a write you just made), reconciliation, and
+  /// any local projection that must only ingest server-provenance data.
+  /// A fresh read still updates the cache, so SWR callers benefit from it.
+  Future<QueryResult> get({bool fresh = false}) async {
     final cacheKey = CacheStore.buildKey(
       collectionName,
       _filters,
       _userId,
     );
+
+    if (fresh) {
+      return await _fetchFromNetwork(cacheKey);
+    }
 
     // 1. Try cache first
     if (_cacheStore != null) {
