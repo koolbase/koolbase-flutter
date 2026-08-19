@@ -5,7 +5,7 @@
 
 Flutter SDK for [Koolbase](https://koolbase.com) — Backend as a Service built for mobile developers.
 
-Auth, database, storage, realtime, functions, feature flags, remote config, version enforcement, code push, server-driven UI, logic engine, analytics, and cloud messaging — one SDK, one `initialize()` call.
+Auth, database, storage, realtime, functions, feature flags, remote config, version enforcement, code push, server-driven UI, logic engine, analytics, cloud messaging, and fiscalization — one SDK, one `initialize()` call.
 
 ---
 
@@ -963,6 +963,49 @@ Token refresh is transparent — the SDK reads the current token fresh on every 
 
 ---
 
+## Fiscal
+
+Authority-grade sales recording: every transaction gets a gapless fiscal
+number, is sealed as an immutable document, and is delivered to the tax
+authority — which returns the certification a legal receipt must carry.
+Live for Ghana (GRA E-VAT); the reference adapter runs the same machine
+anywhere an authority integration doesn't exist yet.
+
+```dart
+final result = await Koolbase.fiscal.submit(
+  deviceId: registerId,
+  clientRef: sale.id,          // YOUR id — makes retries safe
+  payload: salePayload,        // shaped by the device's jurisdiction
+);
+
+if (result.isFiscalized) {
+  final cert = result.certification;         // may be null for some kinds
+  final qrUrl = cert?['qr_code'] as String?; // render as a QR image
+} else if (result.isPending) {
+  // The authority is still answering — poll.
+  final intent = await Koolbase.fiscal.status(
+    deviceId: registerId, clientRef: sale.id);
+} else if (result.status == FiscalStatus.blocked) {
+  // Nothing was consumed — no fiscal number spent. Fix the cause
+  // (result.blockedReason) and resubmit the same clientRef.
+}
+```
+
+The `clientRef` is idempotent: the same reference always returns the same
+intent, never a second fiscal number. A timed-out submit may still have
+fiscalized — retrying or polling both converge on the truth.
+
+Fiscal deliberately does **not** use the offline write queue. A register
+needs a real answer or an explicit "not yet"; silently queueing would let a
+cashier believe a receipt is legal when the authority has never seen it.
+For offline-capable point of sale: record the commercial sale locally, then
+submit fiscally on reconnect — the idempotent `clientRef` makes that replay
+a single call.
+
+Merchants, credentials and registers are set up server-side once (see the
+[fiscal docs](https://docs.koolbase.com/fiscal/overview)); the app only ever
+calls `submit()` and `status()`.
+
 ## Feature Flags & Remote Config
 
 ```dart
@@ -1315,6 +1358,7 @@ Safe in any state, including with no session at all.
 - Logic engine (conditional flows as data, updatable OTA)
 - Analytics (DAU/WAU/MAU, funnels, retention)
 - Cloud Messaging (FCM token registration; server-initiated send)
+- Fiscalization — gapless numbering, sealed documents, and tax-authority certification (Ghana GRA E-VAT live)
 
 ---
 

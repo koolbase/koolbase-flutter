@@ -1,3 +1,29 @@
+# 11.2.0
+- `Koolbase.fiscal` — authority-grade sales recording. `submit()` records a
+  transaction and drives fiscalization; `status()` follows it and returns the
+  certification the tax authority granted (in Ghana: the GRA signature,
+  receipt number and verification QR a compliant receipt must carry). Live
+  for Ghana's GRA E-VAT; the reference adapter runs the same machine —
+  gapless numbering, sealed immutable documents, full evidence — anywhere an
+  authority integration doesn't exist yet.
+- The `clientRef` you pass is idempotent: resubmitting the same reference
+  always returns the same intent, never a second fiscal number. A timed-out
+  submit may still have fiscalized, so retrying or polling both converge on
+  the truth — the exception message says so rather than leaving you guessing.
+- Fiscal deliberately does NOT use the offline write queue. A register needs
+  a real answer or an explicit "not yet"; silently queueing a fiscalization
+  would let a cashier believe a receipt is legal when the authority has never
+  seen it. Offline-capable point of sale should record the commercial sale
+  locally and submit fiscally on reconnect — the idempotent `clientRef` makes
+  that replay a single call.
+- `FiscalIntentResult` exposes `status`, `numbers`, `blockedReason`,
+  `certification`, `isFiscalized` and `isPending`. A `blocked` result means
+  nothing was consumed — no fiscal number was spent — so fixing the cause and
+  resubmitting the same reference resumes that exact transaction. A
+  `fiscalized` result with a null certification is valid for document kinds
+  the authority acknowledges without certifying (purchase records); it is
+  never an error.
+
 # 11.1.1
 
 - Offline writes now refuse with `KoolbaseUnauthenticatedException` when no

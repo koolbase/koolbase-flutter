@@ -1,3 +1,7 @@
+// ignore_for_file: avoid_print
+//
+// Live proof / demo: reads a certified invoice and submits a new one.
+// Run: dart run --define=PK_KEY=\$PK_KEY example/fiscal_proof.dart
 import 'package:koolbase_flutter/src/fiscal/fiscal_client.dart';
 
 Future<void> main() async {
