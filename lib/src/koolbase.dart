@@ -273,6 +273,7 @@ class Koolbase {
       _analytics = KoolbaseAnalyticsClient(
         baseUrl: config.baseUrl,
         apiKey: config.publicKey,
+        currentUserId: () => _auth?.currentUser?.id,
       );
       await _analytics!.init();
     }

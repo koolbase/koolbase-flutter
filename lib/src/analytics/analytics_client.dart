@@ -74,9 +74,19 @@ class KoolbaseAnalyticsClient {
   Timer? _flushTimer;
   bool _initialized = false;
 
+  /// Resolves the currently signed-in user so events carry identity
+  /// without the app remembering to call [identify].
+  ///
+  /// Requiring a manual call guaranteed silent failure: nothing errors
+  /// when it is missing, so every event lands anonymous and retention,
+  /// funnels and per-user analysis are quietly worthless. The SDK
+  /// already knows who is signed in — it should say so.
+  final String? Function()? currentUserId;
+
   KoolbaseAnalyticsClient({
     required this.baseUrl,
     required this.apiKey,
+    this.currentUserId,
   });
 
   // ─── Init ─────────────────────────────────────────────────────────────────
@@ -109,7 +119,10 @@ class KoolbaseAnalyticsClient {
 
     final event = KoolbaseEvent(
       deviceId: _deviceId,
-      userId: _userId,
+      // An explicit identify() wins — apps with their own identity
+      // system stay in control — otherwise the signed-in Koolbase user
+      // is attached automatically.
+      userId: _userId ?? currentUserId?.call(),
       environmentId: _environmentId,
       eventName: eventName,
       properties: properties ?? {},
@@ -148,6 +161,15 @@ class KoolbaseAnalyticsClient {
   }
 
   /// Identify authenticated user
+  /// Clear an explicit [identify] override and fall back to the
+  /// signed-in Koolbase user. Call on sign-out if you use identify()
+  /// with your own identity system — otherwise events keep carrying the
+  /// previous user.
+  void clearIdentity() {
+    _userId = null;
+    _userProperties.clear();
+  }
+
   void identify(String userId) {
     _userId = userId;
     debugPrint('$_tag identified user: $userId');

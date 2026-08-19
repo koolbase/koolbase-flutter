@@ -1,3 +1,14 @@
+# 11.2.1
+- Analytics events now carry the signed-in user automatically. `identify()`
+  existed, but nothing errored when an app never called it — so every event
+  landed anonymous, and retention, funnels and any per-user analysis were
+  quietly worthless. Found by looking at a real project: 53 events, 8
+  registered users, zero events carrying a user id. The SDK already knows who
+  is signed in; it should say so.
+- `identify()` still wins where an app has its own identity system, and
+  `clearIdentity()` releases that override on sign-out — without it, events
+  keep carrying the previous user after they leave.
+
 # 11.2.0
 - `Koolbase.fiscal` — authority-grade sales recording. `submit()` records a
   transaction and drives fiscalization; `status()` follows it and returns the
