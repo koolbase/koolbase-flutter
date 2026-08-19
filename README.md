@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^11.1.1
+     koolbase_flutter: ^11.2.0
 ```
 
 4. Initialize before `runApp()`:
@@ -336,7 +336,6 @@ under another's name. Sign back in as the same user and they sync normally.
 > replayed. Records cached before 9.8.0 have no revision, so they cannot be
 > edited offline until they are read again. Neither is lost; both are logged when
 > skipped.
-
 
 #### Observing the queue
 
