@@ -122,20 +122,25 @@ class KoolbaseFiscalClient {
       throw KoolbaseUnauthenticatedException(
           'fiscal: unauthenticated (${resp.statusCode})');
     }
-    final Map<String, dynamic> body;
+    return decodeFiscalResponse(resp.statusCode, resp.body);
+  }
+
+  /// Response classification, separated for testability: status+body
+  /// in, result or [FiscalException] out. Auth handling stays in
+  /// [_decode] (it needs the session hook).
+  static FiscalIntentResult decodeFiscalResponse(int statusCode, String body) {
+    final Map<String, dynamic> parsed;
     try {
-      body = jsonDecode(resp.body) as Map<String, dynamic>;
+      parsed = jsonDecode(body) as Map<String, dynamic>;
     } catch (_) {
-      throw FiscalException(
-          'fiscal: unreadable response (${resp.statusCode})',
-          statusCode: resp.statusCode);
+      throw FiscalException('fiscal: unreadable response ($statusCode)',
+          statusCode: statusCode);
     }
-    if (resp.statusCode >= 200 && resp.statusCode < 300 ||
-        resp.statusCode == 202) {
-      return FiscalIntentResult.fromJson(body);
+    if (statusCode >= 200 && statusCode < 300 || statusCode == 202) {
+      return FiscalIntentResult.fromJson(parsed);
     }
     throw FiscalException(
-        body['error'] as String? ?? 'fiscal: request failed',
-        statusCode: resp.statusCode);
+        parsed['error'] as String? ?? 'fiscal: request failed',
+        statusCode: statusCode);
   }
 }
