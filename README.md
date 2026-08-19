@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^11.2.0
+     koolbase_flutter: ^11.2.1
 ```
 
 4. Initialize before `runApp()`:
@@ -1176,8 +1176,10 @@ Koolbase.analytics.track('purchase', properties: {
   'currency': 'GHS',
 });
 
-// User identity
-Koolbase.analytics.identify(user.id);
+// User identity — events already carry the signed-in Koolbase user
+// automatically. Only call identify() if you have your own identity
+// system and want to override it.
+Koolbase.analytics.identify(externalUserId);
 Koolbase.analytics.setUserProperty('plan', 'pro');
 
 // On logout

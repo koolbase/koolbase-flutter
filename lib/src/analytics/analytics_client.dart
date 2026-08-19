@@ -161,21 +161,15 @@ class KoolbaseAnalyticsClient {
   }
 
   /// Identify authenticated user
-  /// Clear an explicit [identify] override and fall back to the
-  /// signed-in Koolbase user. Call on sign-out if you use identify()
-  /// with your own identity system — otherwise events keep carrying the
-  /// previous user.
-  void clearIdentity() {
-    _userId = null;
-    _userProperties.clear();
-  }
-
   void identify(String userId) {
     _userId = userId;
     debugPrint('$_tag identified user: $userId');
   }
 
   /// Clear user identity on logout
+  /// Clear the user identity and properties. Releases an explicit
+  /// [identify] override, after which events fall back to the
+  /// signed-in Koolbase user (or none, once signed out).
   void reset() {
     _userId = null;
     _userProperties.clear();

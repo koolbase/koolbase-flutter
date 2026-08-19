@@ -5,9 +5,9 @@
   quietly worthless. Found by looking at a real project: 53 events, 8
   registered users, zero events carrying a user id. The SDK already knows who
   is signed in; it should say so.
-- `identify()` still wins where an app has its own identity system, and
-  `clearIdentity()` releases that override on sign-out — without it, events
-  keep carrying the previous user after they leave.
+- `identify()` still wins where an app has its own identity system, and the
+  existing `reset()` releases that override — without it, events keep carrying
+  the previous user after they sign out.
 
 # 11.2.0
 - `Koolbase.fiscal` — authority-grade sales recording. `submit()` records a
