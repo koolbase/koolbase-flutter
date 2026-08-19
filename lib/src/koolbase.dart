@@ -20,6 +20,8 @@ export 'code_push/flow_models.dart' show FlowResult;
 export 'code_push/bundle_model.dart';
 export 'code_push/runtime_override.dart';
 import 'functions/functions_client.dart';
+import 'fiscal/fiscal_client.dart';
+export 'fiscal/fiscal_client.dart';
 import 'storage/storage_client.dart';
 import 'database/database_client.dart';
 import 'database/offline/local_database.dart';
@@ -106,6 +108,7 @@ class Koolbase {
   static KoolbaseDatabaseClient? _database;
   static KoolbaseRealtimeClient? _realtime;
   static KoolbaseFunctionsClient? _functions;
+  static KoolbaseFiscalClient? _fiscal;
   static KoolbaseLocalDatabase? _localDb;
   static SyncEngine? _syncEngine;
   static bool _initialized = false;
@@ -228,6 +231,15 @@ class Koolbase {
       onSessionExpired: () async => _auth?.clearStoredSession(),
     );
 
+    // Initialize fiscal client
+    _fiscal = KoolbaseFiscalClient(
+      baseUrl: config.baseUrl,
+      publicKey: config.publicKey,
+      userAccessTokenProvider: () =>
+          _auth?.validAccessToken() ?? Future<String?>.value(null),
+      onSessionExpired: () async => _auth?.clearStoredSession(),
+    );
+
     // Initialize code push client
     _codePush = KoolbaseCodePushClient(
       baseUrl: config.baseUrl,
@@ -313,6 +325,12 @@ class Koolbase {
   static KoolbaseFunctionsClient get functions {
     _ensureInitialized();
     return _functions!;
+  }
+
+  /// Access the fiscal client — authority-grade sales recording.
+  static KoolbaseFiscalClient get fiscal {
+    _ensureInitialized();
+    return _fiscal!;
   }
 
   /// Access the code push client
