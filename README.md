@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^11.2.1
+     koolbase_flutter: ^11.3.0
 ```
 
 4. Initialize before `runApp()`:
@@ -46,8 +46,20 @@ That's it. Every feature below is now available via `Koolbase.*`.
 Email + password, Apple Sign-In, Google Sign-In, and phone + OTP — out of the box.
 
 ```dart
-// Register
-await Koolbase.auth.register(email: 'user@example.com', password: 'password');
+// Sign up. Returns a result, not a user — read it before routing.
+final signUp = await Koolbase.auth.signUp(
+  email: 'user@example.com',
+  password: 'password',
+  fullName: 'Ada Lovelace', // optional
+);
+if (signUp.verificationRequired) {
+  // The account exists, but this project requires a verified contact channel
+  // and NO session was issued. Do not treat the user as signed in — route to
+  // "check your email" instead, or every authenticated call will fail.
+  await routeToVerifyContact(signUp.user.email);
+} else {
+  await routeToApp(); // signed in
+}
 
 // Login
 await Koolbase.auth.login(email: 'user@example.com', password: 'password');
@@ -76,6 +88,41 @@ final subscription = Koolbase.auth.authStateChanges.listen((user) {
   print(user != null ? 'signed in' : 'signed out');
 });
 ```
+
+### Handling errors
+
+Every failure the SDK raises normalizes to one type. Catch anything, branch on
+`code` — you never need to know which of the SDK's exception classes it was.
+
+```dart
+try {
+  await Koolbase.db.collection('orders').insert({'total': 42});
+} catch (e) {
+  final err = KoolbaseError.from(e);
+  switch (err.code) {
+    case KoolbaseErrorCode.unauthorized:
+      // The SDK already cleared the session — routing to sign-in is safe,
+      // and is the only correct response.
+      await routeToSignIn();
+    case KoolbaseErrorCode.validation:
+      showFieldError(err.details?['field'] as String?);
+    case KoolbaseErrorCode.network:
+      showRetry(); // err.retryable is true
+    default:
+      showSomethingWentWrong();
+  }
+  log(err.message); // diagnostics go to the log, not the screen
+}
+```
+
+`KoolbaseError.message` is **developer diagnostic data — never show it to an
+end user.** It is English-only, it is not stable API, and it names formats and
+infrastructure ("Phone number must be in E.164 format", "SMS provider not
+configured for this project"). Map `code` to your own product copy, which is
+also where localisation belongs.
+
+The typed exceptions are unchanged and still catchable directly if you prefer
+`on KoolbaseConflictException catch (e)`. `KoolbaseError` sits above them.
 
 ### OAuth — Apple
 

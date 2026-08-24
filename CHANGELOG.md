@@ -1,4 +1,42 @@
-# 11.2.1
+# 11.3.0
+
+- `KoolbaseError` — one canonical, platform-wide error type. Catch anything,
+  call `KoolbaseError.from(e)`, branch on `code`. The 44 typed exceptions stay
+  exactly as they are; this sits above them, so an app that wants to branch on
+  what a failure MEANS no longer has to know the SDK's internal taxonomy.
+- Found by measuring rather than guessing. Across 14,732 lines, four places in
+  the whole SDK catch a transport failure — so a database read that loses
+  connection has been throwing a raw `SocketException` straight through to the
+  caller. On a phone with patchy signal that is the most common failure there
+  is, and it was the one failure with no typed home. `KoolbaseError.from` maps
+  `SocketException`, `TimeoutException` and `ClientException` to
+  `KoolbaseErrorCode.network`, which makes it actionable for the first time.
+- Normalization is total. Anything at all — an unmapped server code, a bare
+  string, an integer — becomes a `KoolbaseError` rather than escaping. This
+  runs in error paths, where a second failure has nowhere to go.
+- `KoolbaseErrorCode` has eleven members, and the bar for adding one is that
+  an application could reasonably do something DIFFERENT because of it.
+  `rateLimited` exists because waiting is not retrying. `contactNotVerified`
+  exists because it routes to "resend verification", not "check your
+  password". Diagnostic distinctions that change nothing an app does stay in
+  `message` and `rawCode`, where they belong.
+- `retryable` is derived from `code`, not stored, so the two can never
+  disagree.
+- `details` carries structured context through normalization rather than
+  flattening it: the field that collided, the path that was taken, and — for a
+  revision mismatch — the server's current record, which is returned WITH the
+  refusal precisely so that deciding what to do next needs no second fetch.
+- **`message` is developer diagnostic data and must never be shown to an end
+  user.** It is English-only, it is not stable API, and it names formats and
+  infrastructure: "Phone number must be in E.164 format", "SMS provider not
+  configured for this project". Map `code` to your own product copy. That is
+  also the localisation boundary — your copy table translates, the SDK does
+  not.
+- Additive only. Nothing throws differently, no signature moved. Existing
+  `catch` clauses keep working unchanged.
+
+## 11.2.1
+
 - Analytics events now carry the signed-in user automatically. `identify()`
   existed, but nothing errored when an app never called it — so every event
   landed anonymous, and retention, funnels and any per-user analysis were
@@ -9,7 +47,8 @@
   existing `reset()` releases that override — without it, events keep carrying
   the previous user after they sign out.
 
-# 11.2.0
+## 11.2.0
+
 - `Koolbase.fiscal` — authority-grade sales recording. `submit()` records a
   transaction and drives fiscalization; `status()` follows it and returns the
   certification the tax authority granted (in Ghana: the GRA signature,
@@ -35,7 +74,7 @@
   the authority acknowledges without certifying (purchase records); it is
   never an error.
 
-# 11.1.1
+## 11.1.1
 
 - Offline writes now refuse with `KoolbaseUnauthenticatedException` when no
   user is signed in, instead of enqueueing under a null owner. A null-owner
