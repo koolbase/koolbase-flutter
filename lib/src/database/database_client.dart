@@ -535,6 +535,199 @@ class KoolbaseDatabaseClient {
     return KoolbaseUpsertResult(record: record, created: created);
   }
 
+  /// Update one record by id.
+  ///
+  /// Conditional BY DEFAULT. The write carries the revision the caller's copy
+  /// was read at, so the server refuses it if anything has moved since —
+  /// the difference between overwriting someone else's change and being told
+  /// about it. Three modes, in order of precedence:
+  ///
+  /// - [unconditional] true: send no revision, overwrite whatever is there.
+  /// - [expectedRevision] supplied: use exactly that.
+  /// - neither: use the cached revision, and REFUSE if there is none.
+  ///
+  /// That last rule is the point. Falling back to an unconditional write when
+  /// no revision is cached would make the guarantee "safe when convenient" --
+  /// and it would degrade precisely when the record was never read locally,
+  /// which is when a concurrent edit is most likely.
+  ///
+  /// [collection] is optional: a cached record already knows which collection
+  /// it belongs to, and a caller holding a record reference should not have to.
+  Future<KoolbaseRecord> update({
+    required String id,
+    required Map<String, dynamic> data,
+    String? collection,
+    int? expectedRevision,
+    bool unconditional = false,
+  }) async {
+    final cached = await _cacheStore?.getRecordWithCollection(id);
+    final col = collection ?? cached?.collection;
+    if (col == null) {
+      throw const KoolbaseDataException(
+        'Cannot resolve the collection for this record. Pass `collection`, or '
+        'read the record before updating it.',
+      );
+    }
+
+    int? revision;
+    if (!unconditional) {
+      revision = expectedRevision ?? await _cacheStore?.revisionFor(id);
+      if (revision == null) {
+        throw const KoolbaseDataException(
+          'No known revision for this record, so the update cannot be made '
+          'safely. Read the record first, pass `expectedRevision`, or set '
+          '`unconditional: true` to overwrite deliberately.',
+        );
+      }
+    }
+
+    try {
+      final res = await http
+          .patch(
+            Uri.parse('$baseUrl/v1/sdk/db/records/$id'),
+            headers: await _headers(),
+            body: jsonEncode({
+              'data': data,
+              if (revision != null) 'expected_revision': revision,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) {
+        throw await koolbaseDataErrorNotifying(res,
+            onSessionExpired: _onSessionExpired,
+            fallbackMessage: 'Update failed');
+      }
+      final record =
+          KoolbaseRecord.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+      await _cacheStore?.saveRecord(
+        record.id,
+        col,
+        record.data,
+        _userId,
+        revision: record.revision,
+      );
+      await _cacheStore?.invalidateCollection(col);
+      unawaited(refreshCollectionStreams(col));
+      return record;
+    } catch (e) {
+      // Server refused it: surface, never queue. Same rule as insert.
+      if (e is KoolbaseDataException) rethrow;
+      if (_writeQueue != null) {
+        if (_userId == null) {
+          throw const KoolbaseUnauthenticatedException(
+            'Signed out and offline — this change cannot be queued for sync.',
+          );
+        }
+        debugPrint('[Koolbase] Offline update queued for $col');
+        await _writeQueue!.enqueue(
+          collection: col,
+          operation: 'update',
+          payload: data,
+          recordId: id,
+          baseRevision: revision,
+          userId: _userId,
+        );
+        // Optimistic local state: the fields the caller changed, over what was
+        // cached. The revision is NOT advanced -- the server has not seen this
+        // yet, and replay still needs the baseline it was composed against.
+        final merged = {...?cached?.data, ...data};
+        await _cacheStore?.saveRecord(id, col, merged, _userId,
+            revision: revision);
+        await _cacheStore?.invalidateCollection(col);
+        unawaited(refreshCollectionStreams(col));
+        return KoolbaseRecord(
+          id: id,
+          collection: col,
+          createdBy: _userId,
+          data: merged,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+          revision: revision,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  /// Delete one record by id.
+  ///
+  /// Conditional by default, with the same three modes as [update]: a cached
+  /// revision protects the delete, an explicit one overrides it, and
+  /// [unconditional] opts out deliberately. A record that was never read
+  /// locally cannot be deleted safely, and refusing says so.
+  Future<void> delete({
+    required String id,
+    String? collection,
+    int? expectedRevision,
+    bool unconditional = false,
+  }) async {
+    final cached = await _cacheStore?.getRecordWithCollection(id);
+    final col = collection ?? cached?.collection;
+    if (col == null) {
+      throw const KoolbaseDataException(
+        'Cannot resolve the collection for this record. Pass `collection`, or '
+        'read the record before deleting it.',
+      );
+    }
+
+    int? revision;
+    if (!unconditional) {
+      revision = expectedRevision ?? await _cacheStore?.revisionFor(id);
+      if (revision == null) {
+        throw const KoolbaseDataException(
+          'No known revision for this record, so the delete cannot be made '
+          'safely. Read the record first, pass `expectedRevision`, or set '
+          '`unconditional: true` to delete deliberately.',
+        );
+      }
+    }
+
+    final query = revision == null ? '' : '?expected_revision=$revision';
+    try {
+      final res = await http
+          .delete(
+            Uri.parse('$baseUrl/v1/sdk/db/records/$id$query'),
+            headers: await _headers(),
+          )
+          .timeout(const Duration(seconds: 10));
+      // Already gone is what the caller asked for. Satisfied, not failed --
+      // the same reading the sync engine takes on replay.
+      if (res.statusCode != 204 && res.statusCode != 404) {
+        throw await koolbaseDataErrorNotifying(res,
+            onSessionExpired: _onSessionExpired,
+            fallbackMessage: 'Delete failed');
+      }
+      await _cacheStore?.deleteRecord(id);
+      await _cacheStore?.invalidateCollection(col);
+      unawaited(refreshCollectionStreams(col));
+    } catch (e) {
+      if (e is KoolbaseDataException) rethrow;
+      if (_writeQueue != null) {
+        if (_userId == null) {
+          throw const KoolbaseUnauthenticatedException(
+            'Signed out and offline — this change cannot be queued for sync.',
+          );
+        }
+        debugPrint('[Koolbase] Offline delete queued for $col');
+        await _writeQueue!.enqueue(
+          collection: col,
+          operation: 'delete',
+          payload: const {},
+          recordId: id,
+          baseRevision: revision,
+          userId: _userId,
+        );
+        // Gone locally straight away: the user asked for it, and the queue
+        // carries the intent to the server.
+        await _cacheStore?.deleteRecord(id);
+        await _cacheStore?.invalidateCollection(col);
+        unawaited(refreshCollectionStreams(col));
+        return;
+      }
+      rethrow;
+    }
+  }
+
   /// Bulk-delete every record in [collection] matching [filters].
   ///
   /// The server applies the collection's delete rule (scoping to the caller
