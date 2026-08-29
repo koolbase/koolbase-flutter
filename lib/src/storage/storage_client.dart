@@ -21,13 +21,28 @@ class KoolbaseStorageClient {
   /// call that happens not to touch the database.
   final Future<void> Function()? _onSessionExpired;
 
+  /// Supplies the project id learned from the bootstrap payload, or an
+  /// empty string while identity has not yet arrived (see
+  /// [KoolbaseStorageProjectIdentityException]).
+  final String Function()? _projectIdProvider;
+
+  /// Fire-and-forget nudge to refresh the bootstrap payload — called when
+  /// [publicUrlFor] finds identity missing, so a transient startup failure
+  /// heals within the session instead of waiting for the next scheduled
+  /// refresh.
+  final void Function()? _nudgeBootstrap;
+
   KoolbaseStorageClient({
     required this.baseUrl,
     required this.publicKey,
     Future<String?> Function()? accessTokenProvider,
     Future<void> Function()? onSessionExpired,
+    String Function()? projectIdProvider,
+    void Function()? nudgeBootstrap,
   })  : _accessTokenProvider = accessTokenProvider,
-        _onSessionExpired = onSessionExpired;
+        _onSessionExpired = onSessionExpired,
+        _projectIdProvider = projectIdProvider,
+        _nudgeBootstrap = nudgeBootstrap;
 
   /// Builds the error for a failed response and clears the session when the
   /// credentials were refused, before the exception reaches the caller.
@@ -257,6 +272,35 @@ class KoolbaseStorageClient {
 
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return data['url'] as String;
+  }
+
+  /// Build the stable public CDN URL for a file in a public bucket, using
+  /// the project identity the SDK learned at bootstrap — the normal runtime
+  /// form of [publicUrl], which needs no projectId argument.
+  ///
+  /// Throws [KoolbaseStorageProjectIdentityException] while identity is
+  /// unavailable (first bootstrap has never completed — e.g. a fresh
+  /// install starting offline). The throw also nudges a background
+  /// bootstrap refresh, so a later call in the same session succeeds once
+  /// connectivity returns. This is a DIFFERENT state from a null public
+  /// URL on [KoolbaseObject.publicUrl]: null means the project is known
+  /// and the object simply has no public URL (private bucket).
+  String publicUrlFor({
+    required String bucket,
+    required String path,
+    KoolbaseImageTransform? transform,
+  }) {
+    final pid = _projectIdProvider?.call() ?? '';
+    if (pid.isEmpty) {
+      _nudgeBootstrap?.call();
+      throw const KoolbaseStorageProjectIdentityException();
+    }
+    return publicUrl(
+      projectId: pid,
+      bucket: bucket,
+      path: path,
+      transform: transform,
+    );
   }
 
   /// Build the stable public CDN URL for a file in a public bucket.

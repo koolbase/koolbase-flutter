@@ -1,3 +1,23 @@
+# 11.4.0
+- `Koolbase.storage.publicUrlFor(bucket:, path:, transform:)` — the runtime
+  form of `publicUrl` that needs no `projectId` argument. The SDK learns its
+  project identity from the bootstrap payload it already fetches and caches;
+  apps never carry or compose project identity themselves.
+- `KoolbaseStorageProjectIdentityException` (code
+  `project_identity_unavailable`) — thrown while identity has not yet
+  arrived, i.e. a fresh install that has never completed a bootstrap.
+  Deliberately distinct from a `null` public URL, which means the project is
+  known and the object simply has no public URL (private bucket). The throw
+  also nudges a background bootstrap refresh, so the session heals once
+  connectivity returns — no restart needed.
+- Bootstrap payload carries `project_id` (server-side from this release) and
+  the update gate compares it explicitly: identity is outside the payload
+  hash (it can never change), so version comparison alone would have
+  discarded the first identity-bearing payload on apps with unchanged
+  flags/config.
+- The static `publicUrl(projectId:, ...)` is unchanged — still the right
+  tool for build-time URL generation where the caller holds the id.
+
 # 11.3.0
 
 - `KoolbaseError` — one canonical, platform-wide error type. Catch anything,

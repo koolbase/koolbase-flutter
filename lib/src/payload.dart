@@ -1,12 +1,19 @@
 /// The full bootstrap payload returned by the Koolbase API.
 class KoolbasePayload {
   final String payloadVersion;
+
+  /// The project this environment belongs to. Empty when the server
+  /// predates identity metadata or the cached payload was written by an
+  /// older SDK; storage public-URL construction requires it and throws
+  /// [KoolbaseStorageProjectIdentityException] while it is unavailable.
+  final String projectId;
   final Map<String, KoolbaseFlag> flags;
   final Map<String, dynamic> config;
   final KoolbaseVersionPolicy version;
 
   const KoolbasePayload({
     required this.payloadVersion,
+    this.projectId = '',
     required this.flags,
     required this.config,
     required this.version,
@@ -19,6 +26,7 @@ class KoolbasePayload {
 
     return KoolbasePayload(
       payloadVersion: json['payload_version'] as String? ?? '',
+      projectId: json['project_id'] as String? ?? '',
       flags: rawFlags.map(
         (key, value) => MapEntry(
           key,
@@ -32,6 +40,7 @@ class KoolbasePayload {
 
   Map<String, dynamic> toJson() => {
         'payload_version': payloadVersion,
+        'project_id': projectId,
         'flags': flags.map((k, v) => MapEntry(k, v.toJson())),
         'config': config,
         'version': version.toJson(),

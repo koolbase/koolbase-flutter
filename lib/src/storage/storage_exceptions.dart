@@ -18,6 +18,29 @@ class KoolbaseStorageException extends KoolbaseException {
   const KoolbaseStorageException(super.message, {super.code});
 }
 
+/// Thrown by [KoolbaseStorageClient.publicUrlFor] when the SDK has not yet
+/// learned which project it belongs to. Project identity arrives with the
+/// bootstrap payload (and persists in its cache); it is unavailable when the
+/// very first bootstrap has not completed — a fresh install starting
+/// offline — or when the server predates identity metadata.
+///
+/// This is a DIFFERENT state from a `null` public URL: null means the
+/// project is known but the object cannot have a public URL (private
+/// bucket). Identity-unavailable is transient and heals on the next
+/// successful bootstrap refresh, which calling the method also nudges.
+///
+/// Stable [code]: `project_identity_unavailable`.
+class KoolbaseStorageProjectIdentityException
+    extends KoolbaseStorageException {
+  const KoolbaseStorageProjectIdentityException()
+      : super(
+          'The SDK has not yet learned its project identity — it arrives '
+          'with the first successful bootstrap. Retry after connectivity '
+          'is available.',
+          code: 'project_identity_unavailable',
+        );
+}
+
 /// Thrown when an upload is rejected because an object already exists at
 /// the requested path — the server responds with 409 Conflict and code
 /// `path_conflict`. Catch this to give the user an "overwrite this file?"

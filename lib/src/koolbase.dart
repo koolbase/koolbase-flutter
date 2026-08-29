@@ -220,6 +220,13 @@ class Koolbase {
       // A rejected credential met during an upload is the same rejection as one
       // met during a query: the session is gone for every surface at once.
       onSessionExpired: () async => _auth?.clearStoredSession(),
+      // Identity arrives with the bootstrap payload; empty until then.
+      projectIdProvider: () => _client._payload.projectId,
+      // A missing-identity throw nudges a refresh so the session heals
+      // without waiting for the next scheduled poll. Unawaited on purpose.
+      nudgeBootstrap: () {
+        _client._fetchAndUpdate();
+      },
     );
 
     // Initialize functions client
@@ -528,7 +535,12 @@ class Koolbase {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
         final freshPayload = KoolbasePayload.fromJson(json);
 
-        if (freshPayload.payloadVersion != _payload.payloadVersion) {
+        // project_id is deliberately outside the payload hash (it can never
+        // change, so it must not churn payload_version) -- which means the
+        // version gate alone would DISCARD the first payload that carries
+        // identity when flags/config are unchanged. Compare it explicitly.
+        if (freshPayload.payloadVersion != _payload.payloadVersion ||
+            freshPayload.projectId != _payload.projectId) {
           _payload = freshPayload;
           await KoolbaseCache.save(freshPayload);
           debugPrint(

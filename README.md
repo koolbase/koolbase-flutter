@@ -19,7 +19,7 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^11.3.0
+     koolbase_flutter: ^11.4.0
 ```
 
 4. Initialize before `runApp()`:
@@ -673,6 +673,18 @@ For files in public buckets, you can construct the stable CDN URL directly — n
 network call, no expiry, embeddable anywhere a browser fetches a URL.
 
 ```dart
+// The normal runtime form (v11.4+): no projectId needed -- the SDK learns
+// its project identity from the bootstrap it already performs.
+final url = Koolbase.storage.publicUrlFor(
+  bucket: 'avatars',
+  path: 'user-123.jpg',
+  transform: const KoolbaseImageTransform(width: 200, height: 200),
+);
+// Throws KoolbaseStorageProjectIdentityException if the very first
+// bootstrap has never completed (fresh install, offline start) -- a
+// different state from null on obj.publicUrl, which means "private
+// bucket". The throw nudges a refresh, so it heals once online.
+
 // From a KoolbaseObject you already have (e.g. from upload() or another read)
 final obj = result.object;
 final url = obj.publicUrl('avatars');
