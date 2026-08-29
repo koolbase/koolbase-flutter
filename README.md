@@ -231,10 +231,10 @@ final result = await Koolbase.db
     .get();
 
 // Update
-await Koolbase.db.collection('posts').doc('record-id').update({'title': 'Updated'});
+await Koolbase.db.doc('record-id').update({'title': 'Updated'});
 
 // Delete
-await Koolbase.db.collection('posts').doc('record-id').delete();
+await Koolbase.db.doc('record-id').delete();
 ```
 
 ### Live queries
