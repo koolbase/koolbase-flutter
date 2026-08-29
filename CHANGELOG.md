@@ -1,4 +1,5 @@
 # 11.4.0
+
 - `Koolbase.storage.publicUrlFor(bucket:, path:, transform:)` — the runtime
   form of `publicUrl` that needs no `projectId` argument. The SDK learns its
   project identity from the bootstrap payload it already fetches and caches;
@@ -18,7 +19,7 @@
 - The static `publicUrl(projectId:, ...)` is unchanged — still the right
   tool for build-time URL generation where the caller holds the id.
 
-# 11.3.0
+## 11.3.0
 
 - `KoolbaseError` — one canonical, platform-wide error type. Catch anything,
   call `KoolbaseError.from(e)`, branch on `code`. The 44 typed exceptions stay
