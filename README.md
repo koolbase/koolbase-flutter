@@ -7,6 +7,11 @@ Flutter SDK for [Koolbase](https://koolbase.com) — Backend as a Service built 
 
 Auth, database, storage, realtime, functions, feature flags, remote config, version enforcement, code push, server-driven UI, logic engine, analytics, cloud messaging, and fiscalization — one SDK, one `initialize()` call.
 
+**Platforms: Android and iOS.** Not Flutter Web, not desktop — and
+deliberately so. Code push, OTA updates, offline-first sync and version
+enforcement are what this SDK is for, and none of them exist in a browser.
+For browser apps, use the Koolbase JS SDK instead.
+
 ---
 
 ## Get started in 2 minutes

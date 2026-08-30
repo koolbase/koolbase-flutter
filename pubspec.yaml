@@ -6,6 +6,15 @@ repository: https://github.com/kennedyowusu/koolbase_flutter
 environment:
   sdk: ">=3.0.0 <4.0.0"
   flutter: ">=3.10.0"
+
+# Declared, not inferred. Koolbase is a MOBILE backend: code push, OTA,
+# offline-first and version enforcement are the product, and none of them
+# exist in a browser or on a desktop. Browser work belongs to the separate
+# JS SDK. Without this block pub.dev guesses, and a developer discovers the
+# boundary as a build failure instead of a badge.
+platforms:
+  android:
+  ios:
 dependencies:
   flutter:
     sdk: flutter
