@@ -194,6 +194,17 @@ class KoolbaseLocalDatabase extends _$KoolbaseLocalDatabase {
       );
 
   static QueryExecutor _openConnection() {
-    return driftDatabase(name: 'koolbase_offline');
+    return driftDatabase(
+      name: 'koolbase_offline',
+      // Web needs the sqlite3 wasm module and the drift worker served
+      // alongside the app; without them drift refuses to open at all
+      // ("the `web` parameter needs to be set"), which took the whole SDK
+      // down on Flutter Web. The relative uris resolve against the app's
+      // web/ folder -- an app targeting web must ship both files there.
+      web: DriftWebOptions(
+        sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+        driftWorker: Uri.parse('drift_worker.js'),
+      ),
+    );
   }
 }
