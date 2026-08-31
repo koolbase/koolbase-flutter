@@ -1,3 +1,17 @@
+# 11.4.1
+- Flutter Web now REFUSES at `Koolbase.initialize` rather than starting a
+  client whose most important features silently do nothing. Code push, OTA
+  updates, offline-first sync and version enforcement have no browser
+  equivalent, so this SDK targets Android and iOS; the message points at the
+  JS SDK. The package began compiling for web in 11.4.0, which is precisely
+  why an explicit refusal became necessary — a working-looking client is
+  worse than a clear no.
+- `platforms:` is declared in the pubspec (android, ios) rather than inferred,
+  so pub.dev states the boundary instead of guessing at it.
+- `patch_client` is split by conditional export, and `local_database` passes
+  drift's web options. Both are what make the package compile off-device at
+  all; neither makes web a supported target.
+
 # 11.4.0
 
 - `Koolbase.storage.publicUrlFor(bucket:, path:, transform:)` — the runtime
