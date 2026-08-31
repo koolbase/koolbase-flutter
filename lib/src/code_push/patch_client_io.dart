@@ -37,6 +37,8 @@ class KoolbaseVmPatchClient {
   static const _tag = '[KoolbaseVmPatch]';
   static const _kCurrentPatch = 'koolbase_vm_current_patch';
   static const _kStagedPatch = 'koolbase_vm_staged_patch_number';
+  static const _kStagedPatchId = 'koolbase_vm_staged_patch_id';
+  static const _kCurrentPatchId = 'koolbase_vm_current_patch_id';
 
   Directory? _dir;
   bool _initialized = false;
@@ -310,6 +312,10 @@ class KoolbaseVmPatchClient {
         );
       } catch (e) {
         debugPrint('$_tag init failed silently: $e');
+        _postEvent('patch_failed', metadata: {
+          'reason': 'check_phase_exception',
+          'error': e.toString(),
+        });
       }
     });
   }
@@ -439,9 +445,14 @@ class KoolbaseVmPatchClient {
       switch (_iosBootOutcome) {
         case _IosBootOutcome.stagedApplied:
           if (marker != null) {
+            final stagedId = prefs.getString(_kStagedPatchId);
             await prefs.setInt(_kCurrentPatch, marker);
             await prefs.remove(_kStagedPatch);
-            _postEvent('patch_activated', patchNumber: marker);
+            if (stagedId != null) {
+              await prefs.setString(_kCurrentPatchId, stagedId);
+              await prefs.remove(_kStagedPatchId);
+            }
+            _postEvent('patch_activated', patchNumber: marker, patchId: stagedId);
             debugPrint(
                 '$_tag ios boot applied patch #$marker — current_patch=$marker');
           }
@@ -449,14 +460,19 @@ class KoolbaseVmPatchClient {
         case _IosBootOutcome.durableApplied:
           if (marker != null) {
             await prefs.remove(_kStagedPatch);
+            await prefs.remove(_kStagedPatchId);
             debugPrint(
                 '$_tag ios staged #$marker rejected — current_patch unchanged');
           }
           return;
         case _IosBootOutcome.baseBoot:
-          if (marker != null) await prefs.remove(_kStagedPatch);
+          if (marker != null) {
+            await prefs.remove(_kStagedPatch);
+            await prefs.remove(_kStagedPatchId);
+          }
           if ((prefs.getInt(_kCurrentPatch) ?? 0) != 0) {
             await prefs.setInt(_kCurrentPatch, 0);
+            await prefs.remove(_kCurrentPatchId);
             debugPrint('$_tag ios base boot — current_patch=0');
           }
           return;
@@ -468,16 +484,28 @@ class KoolbaseVmPatchClient {
     if (staged == null) {
       return; // nothing staged → durable patch persists untouched
     }
+    final stagedId = prefs.getString(_kStagedPatchId);
     final applied = _appliedFile(d);
     if (await applied.exists()) {
       // Engine promoted staged → applied: the new patch booted.
       await prefs.setInt(_kCurrentPatch, staged);
       await prefs.remove(_kStagedPatch);
+      if (stagedId != null) {
+        await prefs.setString(_kCurrentPatchId, stagedId);
+        await prefs.remove(_kStagedPatchId);
+      }
+      // This branch reported nothing until Aug 2026, so Android -- which is
+      // almost all real traffic -- never recorded a single activation.
+      _postEvent('patch_activated', patchNumber: staged, patchId: stagedId);
       debugPrint('$_tag engine applied patch #$staged — current_patch=$staged');
     } else {
       // Staged but no applied: engine did not apply it (e.g. verification
       // failed). Drop the stale staged marker; current_patch is unchanged.
       await prefs.remove(_kStagedPatch);
+      await prefs.remove(_kStagedPatchId);
+      _postEvent('patch_failed', patchNumber: staged, patchId: stagedId, metadata: {
+        'reason': 'engine_did_not_apply',
+      });
       debugPrint(
           '$_tag staged patch #$staged was not applied by engine — cleared');
     }
@@ -591,11 +619,26 @@ class KoolbaseVmPatchClient {
         await http.get(Uri.parse(url)).timeout(const Duration(seconds: 60));
     if (res.statusCode != 200) {
       debugPrint('$_tag download failed: ${res.statusCode}');
+      _postEvent('patch_failed',
+          patchNumber: patchNumber,
+          patchId: patch['patch_id'] as String?,
+          metadata: {
+        'reason': 'download_http_error',
+        'status_code': res.statusCode,
+      });
       return;
     }
     final bytes = res.bodyBytes;
     if (!_checksumOk(bytes, checksum)) {
       debugPrint('$_tag checksum mismatch — discarding');
+      _postEvent('patch_failed',
+          patchNumber: patchNumber,
+          patchId: patch['patch_id'] as String?,
+          metadata: {
+        'reason': 'checksum_mismatch',
+        'bytes_received': bytes.length,
+        'bytes_expected': patch['size_bytes'],
+      });
       return;
     }
     // Stage atomically: write .tmp then rename onto staged.kbpatch.
@@ -603,7 +646,9 @@ class KoolbaseVmPatchClient {
     await tmp.writeAsBytes(bytes, flush: true);
     await tmp.rename(_stagedFile(d).path);
     await prefs.setInt(_kStagedPatch, patchNumber);
-    _postEvent('patch_downloaded', patchNumber: patchNumber);
+    final patchId = patch['patch_id'] as String?;
+    if (patchId != null) await prefs.setString(_kStagedPatchId, patchId);
+    _postEvent('patch_downloaded', patchNumber: patchNumber, patchId: patchId);
     debugPrint(
         '$_tag patch #$patchNumber staged (${bytes.length} bytes) — applies next launch');
   }
@@ -620,12 +665,14 @@ class KoolbaseVmPatchClient {
   /// device outcomes (patch_downloaded / patch_activated / patch_failed)
   /// instead of inferring installs from patch_check_served. Never awaited
   /// on the boot path; failures are silent.
-  void _postEvent(String eventType, {int? patchNumber, Map<String, dynamic>? metadata}) {
+  void _postEvent(String eventType,
+      {int? patchNumber, String? patchId, Map<String, dynamic>? metadata}) {
     Future(() async {
       try {
         final body = <String, dynamic>{
           'device_id': await _deviceId(),
-          'app_version': '',
+          'app_version': await releaseVersion() ?? '',
+          if (patchId != null) 'patch_id': patchId,
           'platform': _platform(),
           'channel': channel,
           'event_type': eventType,
