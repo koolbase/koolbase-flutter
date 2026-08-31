@@ -1,3 +1,21 @@
+# 11.4.2
+- Device outcomes are now attributable. Every patch event the SDK sent omitted
+  `patch_id`, and the server only increments a patch's counters when that field
+  is present — so every download and activation ever reported landed in the
+  events table and moved no number. The staged patch id is now persisted
+  alongside the staged patch number and promoted on activation, so the id
+  survives the process boundary between downloading a patch and applying it.
+- Android now reports `patch_activated`. The reconcile branch that promotes a
+  staged patch on Android logged and returned without sending anything, so the
+  platform carrying almost all real traffic had never recorded a single
+  activation.
+- Failures are no longer silent. A download that returns a non-200, a checksum
+  mismatch, an engine that declines to apply a staged patch, and any exception
+  thrown in the background check phase each now post `patch_failed` with a
+  reason. Previously a device that could not install a patch was
+  indistinguishable from one that never tried.
+- `app_version` is populated on events rather than sent as an empty string.
+
 # 11.4.1
 - Flutter Web now REFUSES at `Koolbase.initialize` rather than starting a
   client whose most important features silently do nothing. Code push, OTA

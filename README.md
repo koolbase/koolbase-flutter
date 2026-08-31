@@ -24,7 +24,7 @@ For browser apps, use the Koolbase JS SDK instead.
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^11.4.0
+     koolbase_flutter: ^11.4.2
 ```
 
 4. Initialize before `runApp()`:
@@ -1145,6 +1145,15 @@ final patcher = KoolbaseVmPatchClient(
 // Check in, download, and stage any available patch. Applies on next launch.
 await patcher.init();
 ```
+
+The SDK reports what actually happened on the device — `patch_downloaded`
+when a signed artifact is staged, `patch_activated` when it boots, and
+`patch_failed` with a reason when it does not (HTTP error, checksum mismatch,
+or an engine that declined to apply it). Those events carry the patch id, so
+the dashboard shows real adoption per patch rather than inferring installs from
+check-ins, and a patch failing on real devices is visible rather than silent.
+Reporting is fire-and-forget and never blocks startup. Requires 11.4.2 or
+later; earlier versions checked in but reported no outcomes.
 
 > VM-level push requires an app built with the Koolbase engine. A standard Flutter build can still use bundle push above, but not Dart code push. On a standard build the VM-patch surface degrades gracefully — patch application reports "engine not present" and the app runs normally; the package compiles on stock Flutter with no configuration. (9.4.0 broke stock compilation entirely; fixed in 9.4.1.)
 
