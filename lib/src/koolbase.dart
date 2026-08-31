@@ -126,7 +126,31 @@ class Koolbase {
   Koolbase._(this._config, this._payload);
 
   /// Initializes the SDK. Call this in main() before runApp().
+  ///
+  /// Refuses on Flutter Web. That is a platform decision, not a gap: code
+  /// push, OTA updates, offline-first sync and version enforcement ARE this
+  /// SDK, and none of them exist in a browser. Stripped of them it would be a
+  /// worse version of a thing that already exists, so the browser story is a
+  /// separate JS SDK rather than a diminished this one.
+  ///
+  /// Refusing HERE, loudly, at the first line of setup, is deliberate. The
+  /// package now compiles for web -- which is why this check is necessary: a
+  /// developer would otherwise get a working-looking client whose most
+  /// important features silently do nothing, and would build on it before
+  /// finding out. A clear no at startup costs them a minute; a quiet yes
+  /// costs them a release.
   static Future<void> initialize(KoolbaseConfig config) async {
+    if (kIsWeb) {
+      throw UnsupportedError(
+        'koolbase_flutter does not support Flutter Web.\n'
+        '\n'
+        'Code push, OTA updates, offline sync and version enforcement have no '
+        'browser equivalent, so this SDK targets Android and iOS only.\n'
+        '\n'
+        'For browser apps, use the Koolbase JS SDK instead: '
+        'https://koolbase.com/docs/js',
+      );
+    }
     if (_initialized) return;
 
     final deviceId = await DeviceIdManager.getOrCreate();
