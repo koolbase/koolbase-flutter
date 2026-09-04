@@ -84,6 +84,12 @@ class KoolbaseQuery {
   String? _orderBy;
   bool _orderDesc = false;
 
+  /// The HTTP client every request goes through. Injected so a test can
+  /// substitute one; the database client passes its own, so a client set
+  /// at initialize reaches every query. Before this, every query called
+  /// the package-level http.post and the injected client was cosmetic.
+  final http.Client _client;
+
   KoolbaseQuery({
     required this.baseUrl,
     required this.publicKey,
@@ -93,10 +99,12 @@ class KoolbaseQuery {
     Future<void> Function()? onSessionExpired,
     CacheStore? cacheStore,
     WriteQueue? writeQueue,
+    http.Client? client,
   })  : _userId = userId,
         _accessTokenProvider = accessTokenProvider,
         _onSessionExpired = onSessionExpired,
-        _cacheStore = cacheStore;
+        _cacheStore = cacheStore,
+        _client = client ?? http.Client();
 
   Future<Map<String, String>> _headers() async {
     final headers = <String, String>{
@@ -261,7 +269,7 @@ class KoolbaseQuery {
       if (_populate.isNotEmpty) 'populate': _populate,
     };
 
-    final res = await http
+    final res = await _client
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/query'),
           headers: await _headers(),
@@ -370,7 +378,7 @@ class KoolbaseQuery {
       'mode': mode.wireValue,
       if (minSimilarity != null) 'min_similarity': minSimilarity,
     };
-    final res = await http
+    final res = await _client
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/search-semantic'),
           headers: await _headers(),
@@ -427,7 +435,7 @@ class KoolbaseQuery {
       if (text != null && text.isNotEmpty) 'text': text,
     };
 
-    final res = await http
+    final res = await _client
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/embed-text'),
           headers: await _headers(),
@@ -467,11 +475,16 @@ class KoolbaseDocRef {
     CacheStore? cacheStore,
     String? userId,
     WriteQueue? writeQueue,
+    http.Client? client,
   })  : _accessTokenProvider = accessTokenProvider,
         _onSessionExpired = onSessionExpired,
         _cacheStore = cacheStore,
         _userId = userId,
-        _writeQueue = writeQueue;
+        _writeQueue = writeQueue,
+        _client = client ?? http.Client();
+
+  /// See KoolbaseQuery._client.
+  final http.Client _client;
 
   Future<Map<String, String>> _headers() async {
     final headers = <String, String>{
@@ -486,7 +499,7 @@ class KoolbaseDocRef {
   }
 
   Future<KoolbaseRecord> get() async {
-    final res = await http
+    final res = await _client
         .get(
           Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
           headers: await _headers(),
@@ -556,7 +569,7 @@ class KoolbaseDocRef {
 
     final http.Response res;
     try {
-      res = await http
+      res = await _client
           .patch(
             Uri.parse('$baseUrl/v1/sdk/db/records/$recordId'),
             headers: await _headers(),
@@ -763,7 +776,7 @@ class KoolbaseDocRef {
 
     final http.Response res;
     try {
-      res = await http
+      res = await _client
           .delete(
             Uri.parse(
                 '$baseUrl/v1/sdk/db/records/$recordId${expectedRevision != null ? '?expected_revision=$expectedRevision' : ''}'),
@@ -803,7 +816,7 @@ class KoolbaseDocRef {
   /// does not exist; throws [KoolbasePermissionException] if the caller
   /// is not allowed to write this record per the collection's write rule.
   Future<void> setVector(String field, List<double> vector) async {
-    final res = await http
+    final res = await _client
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/set-vector'),
           headers: await _headers(),
@@ -837,7 +850,7 @@ class KoolbaseDocRef {
   /// print('${v.vector.length}-dim vector, updated ${v.updatedAt}');
   /// ```
   Future<KoolbaseVector> getVector(String field) async {
-    final res = await http
+    final res = await _client
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/get-vector'),
           headers: await _headers(),
@@ -867,7 +880,7 @@ class KoolbaseDocRef {
   /// remove the field declaration itself — the field stays on the
   /// collection and is still settable on other records.
   Future<void> deleteVector(String field) async {
-    final res = await http
+    final res = await _client
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/delete-vector'),
           headers: await _headers(),

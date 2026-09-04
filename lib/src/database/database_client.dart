@@ -361,6 +361,7 @@ class KoolbaseDatabaseClient {
       userId: _userId,
       cacheStore: _cacheStore,
       writeQueue: _writeQueue,
+      client: _http,
     );
   }
 
@@ -375,6 +376,7 @@ class KoolbaseDatabaseClient {
       cacheStore: _cacheStore,
       userId: _userId,
       writeQueue: _writeQueue,
+      client: _http,
     );
   }
 

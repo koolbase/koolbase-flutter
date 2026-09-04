@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -34,6 +35,7 @@ export 'database/database_models.dart';
 export 'database/database_query.dart' show KoolbaseQuery;
 export 'storage/storage_models.dart';
 import 'auth/auth_client.dart';
+import 'auth/auth_storage.dart';
 import 'auth/device_metadata.dart';
 import 'cache.dart';
 import 'device_id.dart';
@@ -139,6 +141,58 @@ class Koolbase {
   /// important features silently do nothing, and would build on it before
   /// finding out. A clear no at startup costs them a minute; a quiet yes
   /// costs them a release.
+  /// Initialise for widget tests. Sets up enough that widgets build —
+  /// Koolbase.db exists and a bound list renders its loading slot — and
+  /// nothing more: no device id, no cache, no auth restore, no realtime
+  /// socket, no Drift database. Every one of those is a platform channel a
+  /// widget test cannot answer. The database client's HTTP answers every
+  /// request with an empty success, so a bound list settles to its empty
+  /// slot; a test that needs real records needs a real setup.
+  ///
+  /// Anything past `db` — auth, storage, realtime, code push — is left
+  /// unset and throws on access, which is the correct signal.
+  @visibleForTesting
+  static void initializeForTesting({
+    KoolbaseConfig? config,
+    http.Client? httpClient,
+  }) {
+    final cfg = config ??
+        KoolbaseConfig(baseUrl: 'http://localhost', publicKey: 'pk_test');
+    final instance = Koolbase._(cfg, KoolbasePayload.empty());
+    instance._deviceId = 'test-device';
+    instance._appVersion = '0.0.0';
+    instance._platform = 'test';
+    _instance = instance;
+    final client = httpClient ?? _EmptyResponseClient();
+    _database = KoolbaseDatabaseClient(
+      baseUrl: cfg.baseUrl,
+      publicKey: cfg.publicKey,
+      httpClient: client,
+    );
+    // Auth with in-memory storage: restoreSession finds nothing and the
+    // gate settles to signed-out, which lets it render. Sign-in from a
+    // test would hit the never-completing client and hang, correctly.
+    _auth = KoolbaseAuthClient(
+      api: AuthApi(
+        baseUrl: cfg.baseUrl,
+        publicKey: cfg.publicKey,
+        client: client,
+      ),
+      storage: InMemoryAuthStorage(),
+    );
+    _initialized = true;
+  }
+
+  /// Reset after a test so the next one starts clean.
+  @visibleForTesting
+  static void resetForTesting() {
+    _instance = null;
+    _database = null;
+    _auth = null;
+    _realtime = null;
+    _initialized = false;
+  }
+
   static Future<void> initialize(KoolbaseConfig config) async {
     if (kIsWeb) {
       throw UnsupportedError(
@@ -605,5 +659,24 @@ class Koolbase {
     final minor = parts.length > 1 ? parts[1] : 0;
     final patch = parts.length > 2 ? parts[2] : 0;
     return major * 10000 + minor * 100 + patch;
+  }
+}
+
+/// An HTTP client that answers every request with an empty success:
+/// a query returns no records, a write returns an empty object. Used by
+/// [Koolbase.initializeForTesting] so a bound list settles to its empty
+/// slot — no network, no timeout timer, no error — and a widget test
+/// can pump to completion. A never-completing client was tried first;
+/// the query's own timeout turned it into an error ten seconds in.
+class _EmptyResponseClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    const body = '{"records":[],"data":[],"total":0}';
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: {'content-type': 'application/json'},
+      request: request,
+    );
   }
 }

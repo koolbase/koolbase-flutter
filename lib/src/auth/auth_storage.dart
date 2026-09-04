@@ -86,6 +86,27 @@ abstract class KoolbaseAuthStorage {
   Future<void> clear();
 }
 
+/// In-memory storage for tests. Holds a session for the life of the
+/// object and forgets it after; never touches the keychain. Also what
+/// [Koolbase.initializeForTesting] uses, so an auth gate can restore to
+/// signed-out and render its children without a platform channel.
+class InMemoryAuthStorage implements KoolbaseAuthStorage {
+  PersistedSession? _session;
+
+  @override
+  Future<void> saveSession(PersistedSession session) async {
+    _session = session;
+  }
+
+  @override
+  Future<PersistedSession?> readSession() async => _session;
+
+  @override
+  Future<void> clear() async {
+    _session = null;
+  }
+}
+
 /// Default storage implementation backed by `flutter_secure_storage`.
 ///
 /// Uses platform-native secure stores:

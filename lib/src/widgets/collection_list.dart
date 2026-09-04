@@ -283,13 +283,24 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
         if (records.isEmpty) {
           // Refreshable even when empty: wrap in a scrollable so the pull
           // gesture works over the empty slot.
+          // The empty slot fills the available height so the pull gesture
+          // has somewhere to happen — but only when a height IS available.
+          // Inside an unbounded parent (a scrolling column, a column with no
+          // Expanded) maxHeight is infinite, and pinning minHeight to it
+          // forced the empty widget to infinite height: every empty list in
+          // a scrolling screen threw. Found by a generated smoke test, not
+          // by a user, which is the point of shipping them.
           return RefreshIndicator(
             onRefresh: _controller.refresh,
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight.isFinite
+                        ? constraints.maxHeight
+                        : 0,
+                  ),
                   child: widget.empty?.call(context) ?? const _DefaultEmpty(),
                 ),
               ),
