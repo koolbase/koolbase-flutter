@@ -246,7 +246,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "11.4.2"
+    version: "11.5.0"
   leak_tracker:
     dependency: transitive
     description:

@@ -1,3 +1,17 @@
+# 11.5.0
+- Widget tests can now build Koolbase screens. `Koolbase.initializeForTesting()`
+  sets up enough SDK for widgets to render — `db` and `auth` exist, every HTTP
+  request answers with an empty success, auth storage is in memory — and none
+  of the platform channels a widget test cannot answer. `resetForTesting()`
+  pairs with it. `InMemoryAuthStorage` is public for your own tests.
+- The `httpClient` passed to the database client now reaches every query and
+  document reference. It was accepted and never used: queries called the
+  package-level `http.post`, so a test client was cosmetic and the database
+  could not be exercised without a network.
+- An empty bound list inside a scrolling column no longer throws. The empty
+  slot pinned its minimum height to the parent's maximum, which in an
+  unbounded parent is infinite. Found by a generated widget test.
+
 # 11.4.2
 - Device outcomes are now attributable. Every patch event the SDK sent omitted
   `patch_id`, and the server only increments a patch's counters when that field
