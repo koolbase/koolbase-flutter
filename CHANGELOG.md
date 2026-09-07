@@ -1,3 +1,6 @@
+# 11.6.1
+- README documents `KoolbaseCollectionList.visible`; install snippet at ^11.6.1.
+
 # 11.6.0
 - `KoolbaseCollectionList.visible`: transform the loaded records before both
   the empty decision and the rows. Runs on every build over what is already
