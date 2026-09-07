@@ -202,6 +202,7 @@ class KoolbaseCollectionList extends StatefulWidget {
     this.separatorBuilder,
     this.padding,
     @visibleForTesting this.controller,
+    this.visible,
   });
 
   /// The collection to list.
@@ -233,6 +234,13 @@ class KoolbaseCollectionList extends StatefulWidget {
 
   /// Test seam only: inject a controller instead of constructing one.
   final KoolbaseCollectionController? controller;
+
+  /// Transforms the loaded records before BOTH the empty decision and the
+  /// rows, so a filter that leaves nothing shows the empty slot. Runs on
+  /// every build over the records already loaded — it does not query. The
+  /// Designer's search-on-list is built on this: a case-insensitive
+  /// substring filter over the loaded page.
+  final List<KoolbaseRecord> Function(List<KoolbaseRecord> loaded)? visible;
 
   @override
   State<KoolbaseCollectionList> createState() => _KoolbaseCollectionListState();
@@ -279,7 +287,8 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
             _DefaultError(error: err, onRetry: _controller.refresh);
 
       case KoolbaseListStatus.loaded:
-        final records = _controller.records;
+        final loaded = _controller.records;
+        final records = widget.visible?.call(loaded) ?? loaded;
         if (records.isEmpty) {
           // Refreshable even when empty: wrap in a scrollable so the pull
           // gesture works over the empty slot.

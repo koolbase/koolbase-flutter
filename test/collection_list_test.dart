@@ -236,13 +236,15 @@ void main() {
 
   group('KoolbaseCollectionList widget', () {
     Widget app(KoolbaseCollectionController controller,
-        {WidgetBuilder? empty}) {
+        {WidgetBuilder? empty,
+        List<KoolbaseRecord> Function(List<KoolbaseRecord>)? visible}) {
       return MaterialApp(
         home: Scaffold(
           body: KoolbaseCollectionList(
             collection: 'expenses',
             controller: controller,
             empty: empty,
+            visible: visible,
             itemBuilder: (context, record) => Text('ROW:${record.id}'),
           ),
         ),
@@ -271,6 +273,36 @@ void main() {
       await refresh.close();
     });
 
+    testWidgets('visible filters loaded records before the empty decision',
+        (tester) async {
+      final refresh = StreamController<QueryResult>.broadcast();
+      final c = KoolbaseCollectionController(
+        collection: 'expenses',
+        baseQuery: () => _FakeQuery(
+          onGet: () async => _result(['apple', 'banana']),
+          refreshController: refresh,
+        ),
+      );
+      // Keep only ids containing 'ban'.
+      await tester.pumpWidget(app(
+        c,
+        empty: (context) => const Text('NOTHING'),
+        visible: (loaded) =>
+            loaded.where((r) => r.id.contains('ban')).toList(),
+      ));
+      await tester.pump();
+      expect(find.text('ROW:banana'), findsOneWidget);
+      expect(find.text('ROW:apple'), findsNothing);
+      // A filter that leaves nothing shows the SAME empty slot.
+      await tester.pumpWidget(app(
+        c,
+        empty: (context) => const Text('NOTHING'),
+        visible: (loaded) => const [],
+      ));
+      await tester.pump();
+      expect(find.text('NOTHING'), findsOneWidget);
+      await refresh.close();
+    });
     testWidgets('empty result shows the empty slot, still refreshable',
         (tester) async {
       final refresh = StreamController<QueryResult>.broadcast();

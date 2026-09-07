@@ -1,3 +1,8 @@
+# 11.6.0
+- `KoolbaseCollectionList.visible`: transform the loaded records before both
+  the empty decision and the rows. Runs on every build over what is already
+  loaded; it does not query. A filter that leaves nothing shows the empty slot.
+
 # 11.5.0
 - Widget tests can now build Koolbase screens. `Koolbase.initializeForTesting()`
   sets up enough SDK for widgets to render — `db` and `auth` exist, every HTTP
