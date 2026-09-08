@@ -194,17 +194,12 @@ class Koolbase {
   }
 
   static Future<void> initialize(KoolbaseConfig config) async {
-    if (kIsWeb) {
-      throw UnsupportedError(
-        'koolbase_flutter does not support Flutter Web.\n'
-        '\n'
-        'Code push, OTA updates, offline sync and version enforcement have no '
-        'browser equivalent, so this SDK targets Android and iOS only.\n'
-        '\n'
-        'For browser apps, use the Koolbase JS SDK instead: '
-        'https://koolbase.com/docs/js',
-      );
-    }
+    // Web runs the SDK with two capabilities absent: code push (no
+    // binary to patch) and offline sync (drift on web needs sqlite3.wasm
+    // and the worker shipped beside the app; see local_database.dart).
+    // Everything else — auth, database, storage, realtime, functions —
+    // works in a browser. What is absent reports so through the normal
+    // error path rather than throwing at initialize.
     if (_initialized) return;
 
     final deviceId = await DeviceIdManager.getOrCreate();
@@ -247,9 +242,18 @@ class Koolbase {
     );
 
     // Initialize offline database (Drift)
-    _localDb = KoolbaseLocalDatabase();
-    final cacheStore = CacheStore(_localDb!);
-    final writeQueue = WriteQueue(_localDb!);
+    // Offline sync needs drift's sqlite3.wasm and worker shipped beside a
+    // web app; most apps will not, and a missing worker took the whole
+    // SDK down. On web the database client runs without a cache or a
+    // write queue: every read is live, every write goes straight out.
+    // Native platforms keep the full offline layer.
+    CacheStore? cacheStore;
+    WriteQueue? writeQueue;
+    if (!kIsWeb) {
+      _localDb = KoolbaseLocalDatabase();
+      cacheStore = CacheStore(_localDb!);
+      writeQueue = WriteQueue(_localDb!);
+    }
 
     // Initialize database client with offline support
     _database = KoolbaseDatabaseClient(
@@ -265,22 +269,25 @@ class Koolbase {
       writeQueue: writeQueue,
     );
 
-    // Initialize sync engine — auto-syncs on reconnect
-    _syncEngine = SyncEngine(
-      baseUrl: config.baseUrl,
-      publicKey: config.publicKey,
-      cacheStore: cacheStore,
-      writeQueue: writeQueue,
-      accessTokenProvider: () =>
-          _auth?.validAccessToken() ?? Future<String?>.value(null),
-      currentUserId: () => _auth?.currentUser?.id,
-      onSessionExpired: () async => _auth?.clearStoredSession(),
-    );
-    _syncEngine!.start();
+    // The sync engine is the offline layer: nothing to sync on web.
+    if (cacheStore != null && writeQueue != null) {
+      // Initialize sync engine — auto-syncs on reconnect
+      _syncEngine = SyncEngine(
+        baseUrl: config.baseUrl,
+        publicKey: config.publicKey,
+        cacheStore: cacheStore,
+        writeQueue: writeQueue,
+        accessTokenProvider: () =>
+            _auth?.validAccessToken() ?? Future<String?>.value(null),
+        currentUserId: () => _auth?.currentUser?.id,
+        onSessionExpired: () async => _auth?.clearStoredSession(),
+      );
+      _syncEngine!.start();
 
-    // One drain, two entry points: automatic on reconnect, and
-    // Koolbase.db.syncPendingWrites() for an app-driven retry.
-    _database!.setSyncEngine(_syncEngine!);
+      // One drain, two entry points: automatic on reconnect, and
+      // Koolbase.db.syncPendingWrites() for an app-driven retry.
+      _database!.setSyncEngine(_syncEngine!);
+    }
 
     // Keep the database client's notion of the current user in step with auth,
     // so queued offline writes are attributed without the app having to
@@ -325,21 +332,26 @@ class Koolbase {
       onSessionExpired: () async => _auth?.clearStoredSession(),
     );
 
-    // Initialize code push client
-    _codePush = KoolbaseCodePushClient(
-      baseUrl: config.baseUrl,
-      apiKey: config.publicKey,
-      channel: config.codePushChannel,
-      onMandatoryUpdate: config.onMandatoryUpdate,
-    );
+    // Code push: not on web. There is no binary to patch and no
+    // filesystem for a bundle cache (path_provider has no browser
+    // implementation — the first thing that failed when the refusal was
+    // lifted). Flags and config fall through to the remote payload.
+    if (!kIsWeb) {
+      _codePush = KoolbaseCodePushClient(
+        baseUrl: config.baseUrl,
+        apiKey: config.publicKey,
+        channel: config.codePushChannel,
+        onMandatoryUpdate: config.onMandatoryUpdate,
+      );
 
-    await _codePush!.init(
-      appVersion: appVersion,
-      platform: platform,
-      deviceId: deviceId,
-      remoteConfig: payload.config,
-      remoteFlags: payload.flags.map((k, v) => MapEntry(k, v.enabled)),
-    );
+      await _codePush!.init(
+        appVersion: appVersion,
+        platform: platform,
+        deviceId: deviceId,
+        remoteConfig: payload.config,
+        remoteFlags: payload.flags.map((k, v) => MapEntry(k, v.enabled)),
+      );
+    }
 
     // Initialize VM-level (System B) patch client
     _vmPatch = KoolbaseVmPatchClient(
@@ -426,7 +438,7 @@ class Koolbase {
     Map<String, dynamic>? context,
   }) {
     _ensureInitialized();
-    return _codePush!.executeFlow(
+    return codePush.executeFlow(
       flowId: flowId,
       context: context,
     );
@@ -444,8 +456,19 @@ class Koolbase {
 
   static KoolbaseCodePushClient get codePush {
     _ensureInitialized();
-    return _codePush!;
+    final c = _codePush;
+    if (c == null) {
+      throw UnsupportedError(
+        'Code push is not available on Flutter Web: there is no binary to '
+        'patch. Guard with kIsWeb, or use Koolbase.isCodePushAvailable.',
+      );
+    }
+    return c;
   }
+
+  /// False on web, where there is no binary to patch. Check before
+  /// touching [codePush] on a platform-agnostic code path.
+  static bool get isCodePushAvailable => _codePush != null;
 
   static KoolbaseVmPatchClient get vmPatch {
     _ensureInitialized();
@@ -646,6 +669,7 @@ class Koolbase {
 
   static String _getPlatform() {
     try {
+      if (kIsWeb) return 'web';
       if (Platform.isAndroid) return 'android';
       if (Platform.isIOS) return 'ios';
     } catch (_) {}

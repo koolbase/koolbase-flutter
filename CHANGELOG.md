@@ -1,3 +1,14 @@
+# 12.0.0
+- Flutter Web. `Koolbase.initialize` no longer refuses the browser: auth,
+  database, storage, realtime and functions work. Two capabilities are
+  absent on web and say so — code push (no binary to patch;
+  `Koolbase.codePush` throws, `Koolbase.isCodePushAvailable` is false) and
+  offline sync (reads are live, writes go straight out). A web app's
+  origin must be added under Configuration → Trusted Origins in the
+  dashboard; that list now governs API CORS as well as storage.
+- BREAKING: `Koolbase.codePush` throws `UnsupportedError` on web instead of
+  `initialize` throwing. Guard with `kIsWeb` or `isCodePushAvailable`.
+
 # 11.6.1
 - README documents `KoolbaseCollectionList.visible`; install snippet at ^11.6.1.
 

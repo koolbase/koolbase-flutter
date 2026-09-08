@@ -24,7 +24,7 @@ For browser apps, use the Koolbase JS SDK instead.
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^11.6.1
+     koolbase_flutter: ^12.0.0
 ```
 
 4. Initialize before `runApp()`:
@@ -915,6 +915,16 @@ final scope = KoolbaseAuthScope.of(context);
 scope.user;            // KoolbaseUser? — null when signed out
 scope.restoredOffline; // true after an offline restore, for a banner
 ```
+
+### Flutter Web
+
+The SDK runs in the browser. Auth, database, storage, realtime and
+functions work as on mobile. Two things do not, and say so rather than
+fail quietly: code push (`Koolbase.isCodePushAvailable` is `false`; there
+is no binary to patch) and offline sync (every read is live, every write
+goes straight out). Add your app's origin — `http://localhost:8080` while
+developing, your domain in production — under Configuration → Trusted
+Origins in the dashboard, or the browser will refuse every request.
 
 ### Collection list
 
