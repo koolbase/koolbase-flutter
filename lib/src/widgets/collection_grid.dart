@@ -122,18 +122,45 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
         }
         return RefreshIndicator(
           onRefresh: _controller.refresh,
-          child: GridView.builder(
-            padding: widget.padding,
+          // A grid cell cannot span the row, so the control that says
+          // "there is more" sits below the grid as its own sliver.
+          child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: widget.crossAxisCount,
-              mainAxisSpacing: widget.spacing,
-              crossAxisSpacing: widget.spacing,
-              childAspectRatio: widget.childAspectRatio,
-            ),
-            itemCount: records.length,
-            itemBuilder: (context, i) =>
-                widget.itemBuilder(context, records[i]),
+            slivers: [
+              SliverPadding(
+                padding: widget.padding ?? EdgeInsets.zero,
+                sliver: SliverGrid(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: widget.crossAxisCount,
+                    mainAxisSpacing: widget.spacing,
+                    crossAxisSpacing: widget.spacing,
+                    childAspectRatio: widget.childAspectRatio,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) => widget.itemBuilder(context, records[i]),
+                    childCount: records.length,
+                  ),
+                ),
+              ),
+              if (_controller.hasMore)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                      child: _controller.loadingMore
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : TextButton(
+                              onPressed: _controller.loadMore,
+                              child: const Text('Load more'),
+                            ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
     }

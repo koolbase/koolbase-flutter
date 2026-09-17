@@ -56,7 +56,10 @@ void main() {
       expect(find.text('TILE:a'), findsOneWidget);
       expect(find.text('TILE:b'), findsOneWidget);
       expect(find.text('TILE:c'), findsOneWidget);
-      expect(find.byType(GridView), findsOneWidget);
+      // The grid is a SliverGrid inside a CustomScrollView now, so the
+      // load-more control can sit below it. The tiles above are what
+      // the test is about.
+      expect(find.byType(SliverGrid), findsOneWidget);
 
       await refresh.close();
       c.dispose();

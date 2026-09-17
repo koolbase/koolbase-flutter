@@ -1,3 +1,14 @@
+# 12.2.0
+- Pagination. `KoolbaseCollectionList` and `KoolbaseCollectionGrid` show
+  a "Load more" past the last loaded record while the collection has
+  more -- exact, from the query's total, not a guess from a short page.
+  `KoolbaseCollectionController` gains `loadMore()`, `hasMore` and
+  `loadingMore`. A list that showed twenty and stopped was quietly
+  claiming to be the whole collection.
+- `loadMore` does not resubscribe: the realtime subscription stays on
+  the first page, so a live insert updates that page in place and the
+  pages loaded after it stay put. `refresh()` resets to one page.
+
 # 12.1.0
 - `Koolbase.db.aggregate(...)`: `count`, `sum`, `avg`, `min`, `max` over
   the whole authorized set, grouped by a field or a calendar bucket.

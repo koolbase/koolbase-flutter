@@ -1019,9 +1019,20 @@ Fixed cross-axis count rather than responsive reflow: vary `crossAxisCount`
 from a `LayoutBuilder` if you need it, rather than the widget guessing at tile
 sizing for everyone.
 
+Both page. A query fetches 20 records; while the collection has more, a
+**Load more** control sits past the last one, and tapping it appends the
+next page. Exact, from the query's total — not a guess from a short page.
+A list that showed twenty and stopped was quietly claiming to be the
+whole collection.
+
+`loadMore` does not resubscribe: the realtime subscription stays on the
+first page, so a live insert updates that page in place and the pages
+loaded after it stay put. Pull-to-refresh resets to one page.
+
 For slivers or other custom scroll layouts, drive
 `KoolbaseCollectionController` directly — it owns the fetch and stream
-lifecycle, widget-free.
+lifecycle, widget-free. `loadMore()`, `hasMore` and `loadingMore` are on
+it for your own footer.
 
 ---
 

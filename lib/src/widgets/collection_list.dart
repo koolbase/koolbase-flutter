@@ -66,6 +66,8 @@ class KoolbaseCollectionController extends ChangeNotifier {
   Object? _error;
   bool _isFromCache = false;
   bool _refreshing = false;
+  bool _loadingMore = false;
+  bool _hasMore = true;
 
   StreamSubscription<QueryResult>? _sub;
   String? _subscribedKey;
@@ -100,6 +102,7 @@ class KoolbaseCollectionController extends ChangeNotifier {
       _records = result.records;
       _isFromCache = result.isFromCache;
       _error = null;
+      _hasMore = _records.length < result.total;
     } catch (e) {
       if (_disposed) return;
       // Only a first load with nothing to show is an error STATE; a failed
@@ -126,12 +129,53 @@ class KoolbaseCollectionController extends ChangeNotifier {
       _records = result.records;
       _isFromCache = result.isFromCache;
       _error = null;
+      _hasMore = _records.length < result.total;
     } catch (_) {
       // Keep what we have. The pull gesture failing silently into the same
       // list is the behavior every mature app converges on.
     } finally {
       if (!_disposed) {
         _refreshing = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// True while [loadMore] runs, for a spinner at the foot of the list.
+  bool get loadingMore => _loadingMore;
+
+  /// Whether the collection has records past what is loaded. Exact:
+  /// every page comes back with the query's total, so this is
+  /// loaded < total, not a guess from a short page. True before the
+  /// first load -- "we do not know yet" reads as "there may be more".
+  bool get hasMore => _hasMore;
+
+  /// The next page, appended.
+  ///
+  /// Deliberately does NOT resubscribe. The realtime subscription stays
+  /// on the first page, so a live insert updates that page in place and
+  /// the pages loaded after it stay put; resubscribing to a fresh query
+  /// would replace everything with page one and silently drop the rest.
+  /// So: live for the first page, static for the ones after, and
+  /// [refresh] resets to one page. An honest compromise, stated.
+  ///
+  Future<void> loadMore() async {
+    if (_loadingMore || !_hasMore || _status != KoolbaseListStatus.loaded) {
+      return;
+    }
+    _loadingMore = true;
+    notifyListeners();
+    try {
+      final result = await _freshQuery().offset(_records.length).get();
+      if (_disposed) return;
+      _records = [..._records, ...result.records];
+      _hasMore = _records.length < result.total;
+      _error = null;
+    } catch (_) {
+      // Keep what we have; the control stays and can be tried again.
+    } finally {
+      if (!_disposed) {
+        _loadingMore = false;
         notifyListeners();
       }
     }
@@ -321,15 +365,46 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
           child: ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: widget.padding,
-            itemCount: records.length,
+            // One more row while there is more to load: the control that
+            // says so. A list that showed twenty and stopped was quietly
+            // claiming to be the whole collection.
+            itemCount: records.length + (_controller.hasMore ? 1 : 0),
             separatorBuilder:
                 widget.separatorBuilder ?? (_, __) => const Divider(height: 1),
-            itemBuilder: (context, index) =>
-                widget.itemBuilder(context, records[index]),
+            itemBuilder: (context, index) {
+              if (index == records.length) {
+                return _LoadMore(
+                  loading: _controller.loadingMore,
+                  onTap: _controller.loadMore,
+                );
+              }
+              return widget.itemBuilder(context, records[index]);
+            },
           ),
         );
     }
   }
+}
+
+/// The row past the last loaded record, while there are more.
+class _LoadMore extends StatelessWidget {
+  final bool loading;
+  final VoidCallback onTap;
+  const _LoadMore({required this.loading, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: loading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : TextButton(onPressed: onTap, child: const Text('Load more')),
+        ),
+      );
 }
 
 class _DefaultEmpty extends StatelessWidget {
