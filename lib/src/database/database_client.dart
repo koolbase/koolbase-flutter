@@ -10,6 +10,7 @@ import 'offline/cache_store.dart';
 import 'offline/local_database.dart' show Conflict;
 import 'offline/local_database.dart' as drift_rows show PendingWrite;
 import 'pending_write.dart';
+import 'aggregate.dart';
 import 'sync_engine.dart';
 import 'offline/write_queue.dart';
 import 'database_exceptions.dart';
@@ -489,6 +490,36 @@ class KoolbaseDatabaseClient {
     }
   }
 
+
+  /// "How many" or "how much" over a collection -- the WHOLE authorized
+  /// set, never the first page, with the caller's read rule applied
+  /// inside the query.
+  ///
+  /// Online-only: an aggregate over a cached page would be exactly the
+  /// partial total this exists to prevent, so there is no offline
+  /// answer, only an error.
+  ///
+  /// Read the accounting. A result is never a bare number: a collection
+  /// is schemaless, and a total that skipped three malformed rows says
+  /// so in [KoolbaseAggregateResult.accounting] rather than presenting
+  /// itself as complete.
+  Future<KoolbaseAggregateResult> aggregate(KoolbaseAggregate request) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/db/aggregate'),
+          headers: await _headers(),
+          body: jsonEncode(request.toJson()),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    if (res.statusCode != 200) {
+      throw await koolbaseDataErrorNotifying(res,
+          onSessionExpired: _onSessionExpired,
+          fallbackMessage: 'Aggregation failed');
+    }
+    return KoolbaseAggregateResult.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
+  }
   /// Insert a record, or update the existing one matching [match].
   ///
   /// The server decides the outcome: exactly one match updates that record,
