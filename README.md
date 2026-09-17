@@ -477,6 +477,54 @@ final deleted = await Koolbase.db.deleteWhere(
 > The collection's delete rule applies; for `owner`/`scoped` rules the delete
 > is scoped to your own records. Online-only.
 
+### Aggregation
+
+"How many" and "how much" over a collection — the **whole** authorized
+set, never the first page.
+
+```dart
+final r = await Koolbase.db.aggregate(
+  KoolbaseAggregate(
+    collection: 'orders',
+    where: [KoolbaseAggregateFilter('status', 'eq', 'paid')],
+    groupBy: KoolbaseGroupBy.month('created_at', timezone: 'Africa/Accra'),
+    measures: [
+      KoolbaseMeasure.sum('total', as: 'revenue'),
+      KoolbaseMeasure.count(as: 'orders'),
+    ],
+  ),
+);
+
+for (final g in r.groups) {
+  print('${g.category}: ${g.values['revenue']} from ${g.values['orders']} orders');
+}
+```
+
+Aggregates: `count`, `sum`, `avg`, `min`, `max`. Group by any field, or
+by `day`, `week`, `month` or `year` of a timestamp field — a calendar
+bucket **requires a timezone**, because Accra and UTC disagree about
+which day a 23:30 sale belongs to.
+
+**Read the accounting.** Collections are schemaless, so a `total` can be
+a string or missing on any record. Those rows are skipped, never coerced,
+and the result says so:
+
+```dart
+final a = r.accounting['revenue']!;
+if (a.skipped > 0) {
+  // a.counted contributed; a.skipped did not (a.skippedReason says why)
+}
+```
+
+A group where every record was skipped has a `null` value — nothing to
+sum, which is different from zero. A `groupBy` that would produce more
+than 500 categories is refused whole (`r.tooManyGroups`) rather than
+truncated: half the categories drawn as all of them is the wrong number.
+
+> The caller's read rule is applied **inside** the query. You cannot
+> count what you cannot read. Online-only.
+
+
 ---
 
 ### Semantic search

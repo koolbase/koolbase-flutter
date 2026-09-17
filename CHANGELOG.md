@@ -1,3 +1,12 @@
+# 12.1.0
+- `Koolbase.db.aggregate(...)`: `count`, `sum`, `avg`, `min`, `max` over
+  the whole authorized set, grouped by a field or a calendar bucket.
+  Every result carries its accounting -- how many records contributed
+  and how many were skipped as missing or non-numeric -- so a total is
+  never a bare number. A calendar bucket requires a timezone; the
+  `KoolbaseGroupBy.month(...)` constructors make it impossible to omit.
+  Online-only. Read rules apply inside the query.
+
 # 12.0.0
 - Flutter Web. `Koolbase.initialize` no longer refuses the browser: auth,
   database, storage, realtime and functions work. Two capabilities are
