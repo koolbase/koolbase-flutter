@@ -322,8 +322,8 @@ class KoolbaseAuthClient {
   /// session for this user is signed out; this device stays signed in.
   /// Throws [InvalidPasswordException] when the current password is wrong,
   /// or when the account signed up through a provider and has no password
-  /// to change. Throws [InvalidPasswordFormatException] when the new
-  /// password is rejected.
+  /// to change. Throws [WeakPasswordException] when the new password is
+  /// too short -- the same exception `register` throws.
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,

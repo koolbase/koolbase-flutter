@@ -78,6 +78,13 @@ await Koolbase.auth.logout();
 // Password reset
 await Koolbase.auth.forgotPassword(email: 'user@example.com');
 
+// Change password while signed in. Verifies the current one first, then
+// signs out every other device; this one stays in.
+await Koolbase.auth.changePassword(
+  currentPassword: 'old-password',
+  newPassword: 'new-password',
+);
+
 // Resend the email-verification link (authenticated, unverified user)
 final result = await Koolbase.auth.resendVerificationEmail();
 if (result.alreadyVerified) {

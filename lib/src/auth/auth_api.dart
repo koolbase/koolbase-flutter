@@ -303,9 +303,8 @@ class AuthApi {
         throw const InvalidCredentialsException();
       case 'invalid_password':
         throw const InvalidPasswordException();
-      case 'invalid_password_format':
-        throw InvalidPasswordFormatException(
-            msg.isEmpty ? 'Password does not meet requirements' : msg);
+      case 'weak_password':
+        throw const WeakPasswordException();
       case 'email_in_use':
         throw const EmailAlreadyInUseException();
       case 'account_disabled':

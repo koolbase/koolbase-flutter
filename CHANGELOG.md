@@ -8,8 +8,12 @@
 - `InvalidPasswordException` when the current password is wrong, or the
   account signed up through a provider and has no password to change;
   the server returns the same code for both so a caller cannot probe an
-  account's sign-in methods. `InvalidPasswordFormatException` when the
-  new password is rejected, with the server's reason as the message.
+  account's sign-in methods.
+- `WeakPasswordException` is now actually thrown. It was defined and
+  mapped to `KoolbaseErrorCode.validation` but nothing raised it: the
+  server sent a too-short password back as an uncoded 400 on register,
+  and as `invalid_token` on reset. All three password paths now return
+  `weak_password`, so the same `catch` covers signup, reset and change.
 
 # 12.2.0
 - Pagination. `KoolbaseCollectionList` and `KoolbaseCollectionGrid` show

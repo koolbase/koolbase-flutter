@@ -17,13 +17,6 @@ class InvalidPasswordException extends KoolbaseAuthException {
       : super('Current password is incorrect', code: 'invalid_password');
 }
 
-/// The new password given to [changePassword] does not meet the
-/// server's requirements. [message] says which.
-class InvalidPasswordFormatException extends KoolbaseAuthException {
-  const InvalidPasswordFormatException(super.message)
-      : super(code: 'invalid_password_format');
-}
-
 class InvalidCredentialsException extends KoolbaseAuthException {
   const InvalidCredentialsException()
       : super('Invalid email or password', code: 'invalid_credentials');

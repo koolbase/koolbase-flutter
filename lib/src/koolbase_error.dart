@@ -271,6 +271,7 @@ class KoolbaseError {
       }
       // Bad input the user supplied, or a one-shot token that did not hold.
       if (e is InvalidCredentialsException ||
+          e is InvalidPasswordException ||
           e is WeakPasswordException ||
           e is InvalidPhoneNumberException ||
           e is OtpExpiredException ||
