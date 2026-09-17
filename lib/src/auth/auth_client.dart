@@ -316,6 +316,26 @@ class KoolbaseAuthClient {
     return user;
   }
 
+  /// Changes the signed-in user's password.
+  ///
+  /// The current password is verified first. On success every other
+  /// session for this user is signed out; this device stays signed in.
+  /// Throws [InvalidPasswordException] when the current password is wrong,
+  /// or when the account signed up through a provider and has no password
+  /// to change. Throws [InvalidPasswordFormatException] when the new
+  /// password is rejected.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final token = await _ensureValidToken();
+    await _api.changePassword(
+      accessToken: token,
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+  }
+
   Future<void> forgotPassword({required String email}) async {
     await _api.forgotPassword(email);
   }

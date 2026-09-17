@@ -1,3 +1,16 @@
+# 12.3.0
+- `auth.changePassword(currentPassword:, newPassword:)`. An app could not
+  offer a change-password screen until now; the only route to a new
+  password was the reset email. The current password is verified first.
+  On success every other session for the user is signed out and this
+  device stays in -- a password is usually changed because someone else
+  may have it.
+- `InvalidPasswordException` when the current password is wrong, or the
+  account signed up through a provider and has no password to change;
+  the server returns the same code for both so a caller cannot probe an
+  account's sign-in methods. `InvalidPasswordFormatException` when the
+  new password is rejected, with the server's reason as the message.
+
 # 12.2.0
 - Pagination. `KoolbaseCollectionList` and `KoolbaseCollectionGrid` show
   a "Load more" past the last loaded record while the collection has

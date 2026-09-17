@@ -187,6 +187,24 @@ class AuthApi {
     return KoolbaseUser.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  Future<void> changePassword({
+    required String accessToken,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final res = await _client
+        .patch(
+          Uri.parse('$baseUrl/v1/sdk/auth/me/password'),
+          headers: _authHeaders(accessToken),
+          body: jsonEncode({
+            'current_password': currentPassword,
+            'new_password': newPassword,
+          }),
+        )
+        .timeout(timeout);
+    _checkError(res);
+  }
+
   Future<void> forgotPassword(String email) async {
     final res = await _client
         .post(
@@ -283,6 +301,11 @@ class AuthApi {
     switch (code) {
       case 'invalid_credentials':
         throw const InvalidCredentialsException();
+      case 'invalid_password':
+        throw const InvalidPasswordException();
+      case 'invalid_password_format':
+        throw InvalidPasswordFormatException(
+            msg.isEmpty ? 'Password does not meet requirements' : msg);
       case 'email_in_use':
         throw const EmailAlreadyInUseException();
       case 'account_disabled':
