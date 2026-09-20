@@ -1,3 +1,44 @@
+# 12.5.0
+
+- **`auth.listSessions()`, `auth.revokeSession(id)`, `auth.revokeAllOtherSessions()`.**
+  Three endpoints had been live on the server the whole time and no SDK
+  exposed any of them — so "sign out my other devices" existed and was
+  unreachable.
+
+  `listSessions` returns where the user is signed in: device label, IP, user
+  agent, timestamps, and `isCurrent` marking this device. Token hashes are
+  never included; the server excludes them.
+
+  `revokeAllOtherSessions` keeps this session and returns how many ended,
+  which is what the feature means after a lost phone.
+
+  Revoking the current session through `revokeSession` ends this one too. The
+  local session is not cleared there — the SDK cannot tell from the response
+  which session it was, and the next request's 401 handles it. A UI listing
+  sessions knows which row is current from `isCurrent` and should call
+  `logout()` for that one.
+
+- **`auth.auditLog({limit, offset})`** — the account's own security history,
+  for a "recent activity" screen: sign-ins, failures, lockouts, password
+  changes, verification. Each event carries what its type is allowed to say
+  and nothing more; the server sanitizes them against a per-type field
+  allowlist. Returns a page with the total across all pages.
+
+- **`auth.resendVerificationEmailToAddress(email)`** — ask for a new
+  verification email with no session. Built for the TypeScript SDKs on
+  20 September; this SDK had the same dead end.
+
+  A project requiring verified contact issues no session until the account
+  verifies and refuses login until then, so a user whose email went to spam
+  or who waited past the link expiry could not sign in to ask for another.
+  Returns nothing and reveals nothing: the server answers identically whether
+  the address has an account, has none, or is already verified. Show the same
+  "check your email" either way, and never say "we sent it".
+
+- The six `x-koolbase-*` identity headers this SDK sends are now pinned by a
+  test against the set the API allows, so they cannot drift without failing
+  here.
+
 # 12.4.0
 - **Fourteen exceptions reported codes the API has never emitted.**
   `EmailAlreadyInUseException` said `email_taken` for a server that says
