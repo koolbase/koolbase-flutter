@@ -52,9 +52,14 @@ class KoolbaseConflictException extends KoolbaseDataException {
 /// server responds with 404 and code `not_found` / `record_not_found` /
 /// `collection_not_found`.
 class KoolbaseNotFoundException extends KoolbaseDataException {
+  /// [code] is carried rather than fixed: the server says which thing was
+  /// missing — a record, a collection, a vector field — and an app reading
+  /// `code` should get that answer, not the category. Catching the class
+  /// still works for anyone who only cares that something was absent.
   const KoolbaseNotFoundException([
     super.message = 'The requested resource was not found',
-  ]) : super(code: 'not_found');
+    String code = 'not_found',
+  ]) : super(code: code);
 
   @override
   String toString() => 'KoolbaseNotFoundException: $message';
@@ -63,9 +68,13 @@ class KoolbaseNotFoundException extends KoolbaseDataException {
 /// Thrown when the request is rejected as invalid — the server responds with
 /// 400 and code `validation_error` (e.g. a malformed body or a bad field).
 class KoolbaseValidationException extends KoolbaseDataException {
+  /// [code] is carried for the same reason as [KoolbaseNotFoundException]:
+  /// an unsupported dimension and a vector pointed at the wrong collection
+  /// are both validation failures, and an app should be able to tell which.
   const KoolbaseValidationException([
     super.message = 'The request was invalid',
-  ]) : super(code: 'validation_error');
+    String code = 'validation_error',
+  ]) : super(code: code);
 
   @override
   String toString() => 'KoolbaseValidationException: $message';
@@ -162,6 +171,163 @@ class KoolbaseOfflineBaselineUnavailableException extends KoolbaseDataException 
 /// On the direct write path this surfaces to the caller. During replay of a
 /// queued offline write it becomes a persisted conflict instead: the write is
 /// not lost, and not applied, until someone decides.
+// ─── Added 20 Sep 2026 ──────────────────────────────────────────────────────
+//
+// Fifteen codes the API emits that nothing here caught. Found by comparing the
+// API's declared list against this switch; the TypeScript SDKs had the same
+// gap and the same groupings.
+
+/// An upsert whose filter matched more than one record. Refused rather than
+/// resolved: picking one would be a silent guess about which row the caller
+/// meant. Narrow the filter, or add a unique constraint over those fields.
+class KoolbaseAmbiguousMatchException extends KoolbaseDataException {
+  const KoolbaseAmbiguousMatchException([
+    super.message = 'Upsert match resolved to more than one record',
+  ]) : super(code: 'ambiguous_match');
+}
+
+/// A unique constraint already covers those fields.
+class KoolbaseConstraintExistsException extends KoolbaseDataException {
+  const KoolbaseConstraintExistsException([
+    super.message = 'A unique constraint already exists for these fields',
+  ]) : super(code: 'constraint_exists');
+}
+
+/// No such unique constraint.
+class KoolbaseConstraintNotFoundException extends KoolbaseDataException {
+  const KoolbaseConstraintNotFoundException([
+    super.message = 'Unique constraint not found',
+  ]) : super(code: 'constraint_not_found');
+}
+
+/// Creating a unique constraint over data that already breaks it. The
+/// server's details carry the offending values.
+class KoolbaseDuplicateValuesException extends KoolbaseDataException {
+  const KoolbaseDuplicateValuesException([
+    super.message = 'The collection has duplicate values for these fields',
+  ]) : super(code: 'duplicate_values');
+}
+
+/// The same idempotency key sent with different data. Refused rather than
+/// replayed: the two requests do not agree, so neither answer is safe.
+///
+/// [code] is carried because the database package calls this
+/// `idempotency_key_reused` and fiscal calls it `idempotency_conflict`.
+class KoolbaseIdempotencyKeyReusedException extends KoolbaseDataException {
+  const KoolbaseIdempotencyKeyReusedException([
+    super.message = 'Idempotency key reused with different data',
+    String code = 'idempotency_key_reused',
+  ]) : super(code: code);
+}
+
+/// A batch write failed for a reason the server did not classify further.
+class KoolbaseBatchFailedException extends KoolbaseDataException {
+  const KoolbaseBatchFailedException([
+    super.message = 'The batch write failed',
+  ]) : super(code: 'batch_failed');
+}
+
+/// Authenticated, and not permitted to do this — a destructive operation
+/// such as a seed overwrite or a snapshot restore. Distinct from
+/// [KoolbasePermissionException], which is a rule denying a record.
+class KoolbaseInsufficientAuthorityException extends KoolbaseDataException {
+  const KoolbaseInsufficientAuthorityException([
+    super.message = 'You do not have the authority to perform this action',
+  ]) : super(code: 'insufficient_authority');
+}
+
+/// A vector field with that name already exists on the collection.
+class KoolbaseVectorFieldExistsException extends KoolbaseDataException {
+  const KoolbaseVectorFieldExistsException([
+    super.message = 'A vector field with that name already exists',
+  ]) : super(code: 'vector_field_exists');
+}
+
+/// A backfill was asked for on a field that embeds nothing automatically.
+class KoolbaseFieldNotAutoEmbedException extends KoolbaseDataException {
+  const KoolbaseFieldNotAutoEmbedException([
+    super.message =
+        'This vector field has no auto-embedding config; set provider, model '
+            'and source_field first',
+  ]) : super(code: 'field_not_auto_embed');
+}
+
+/// Embedding config is partial. Provider, model and source_field are set
+/// together or cleared together.
+class KoolbaseInvalidEmbeddingConfigException extends KoolbaseDataException {
+  const KoolbaseInvalidEmbeddingConfigException([
+    super.message =
+        'Embedding config requires provider, model and source_field together, '
+            'or all cleared',
+  ]) : super(code: 'invalid_embedding_config');
+}
+
+/// The project has no embedding provider configured.
+class KoolbaseProviderNotConfiguredException extends KoolbaseDataException {
+  const KoolbaseProviderNotConfiguredException([
+    super.message = 'No embedding provider is configured for this project',
+  ]) : super(code: 'provider_not_configured');
+}
+
+/// The configured provider's credentials were rejected by the provider.
+class KoolbaseProviderInvalidException extends KoolbaseDataException {
+  const KoolbaseProviderInvalidException([
+    super.message = 'The embedding provider credentials are not valid',
+  ]) : super(code: 'provider_invalid');
+}
+
+/// The request body could not be decoded.
+class KoolbaseInvalidBodyException extends KoolbaseDataException {
+  const KoolbaseInvalidBodyException([
+    super.message = 'Could not decode the request body',
+  ]) : super(code: 'invalid_body');
+}
+
+/// Something already exists, or is in the wrong state, where the server did
+/// not say more. [code] is whichever generic code arrived.
+class KoolbaseStateConflictException extends KoolbaseDataException {
+  const KoolbaseStateConflictException(super.message, String code)
+      : super(code: code);
+}
+
+/// A project slug that another project already holds.
+class KoolbaseSlugTakenException extends KoolbaseDataException {
+  const KoolbaseSlugTakenException([
+    super.message = 'A project with this slug already exists',
+  ]) : super(code: 'slug_taken');
+}
+
+/// An invitation that has been revoked or has expired.
+class KoolbaseInvitationInvalidException extends KoolbaseDataException {
+  const KoolbaseInvitationInvalidException([
+    super.message = 'This invitation has been revoked or expired',
+  ]) : super(code: 'invitation_invalid');
+}
+
+/// The project id in the request is not valid.
+class KoolbaseProjectInvalidException extends KoolbaseDataException {
+  const KoolbaseProjectInvalidException([
+    super.message = 'Invalid project id',
+  ]) : super(code: 'project_invalid');
+}
+
+/// The request asked for no change.
+class KoolbaseNoChangesException extends KoolbaseDataException {
+  const KoolbaseNoChangesException([
+    super.message = 'The request contains no changes',
+  ]) : super(code: 'no_changes');
+}
+
+/// A seed or import operation was refused. [code] says which stage:
+/// `invalid_seed_file`, `seed_key_not_unique`, `seed_needs_decision`, or
+/// `seed_conflicts_require_force`. One class rather than four: these are
+/// dashboard and CLI operations, and a caller handles them the same way —
+/// show the reason and let a human decide.
+class KoolbaseSeedException extends KoolbaseDataException {
+  const KoolbaseSeedException(super.message, String code)
+      : super(code: code);
+}
+
 class KoolbaseRevisionMismatchException extends KoolbaseDataException {
   /// The revision the write expected.
   final int? expectedRevision;
@@ -207,12 +373,63 @@ KoolbaseException koolbaseDataError(
   switch (code) {
     case 'unique_violation':
       return KoolbaseConflictException(message, details?['field'] as String?);
+    case 'plan_limit_reached':
+      return KoolbasePlanLimitException(
+        message,
+        resource: details?['resource'] as String?,
+        limit: (details?['limit'] as num?)?.toInt(),
+        plan: details?['plan'] as String?,
+      );
+    case 'ambiguous_match':
+      return KoolbaseAmbiguousMatchException(message);
+    case 'constraint_exists':
+      return KoolbaseConstraintExistsException(message);
+    case 'constraint_not_found':
+      return KoolbaseConstraintNotFoundException(message);
+    case 'duplicate_values':
+      return KoolbaseDuplicateValuesException(message);
+    case 'idempotency_key_reused':
+    case 'idempotency_conflict':
+      return KoolbaseIdempotencyKeyReusedException(message, code!);
+    case 'batch_failed':
+      return KoolbaseBatchFailedException(message);
+    case 'insufficient_authority':
+      return KoolbaseInsufficientAuthorityException(message);
+    case 'vector_field_exists':
+      return KoolbaseVectorFieldExistsException(message);
+    case 'field_not_auto_embed':
+      return KoolbaseFieldNotAutoEmbedException(message);
+    case 'invalid_embedding_config':
+      return KoolbaseInvalidEmbeddingConfigException(message);
+    case 'provider_not_configured':
+      return KoolbaseProviderNotConfiguredException(message);
+    case 'provider_invalid':
+      return KoolbaseProviderInvalidException(message);
+    case 'invalid_body':
+      return KoolbaseInvalidBodyException(message);
+    case 'conflict':
+    case 'duplicate':
+    case 'state_conflict':
+      return KoolbaseStateConflictException(message, code!);
+    case 'slug_taken':
+      return KoolbaseSlugTakenException(message);
+    case 'invitation_invalid':
+      return KoolbaseInvitationInvalidException(message);
+    case 'project_invalid':
+      return KoolbaseProjectInvalidException(message);
+    case 'no_changes':
+      return KoolbaseNoChangesException(message);
+    case 'invalid_seed_file':
+    case 'seed_key_not_unique':
+    case 'seed_needs_decision':
+    case 'seed_conflicts_require_force':
+      return KoolbaseSeedException(message, code!);
     case 'not_found':
     case 'record_not_found':
     case 'collection_not_found':
     case 'vector_not_found':
     case 'vector_field_not_found':
-      return KoolbaseNotFoundException(message);
+      return KoolbaseNotFoundException(message, code!);
     case 'revision_mismatch':
       return KoolbaseRevisionMismatchException(
         message,
@@ -244,7 +461,7 @@ KoolbaseException koolbaseDataError(
     case 'validation_error':
     case 'vector_collection_mismatch':
     case 'unsupported_dimension':
-      return KoolbaseValidationException(message);
+      return KoolbaseValidationException(message, code!);
     case 'vector_dimension_mismatch':
       return KoolbaseVectorDimensionMismatchException(message);
   }

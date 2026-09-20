@@ -73,6 +73,26 @@ class FunctionQuotaExceededException extends FunctionInvokeException {
 ///
 /// The error is the Function's own, not the platform's — its message comes from
 /// the code that was deployed.
+/// The function ran past its timeout and was killed.
+///
+/// Its own type because the remedy differs from a function that threw: a
+/// timeout means retry, raise the function's timeout at deploy, or move the
+/// slow part elsewhere. Until 20 Sep 2026 it arrived as
+/// [FunctionExecutionException] — indistinguishable from an exception, which
+/// is the one thing it is not. The server already tells them apart; it logs
+/// 504 as "timeout".
+class FunctionTimeoutException extends FunctionInvokeException {
+  const FunctionTimeoutException(super.message)
+      : super(statusCode: 504, code: 'timeout');
+}
+
+/// Too many invocations, too fast. Distinct from a quota being spent: this
+/// one clears by waiting.
+class FunctionRateLimitException extends FunctionInvokeException {
+  const FunctionRateLimitException(super.message)
+      : super(statusCode: 429, code: 'rate_limit');
+}
+
 class FunctionExecutionException extends FunctionInvokeException {
   const FunctionExecutionException(super.message, {super.statusCode})
       : super(code: 'execution_failed');
@@ -99,6 +119,11 @@ KoolbaseException functionInvokeError(int statusCode, String message) {
       return FunctionValidationException(message);
     case 402:
       return FunctionQuotaExceededException(message);
+    case 429:
+      return FunctionRateLimitException(message);
+    case 504:
+      // Before the generic 5xx branch: a timeout is not an exception.
+      return FunctionTimeoutException(message);
   }
   if (statusCode >= 500) {
     return FunctionExecutionException(message, statusCode: statusCode);

@@ -54,3 +54,27 @@ class KoolbaseUnauthenticatedException extends KoolbaseException {
     super.code = 'unauthenticated',
   });
 }
+
+/// The project's plan does not allow this — a 402 carrying which resource,
+/// the limit, and the plan.
+///
+/// Shared rather than per-family: creating a collection, uploading an object
+/// and deploying a function can all hit it, and an app showing an upgrade
+/// prompt wants one type to catch.
+class KoolbasePlanLimitException extends KoolbaseException {
+  const KoolbasePlanLimitException(
+    super.message, {
+    this.resource,
+    this.limit,
+    this.plan,
+  }) : super(code: 'plan_limit_reached');
+
+  final String? resource;
+  final int? limit;
+  final String? plan;
+
+  @override
+  String toString() =>
+      'KoolbasePlanLimitException: $message'
+      '${resource == null ? '' : ' (resource: $resource, limit: $limit, plan: $plan)'}';
+}

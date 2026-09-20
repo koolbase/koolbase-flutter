@@ -126,6 +126,36 @@ class KoolbaseStoragePermissionException extends KoolbaseStorageException {
 ///
 /// Distinct from [KoolbaseStorageConflictException] (which also uses 409
 /// but means "path collides"); branch on the exception type, not status.
+/// The presigned upload was confirmed after its window closed.
+///
+/// An upload URL has a lifetime. A user who picks a file, gets distracted
+/// and comes back later hits this — so it is a retry, not a failure:
+/// presign again and send the same bytes. Worth catching rather than showing
+/// "upload failed" to someone whose file was fine.
+class KoolbaseUploadExpiredException extends KoolbaseStorageException {
+  const KoolbaseUploadExpiredException([
+    super.message =
+        'This upload is past the confirmation window — please re-upload',
+  ]) : super(code: 'upload_expired');
+}
+
+/// A bucket cap set below what the bucket already holds. A dashboard
+/// operation, mapped so it does not arrive untyped.
+class KoolbaseCapBelowUsageException extends KoolbaseStorageException {
+  const KoolbaseCapBelowUsageException([
+    super.message = "The cap is below the bucket's current usage",
+  ]) : super(code: 'cap_below_usage');
+}
+
+/// Minting a presigned upload URL failed. Not the user's doing and not a
+/// retry they can fix — distinct from [KoolbaseUploadExpiredException],
+/// which is a retry that will work.
+class KoolbaseUploadURLFailedException extends KoolbaseStorageException {
+  const KoolbaseUploadURLFailedException([
+    super.message = 'Could not create an upload URL',
+  ]) : super(code: 'upload_url_failed');
+}
+
 class KoolbaseStorageQuotaExceededException extends KoolbaseStorageException {
   const KoolbaseStorageQuotaExceededException([
     super.message = 'Bucket quota exceeded',
@@ -243,6 +273,20 @@ KoolbaseException koolbaseStorageError(
       );
     case 'quota_exceeded':
       return KoolbaseStorageQuotaExceededException(message);
+    case 'plan_limit_reached':
+      final details = body['details'] as Map<String, dynamic>?;
+      return KoolbasePlanLimitException(
+        message,
+        resource: details?['resource'] as String?,
+        limit: (details?['limit'] as num?)?.toInt(),
+        plan: details?['plan'] as String?,
+      );
+    case 'upload_expired':
+      return KoolbaseUploadExpiredException(message);
+    case 'cap_below_usage':
+      return KoolbaseCapBelowUsageException(message);
+    case 'upload_url_failed':
+      return KoolbaseUploadURLFailedException(message);
     case 'file_too_large':
       return KoolbaseStorageFileTooLargeException(message);
     case 'mime_not_allowed':

@@ -56,6 +56,7 @@ const clientOnly = <String>{
   'project_identity_unavailable', // bootstrap has not completed
   'offline_baseline_unavailable',
   'execution_failed', // function invokes map by status, not by code
+  'timeout', // likewise: a 504, named for what it means
 
   // Reserved. TokenRevokedException exists for a contract that does not yet
   // exist: explicit revocation is worth telling a user about differently
@@ -103,6 +104,43 @@ final exceptions = <KoolbaseException>[
   SessionRequiredException(null),
   InsufficientScopeException(null),
   HideRequiresVerificationException(null),
+
+  // Database, storage, functions, shared — added 20 Sep 2026.
+  const KoolbaseAmbiguousMatchException(),
+  const KoolbaseConstraintExistsException(),
+  const KoolbaseConstraintNotFoundException(),
+  const KoolbaseDuplicateValuesException(),
+  const KoolbaseIdempotencyKeyReusedException(),
+  const KoolbaseBatchFailedException(),
+  const KoolbaseInsufficientAuthorityException(),
+  const KoolbaseVectorFieldExistsException(),
+  const KoolbaseFieldNotAutoEmbedException(),
+  const KoolbaseInvalidEmbeddingConfigException(),
+  const KoolbaseProviderNotConfiguredException(),
+  const KoolbaseProviderInvalidException(),
+  const KoolbaseInvalidBodyException(),
+  const KoolbaseStateConflictException('m', 'state_conflict'),
+  const KoolbaseSlugTakenException(),
+  const KoolbaseInvitationInvalidException(),
+  const KoolbaseProjectInvalidException(),
+  const KoolbaseNoChangesException(),
+  const KoolbaseSeedException('m', 'invalid_seed_file'),
+  const KoolbaseNotFoundException(),
+  const KoolbaseValidationException(),
+  const KoolbaseConflictException('m'),
+  const KoolbasePermissionException(),
+  const KoolbaseRateLimitException(),
+  const KoolbaseUploadExpiredException(),
+  const KoolbaseCapBelowUsageException(),
+  const KoolbaseUploadURLFailedException(),
+  const KoolbaseStorageQuotaExceededException(),
+  const KoolbaseStorageFileTooLargeException(),
+  const KoolbaseStorageMimeTypeException(),
+  const KoolbaseStorageMetadataInvalidException(),
+  const KoolbasePlanLimitException('m'),
+  const FunctionTimeoutException('m'),
+  const FunctionRateLimitException('m'),
+  const FunctionExecutionException('m'),
 ];
 
 void main() {
