@@ -41,7 +41,10 @@ void main() {
         'total': 1,
       });
 
-      final sessions = await api.listSessions('token');
+      final List<KoolbaseSessionInfo> sessions = await api.listSessions('token');
+      // Typed against the public export deliberately: if KoolbaseSessionInfo
+      // stopped being exported, an app could call listSessions and have no
+      // way to name what it returns.
       expect(sessions, hasLength(1));
       expect(sessions.first.id, 's1');
       expect(sessions.first.deviceLabel, 'phone');
