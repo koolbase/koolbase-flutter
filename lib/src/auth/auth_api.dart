@@ -257,6 +257,52 @@ class AuthApi {
   /// Consume an unlock token from a brute-force unlock email. Returns
   /// nothing on success (204). Throws [UnlockTokenInvalidException] if
   /// the token is invalid, expired, or already consumed.
+  /// Every active session for the caller — a "where you're signed in" list.
+  ///
+  /// Token hashes are excluded by the server; only safe metadata comes back.
+  Future<List<KoolbaseSessionInfo>> listSessions(String accessToken) async {
+    final res = await _client
+        .get(
+          Uri.parse('$baseUrl/v1/sdk/auth/sessions'),
+          headers: _authHeaders(accessToken),
+        )
+        .timeout(timeout);
+    _checkError(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final rows = (body['sessions'] as List<dynamic>?) ?? const [];
+    return rows
+        .map((r) => KoolbaseSessionInfo.fromJson(r as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
+  /// Revoke one session by id.
+  Future<void> revokeSession({
+    required String accessToken,
+    required String sessionId,
+  }) async {
+    final res = await _client
+        .post(
+          Uri.parse(
+              '$baseUrl/v1/sdk/auth/sessions/${Uri.encodeComponent(sessionId)}/revoke'),
+          headers: _authHeaders(accessToken),
+        )
+        .timeout(timeout);
+    _checkError(res);
+  }
+
+  /// Revoke every session except this one. Returns how many ended.
+  Future<int> revokeAllOtherSessions(String accessToken) async {
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/auth/sessions/revoke-all'),
+          headers: _authHeaders(accessToken),
+        )
+        .timeout(timeout);
+    _checkError(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return (body['revoked_count'] as num?)?.toInt() ?? 0;
+  }
+
   Future<void> unlock(String token) async {
     final res = await _client
         .post(

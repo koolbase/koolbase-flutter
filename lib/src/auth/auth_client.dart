@@ -289,6 +289,39 @@ class KoolbaseAuthClient {
   /// a server failure here rethrows — the account still existing is a
   /// state the app must know about. Local session state is cleared only
   /// after the server confirms.
+  /// Every session the signed-in user has — a "where you're signed in" list.
+  ///
+  /// The entry whose [KoolbaseSessionInfo.isCurrent] is true is this device.
+  /// Order is not guaranteed; sort by createdAt if it matters.
+  Future<List<KoolbaseSessionInfo>> listSessions() async {
+    final token = await _ensureValidToken();
+    return _api.listSessions(token);
+  }
+
+  /// Sign out one session by id.
+  ///
+  /// Revoking the current one ends this session too, and the server does not
+  /// refuse it. The local session is not cleared here — the SDK cannot tell
+  /// from the response which session it was, and re-listing to find out
+  /// would cost a request on every revoke. The next request 401s and the
+  /// normal refresh path clears it.
+  ///
+  /// A UI listing sessions already knows which row is current, and should
+  /// call [logout] for that one: clearer to the user, and one fewer round
+  /// trip.
+  Future<void> revokeSession(String sessionId) async {
+    final token = await _ensureValidToken();
+    await _api.revokeSession(accessToken: token, sessionId: sessionId);
+  }
+
+  /// Sign out every OTHER session, keeping this one. Returns how many ended.
+  ///
+  /// What "sign out my other devices" means after a lost phone.
+  Future<int> revokeAllOtherSessions() async {
+    final token = await _ensureValidToken();
+    return _api.revokeAllOtherSessions(token);
+  }
+
   Future<void> deleteAccount() async {
     final token = await _ensureValidToken();
     await _api.deleteMe(token);

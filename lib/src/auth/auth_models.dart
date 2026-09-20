@@ -241,3 +241,58 @@ class SignUpResult {
     required this.verificationRequired,
   });
 }
+
+/// One active session — somewhere the user is signed in.
+///
+/// Returned by [KoolbaseAuthClient.listSessions] for a "where you're signed
+/// in" screen. Token hashes are never included; the server excludes them
+/// from this endpoint deliberately.
+class KoolbaseSessionInfo {
+  final String id;
+
+  /// Where it signed in from, when the server captured it.
+  final String? ip;
+
+  /// What signed in. A browser sets this; the Flutter SDK sends its own.
+  final String? userAgent;
+
+  /// A per-install label, where the SDK supplied one.
+  final String? deviceLabel;
+
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  /// True for the session making the request.
+  ///
+  /// A device list needs this: without it a user cannot tell which row is
+  /// the phone in their hand, and "sign out everywhere else" has nothing to
+  /// exclude.
+  final bool isCurrent;
+
+  const KoolbaseSessionInfo({
+    required this.id,
+    this.ip,
+    this.userAgent,
+    this.deviceLabel,
+    required this.createdAt,
+    required this.expiresAt,
+    required this.isCurrent,
+  });
+
+  factory KoolbaseSessionInfo.fromJson(Map<String, dynamic> json) {
+    return KoolbaseSessionInfo(
+      id: json['id'] as String,
+      ip: json['ip'] as String?,
+      userAgent: json['user_agent'] as String?,
+      deviceLabel: json['device_label'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      expiresAt: DateTime.parse(json['expires_at'] as String),
+      isCurrent: json['is_current'] as bool? ?? false,
+    );
+  }
+
+  @override
+  String toString() =>
+      'KoolbaseSessionInfo($id${deviceLabel != null ? ', $deviceLabel' : ''}'
+      '${isCurrent ? ', current' : ''})';
+}
