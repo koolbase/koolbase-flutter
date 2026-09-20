@@ -32,7 +32,10 @@ void main() {
     // meaning. These cases exist so the SDK is correct once they do, without
     // depending on it.
     test('an explicit session code is honoured', () {
-      for (final code in ['session_expired', 'invalid_token']) {
+      // The codes the API actually sends. session_expired was here and is
+      // not one of them — an expired session arrives as
+      // invalid_refresh_token, which until 19 Sep was unmapped entirely.
+      for (final code in ['invalid_refresh_token', 'invalid_token', 'unauthenticated']) {
         expect(
           koolbaseDataError(400, {'code': code, 'error': 'nope'}),
           isA<KoolbaseUnauthenticatedException>(),

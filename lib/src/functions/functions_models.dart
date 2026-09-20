@@ -66,7 +66,7 @@ class FunctionValidationException extends FunctionInvokeException {
 /// that is fixed by changing a plan rather than changing code.
 class FunctionQuotaExceededException extends FunctionInvokeException {
   const FunctionQuotaExceededException(super.message)
-      : super(statusCode: 402, code: 'limit_reached');
+      : super(statusCode: 402, code: 'plan_limit_reached');
 }
 
 /// The Function ran and failed.

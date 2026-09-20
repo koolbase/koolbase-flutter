@@ -136,7 +136,7 @@ void main() {
         const KoolbaseSessionExpiredException('expired'),
       );
       expect(err.code, KoolbaseErrorCode.unauthorized);
-      expect(err.rawCode, 'session_expired');
+      expect(err.rawCode, 'invalid_refresh_token');
     });
 
     test('RevisionMismatch is not swallowed by the DataException fallback', () {

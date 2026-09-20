@@ -24,17 +24,17 @@ class InvalidCredentialsException extends KoolbaseAuthException {
 
 class EmailAlreadyInUseException extends KoolbaseAuthException {
   const EmailAlreadyInUseException()
-      : super('Email is already in use', code: 'email_taken');
+      : super('Email is already in use', code: 'email_in_use');
 }
 
 class SessionExpiredException extends KoolbaseAuthException {
   const SessionExpiredException()
-      : super('Session expired, please log in again', code: 'session_expired');
+      : super('Session expired, please log in again', code: 'invalid_refresh_token');
 }
 
 class UserDisabledException extends KoolbaseAuthException {
   const UserDisabledException()
-      : super('This account has been disabled', code: 'user_disabled');
+      : super('This account has been disabled', code: 'account_disabled');
 }
 
 class WeakPasswordException extends KoolbaseAuthException {
@@ -73,19 +73,19 @@ class OtpMaxAttemptsException extends KoolbaseAuthException {
 class OtpRateLimitException extends KoolbaseAuthException {
   const OtpRateLimitException()
       : super('Too many OTP requests, please wait before trying again',
-            code: 'otp_rate_limit');
+            code: 'rate_limit');
 }
 
 class PhoneAlreadyLinkedException extends KoolbaseAuthException {
   const PhoneAlreadyLinkedException()
       : super('Phone number is already associated with another account',
-            code: 'phone_taken');
+            code: 'phone_in_use');
 }
 
 class SmsConfigMissingException extends KoolbaseAuthException {
   const SmsConfigMissingException()
       : super('SMS provider not configured for this project',
-            code: 'sms_config_missing');
+            code: 'sms_not_configured');
 }
 
 /// Thrown when the account is temporarily locked due to too many failed
@@ -144,7 +144,7 @@ class ResendDailyCapException extends KoolbaseAuthException {
 class UnlockTokenInvalidException extends KoolbaseAuthException {
   const UnlockTokenInvalidException()
       : super('Unlock link is invalid or has expired',
-            code: 'unlock_token_invalid');
+            code: 'invalid_unlock_token');
 }
 
 /// Thrown when the access token references a session that has been
@@ -165,7 +165,7 @@ class AppleSignInNotConfiguredException extends KoolbaseAuthException {
   const AppleSignInNotConfiguredException()
       : super(
           'Apple Sign-In is not configured for this environment',
-          code: 'apple_not_configured',
+          code: 'oauth_not_configured',
         );
 }
 
@@ -173,7 +173,7 @@ class InvalidAppleTokenException extends KoolbaseAuthException {
   const InvalidAppleTokenException()
       : super(
           'Invalid Apple identity token',
-          code: 'invalid_apple_token',
+          code: 'invalid_oauth_token',
         );
 }
 
@@ -181,7 +181,7 @@ class AppleEmailRequiredException extends KoolbaseAuthException {
   const AppleEmailRequiredException()
       : super(
           'Apple did not return email for this sign-in. Revoke this app in iOS Settings → Apple ID and retry.',
-          code: 'apple_email_required',
+          code: 'oauth_email_required',
         );
 }
 
@@ -197,7 +197,7 @@ class GoogleSignInNotConfiguredException extends KoolbaseAuthException {
   const GoogleSignInNotConfiguredException()
       : super(
           'Google Sign-In is not configured for this environment',
-          code: 'google_not_configured',
+          code: 'oauth_not_configured',
         );
 }
 
@@ -205,7 +205,7 @@ class InvalidGoogleTokenException extends KoolbaseAuthException {
   const InvalidGoogleTokenException()
       : super(
           'Invalid Google identity token',
-          code: 'invalid_google_token',
+          code: 'invalid_oauth_token',
         );
 }
 
@@ -213,7 +213,7 @@ class GoogleEmailRequiredException extends KoolbaseAuthException {
   const GoogleEmailRequiredException()
       : super(
           'Google did not return email for this sign-in. Ensure the email scope is requested in the native flow.',
-          code: 'google_email_required',
+          code: 'oauth_email_required',
         );
 }
 

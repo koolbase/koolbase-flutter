@@ -187,7 +187,7 @@ class KoolbaseRevisionMismatchException extends KoolbaseDataException {
     'Kept so existing catches keep working; will be removed in 11.0.0.')
 class KoolbaseSessionExpiredException extends KoolbaseUnauthenticatedException {
   const KoolbaseSessionExpiredException(super.message)
-      : super(code: 'session_expired');
+      : super(code: 'invalid_refresh_token');
 }
 
 /// dependency at its core while [koolbaseDataErrorFromResponse] offers a
@@ -220,7 +220,20 @@ KoolbaseException koolbaseDataError(
         currentRevision: (details?['current_revision'] as num?)?.toInt(),
         currentRecord: details?['record'] as Map<String, dynamic>?,
       );
-    case 'session_expired':
+    // invalid_refresh_token is what the server actually sends when a session
+    // is over. It was unmapped, so it fell through to the generic fallback
+    // and koolbaseDataErrorNotifying never fired — leaving an app holding a
+    // token the server refuses, which is the failure that notifier exists to
+    // prevent.
+    //
+    // It returns the SessionExpired subclass because that is the exception
+    // four doc comments tell applications to catch, and nothing had ever
+    // constructed it. The notifier still fires: the subclass IS a
+    // KoolbaseUnauthenticatedException.
+    //
+    // session_expired is gone. The API has never emitted it.
+    case 'invalid_refresh_token':
+      return KoolbaseSessionExpiredException(message);
     case 'invalid_token':
     case 'unauthenticated':
       return KoolbaseUnauthenticatedException(message);
