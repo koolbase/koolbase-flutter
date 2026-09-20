@@ -320,6 +320,27 @@ class AuthApi {
     return (body['revoked_count'] as num?)?.toInt() ?? 0;
   }
 
+  /// The account's own security log, paged.
+  Future<KoolbaseAuditPage> listAudit({
+    required String accessToken,
+    int? limit,
+    int? offset,
+  }) async {
+    final q = <String, String>{
+      if (limit != null) 'limit': '$limit',
+      if (offset != null) 'offset': '$offset',
+    };
+    final uri = Uri.parse('$baseUrl/v1/sdk/auth/audit')
+        .replace(queryParameters: q.isEmpty ? null : q);
+
+    final res = await _client
+        .get(uri, headers: _authHeaders(accessToken))
+        .timeout(timeout);
+    _checkError(res);
+    return KoolbaseAuditPage.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   Future<void> unlock(String token) async {
     final res = await _client
         .post(

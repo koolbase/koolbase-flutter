@@ -296,3 +296,83 @@ class KoolbaseSessionInfo {
       'KoolbaseSessionInfo($id${deviceLabel != null ? ', $deviceLabel' : ''}'
       '${isCurrent ? ', current' : ''})';
 }
+
+/// One thing that happened to this account.
+///
+/// The server sanitizes these against a per-event-type field allowlist, so
+/// [eventData] carries what that event is allowed to say and nothing more —
+/// a lockout can name the address that was attempted, a successful login
+/// carries nothing extra.
+class KoolbaseAuditEvent {
+  final String id;
+
+  /// What happened: `auth.login.success`, `auth.login.failed`,
+  /// `auth.account.locked`, `auth.account.unlocked`, `auth.session.created`,
+  /// `auth.session.refreshed`, `auth.session.revoked`,
+  /// `auth.password.changed`, `auth.user.verified`.
+  ///
+  /// A String rather than an enum: the server may add one, and an app that
+  /// crashed on an unrecognised value would be worse than one that shows it.
+  final String eventType;
+
+  final DateTime occurredAt;
+  final String? ip;
+  final String? userAgent;
+
+  /// Whatever that event type is allowed to carry. Often empty.
+  final Map<String, dynamic> eventData;
+
+  const KoolbaseAuditEvent({
+    required this.id,
+    required this.eventType,
+    required this.occurredAt,
+    this.ip,
+    this.userAgent,
+    this.eventData = const {},
+  });
+
+  factory KoolbaseAuditEvent.fromJson(Map<String, dynamic> json) {
+    return KoolbaseAuditEvent(
+      id: json['id'] as String,
+      eventType: json['event_type'] as String,
+      occurredAt: DateTime.parse(json['occurred_at'] as String),
+      ip: json['ip'] as String?,
+      userAgent: json['user_agent'] as String?,
+      eventData: json['event_data'] != null
+          ? Map<String, dynamic>.from(json['event_data'] as Map)
+          : const {},
+    );
+  }
+
+  @override
+  String toString() => 'KoolbaseAuditEvent($eventType at $occurredAt)';
+}
+
+/// A page of audit events, and how many there are in total.
+class KoolbaseAuditPage {
+  final List<KoolbaseAuditEvent> events;
+
+  /// Across all pages, so an app knows whether to offer "show more".
+  final int total;
+  final int limit;
+  final int offset;
+
+  const KoolbaseAuditPage({
+    required this.events,
+    required this.total,
+    required this.limit,
+    required this.offset,
+  });
+
+  factory KoolbaseAuditPage.fromJson(Map<String, dynamic> json) {
+    return KoolbaseAuditPage(
+      events: [
+        for (final e in (json['events'] as List<dynamic>? ?? const []))
+          KoolbaseAuditEvent.fromJson(e as Map<String, dynamic>),
+      ],
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      limit: (json['limit'] as num?)?.toInt() ?? 0,
+      offset: (json['offset'] as num?)?.toInt() ?? 0,
+    );
+  }
+}

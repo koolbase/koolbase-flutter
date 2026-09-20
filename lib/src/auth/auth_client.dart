@@ -293,6 +293,18 @@ class KoolbaseAuthClient {
   ///
   /// The entry whose [KoolbaseSessionInfo.isCurrent] is true is this device.
   /// Order is not guaranteed; sort by createdAt if it matters.
+  /// What has happened to this account — sign-ins, failures, lockouts,
+  /// password changes.
+  ///
+  /// For a "recent security activity" screen. Each event carries what its
+  /// type is allowed to say and nothing more; the server sanitizes them.
+  ///
+  /// [limit] is capped at 200 by the server.
+  Future<KoolbaseAuditPage> auditLog({int? limit, int? offset}) async {
+    final token = await _ensureValidToken();
+    return _api.listAudit(accessToken: token, limit: limit, offset: offset);
+  }
+
   Future<List<KoolbaseSessionInfo>> listSessions() async {
     final token = await _ensureValidToken();
     return _api.listSessions(token);
