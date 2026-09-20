@@ -89,6 +89,20 @@ final exceptions = <KoolbaseException>[
   RateLimitException(null),
   ResendCooldownException(null),
   ResendDailyCapException(null),
+
+  // Added 20 Sep 2026.
+  AccountExistsException(null),
+  SignupsDisabledException(null),
+  TokenExpiredException(null),
+  TokenAlreadyUsedException(null),
+  OAuthOnlyAccountException(null),
+  UnsupportedOAuthProviderException(null),
+  IdentityNotFoundException(null),
+  ProviderIdentityAlreadyLinkedException(null),
+  LastCredentialException(null),
+  SessionRequiredException(null),
+  InsufficientScopeException(null),
+  HideRequiresVerificationException(null),
 ];
 
 void main() {

@@ -328,6 +328,34 @@ class AuthApi {
         throw const UnlockTokenInvalidException();
       case 'rate_limit':
         throw RateLimitException(msg.isEmpty ? null : msg);
+      // email_not_verified is the same situation as contact_not_verified
+      // from a different package; an app should not have to know which.
+      case 'email_not_verified':
+        throw const ContactNotVerifiedException();
+      case 'account_exists':
+        throw AccountExistsException(msg.isEmpty ? null : msg);
+      case 'signups_disabled':
+        throw SignupsDisabledException(msg.isEmpty ? null : msg);
+      case 'token_expired':
+        throw TokenExpiredException(msg.isEmpty ? null : msg);
+      case 'token_used':
+        throw TokenAlreadyUsedException(msg.isEmpty ? null : msg);
+      case 'oauth_only_account':
+        throw OAuthOnlyAccountException(msg.isEmpty ? null : msg);
+      case 'unsupported_oauth_provider':
+        throw UnsupportedOAuthProviderException(msg.isEmpty ? null : msg);
+      case 'identity_not_found':
+        throw IdentityNotFoundException(msg.isEmpty ? null : msg);
+      case 'provider_identity_already_linked':
+        throw ProviderIdentityAlreadyLinkedException(msg.isEmpty ? null : msg);
+      case 'last_credential':
+        throw LastCredentialException(msg.isEmpty ? null : msg);
+      case 'session_required':
+        throw SessionRequiredException(msg.isEmpty ? null : msg);
+      case 'insufficient_scope':
+        throw InsufficientScopeException(msg.isEmpty ? null : msg);
+      case 'hide_requires_verification':
+        throw HideRequiresVerificationException(msg.isEmpty ? null : msg);
       case 'resend_cooldown':
         throw ResendCooldownException(msg.isEmpty ? null : msg);
       case 'resend_daily_cap':

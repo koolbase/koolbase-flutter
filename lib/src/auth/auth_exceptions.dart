@@ -234,3 +234,115 @@ class ContactNotVerifiedException extends KoolbaseAuthException {
           code: 'contact_not_verified',
         );
 }
+
+// ─── Added 20 Sep 2026 ──────────────────────────────────────────────────────
+//
+// Thirteen codes the API emits that nothing here caught, so they arrived as a
+// bare KoolbaseAuthException and an app's `on` clause silently never ran.
+// Found by comparing the API's declared code list against this file; the
+// TypeScript SDKs had the same gap and the same fix.
+
+/// An OAuth sign-in for an email that already has an account by another
+/// method. Sign in the existing way first, then connect the provider.
+class AccountExistsException extends KoolbaseAuthException {
+  const AccountExistsException([String? message])
+      : super(
+            message ??
+                'An account with this email already exists — sign in with your '
+                    'existing method first',
+            code: 'account_exists');
+}
+
+/// The project has registration turned off. Not a credential problem.
+class SignupsDisabledException extends KoolbaseAuthException {
+  const SignupsDisabledException([String? message])
+      : super(message ?? 'Registration is disabled for this project',
+            code: 'signups_disabled');
+}
+
+/// A verification or reset link that has expired. Request another.
+///
+/// Distinct from [TokenAlreadyUsedException]: expired means ask again, used
+/// usually means it already worked and the user is clicking an old email.
+class TokenExpiredException extends KoolbaseAuthException {
+  const TokenExpiredException([String? message])
+      : super(message ?? 'This link has expired — request a new one',
+            code: 'token_expired');
+}
+
+/// A one-shot link clicked twice.
+class TokenAlreadyUsedException extends KoolbaseAuthException {
+  const TokenAlreadyUsedException([String? message])
+      : super(message ?? 'This link has already been used',
+            code: 'token_used');
+}
+
+/// A password attempt against an account that only has Google or Apple.
+class OAuthOnlyAccountException extends KoolbaseAuthException {
+  const OAuthOnlyAccountException([String? message])
+      : super(
+            message ??
+                'This account uses Google or Apple sign-in and has no password',
+            code: 'oauth_only_account');
+}
+
+/// A provider the project has not enabled.
+class UnsupportedOAuthProviderException extends KoolbaseAuthException {
+  const UnsupportedOAuthProviderException([String? message])
+      : super(message ?? 'That sign-in method is not available',
+            code: 'unsupported_oauth_provider');
+}
+
+/// The provider is not connected to this account.
+class IdentityNotFoundException extends KoolbaseAuthException {
+  const IdentityNotFoundException([String? message])
+      : super(message ?? 'That provider is not connected to your account',
+            code: 'identity_not_found');
+}
+
+/// Connecting a Google or Apple identity that another account already holds.
+/// About the provider identity itself, where [AccountExistsException] is
+/// about the email.
+class ProviderIdentityAlreadyLinkedException extends KoolbaseAuthException {
+  const ProviderIdentityAlreadyLinkedException([String? message])
+      : super(
+            message ??
+                'That provider identity is already linked to another account',
+            code: 'provider_identity_already_linked');
+}
+
+/// Refused because it would remove the account's last way of signing in.
+class LastCredentialException extends KoolbaseAuthException {
+  const LastCredentialException([String? message])
+      : super(
+            message ??
+                "This is the account's only sign-in method and cannot be removed",
+            code: 'last_credential');
+}
+
+/// The call needs a signed-in user and did not have one.
+class SessionRequiredException extends KoolbaseAuthException {
+  const SessionRequiredException([String? message])
+      : super(message ?? 'This action requires a signed-in user',
+            code: 'session_required');
+}
+
+/// The API key's scope is below what the operation requires. Scopes rank
+/// read < write < admin. The key is valid — a different key or a dashboard
+/// session is needed, so do not tell the user to sign in again.
+class InsufficientScopeException extends KoolbaseAuthException {
+  const InsufficientScopeException([String? message])
+      : super(message ?? "This key's scope does not permit this operation",
+            code: 'insufficient_scope');
+}
+
+/// Hiding account existence needs verified contact on; the project has it
+/// off. A settings-validation refusal, not a user error.
+class HideRequiresVerificationException extends KoolbaseAuthException {
+  const HideRequiresVerificationException([String? message])
+      : super(
+            message ??
+                'Hiding account existence requires verified contact to be '
+                    'enabled',
+            code: 'hide_requires_verification');
+}
