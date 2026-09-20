@@ -1,3 +1,50 @@
+# 12.4.0
+- **Fourteen exceptions reported codes the API has never emitted.**
+  `EmailAlreadyInUseException` said `email_taken` for a server that says
+  `email_in_use`; `UserDisabledException` said `user_disabled` for
+  `account_disabled`; the Apple and Google exceptions each reported a
+  provider-split code where the server sends one unified code. `code` is a
+  public field, and anyone reading it instead of catching by type was
+  comparing against a string that would never arrive. Catching by type has
+  always worked and is unaffected.
+
+- **`invalid_refresh_token` was unmapped in the database path** — the code the
+  server actually sends when a session is over. It fell through to the
+  generic fallback, so `koolbaseDataErrorNotifying` never fired for it and
+  the session was not cleared. An app could keep a token the server refuses,
+  which is the failure that notifier exists to prevent. It now produces
+  `KoolbaseSessionExpiredException`, which four doc comments told
+  applications to catch and **nothing had ever thrown**.
+
+- **A function that timed out was indistinguishable from one that threw.** A
+  504 fell into the generic 5xx branch and arrived as
+  `FunctionExecutionException`. Those need different answers — a timeout
+  means retry or raise the limit; an exception means fix the code. Now
+  `FunctionTimeoutException`, and 429 gets `FunctionRateLimitException`.
+
+- **Forty-four error codes the API emits were not mapped**, arriving as bare
+  exceptions so an app's `on` clause silently never ran. Thirteen in auth,
+  including `token_expired`, `token_used`, `account_exists`,
+  `oauth_only_account` and `insufficient_scope`; the rest across database,
+  storage and functions, including `revision_mismatch`'s siblings,
+  `plan_limit_reached` (shared across all three families, carrying resource,
+  limit and plan), `ambiguous_match` and `upload_expired`.
+
+- **`KoolbaseNotFoundException` and `KoolbaseValidationException` report the
+  code they were built from**, not their category. Each stood for several
+  codes while reporting one, so a `collection_not_found` response produced an
+  exception saying `not_found`.
+
+- Why these were missing:
+The API wrote error codes through four different helpers, so no single search
+found them all. It now declares every code as a constant in one file, with a
+test that fails the build on a literal — which made the comparison against
+this SDK exact for the first time. That is how these were found.
+
+Both halves are now guarded here: one test asserts every code maps to its own
+exception, another that every exception reports a code the server sends. The
+auth error mapping had never had a test before this release.
+
 # 12.3.0
 - `auth.changePassword(currentPassword:, newPassword:)`. An app could not
   offer a change-password screen until now; the only route to a new
