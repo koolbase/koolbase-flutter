@@ -216,6 +216,23 @@ class AuthApi {
     _checkError(res);
   }
 
+  /// Ask for a new verification email, with no session.
+  ///
+  /// Shaped like [forgotPassword] because it has the same problem: an
+  /// unauthenticated endpoint that mails an address the caller names. The
+  /// server answers identically whether the address has an account, has
+  /// none, or is already verified.
+  Future<void> resendVerificationEmailToAddress(String email) async {
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/auth/resend-verification/by-email'),
+          headers: _headers,
+          body: jsonEncode({'email': email}),
+        )
+        .timeout(timeout);
+    _checkError(res);
+  }
+
   Future<void> resetPassword({
     required String token,
     required String password,

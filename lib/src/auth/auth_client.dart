@@ -390,6 +390,21 @@ class KoolbaseAuthClient {
   /// is sent. Server-throttled — a 60s cooldown between sends and a daily
   /// cap; the result carries [ResendVerificationResult.cooldownUntil] so you
   /// can show a countdown. Throws if the cooldown or daily cap is exceeded.
+  /// Ask for a new verification email, with no session.
+  ///
+  /// For the state a project with verified contact required creates:
+  /// registered, unverified, refused at login, and holding a link that may
+  /// never have arrived or has since expired. [resendVerificationEmail]
+  /// cannot help there — it needs a session the user cannot get.
+  ///
+  /// Returns nothing and throws only on a malformed request, because the
+  /// server answers identically whether the address has an account, has
+  /// none, or is already verified. Anything else would let anyone discover
+  /// who has signed up. So show the same "check your email" either way, and
+  /// never say "we sent it".
+  Future<void> resendVerificationEmailToAddress(String email) =>
+      _api.resendVerificationEmailToAddress(email);
+
   Future<ResendVerificationResult> resendVerificationEmail() async {
     final token = await _ensureValidToken();
     return _api.resendVerificationEmail(token);
