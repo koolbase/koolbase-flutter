@@ -181,7 +181,7 @@ class KoolbaseStorageClient {
     // Step 4: Get download URL
     final downloadUrl = await getDownloadUrl(bucket: bucket, path: path);
 
-    return UploadResult(object: object, downloadUrl: downloadUrl);
+    return UploadResult(object: object, downloadUrl: downloadUrl, bucket: bucket);
   }
 
   /// Apply a partial metadata update to an existing object. Returns the

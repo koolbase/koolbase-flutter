@@ -1,3 +1,20 @@
+# 12.6.0
+
+- **`UploadResult` exposes `path` and `publicUrl`**, not only a signed
+  `downloadUrl`.
+
+  `downloadUrl` is signed and expires, so persisting it produces a broken
+  image later. What to persist instead depends on the bucket: `path` for a
+  private bucket (display it through the storage client), `publicUrl` for a
+  public one — a stable CDN URL, null for a private bucket.
+
+  `UploadResult` also carries the `bucket` the object went to, which
+  `publicUrl` needs. `upload()` always sets it; the field is nullable only so
+  existing constructors keep compiling.
+
+  Found through the Designer: its exporter reads upload-result fields by
+  name, so a binding to an upload's `path` emitted code that did not compile.
+
 # 12.5.0
 
 - **`auth.listSessions()`, `auth.revokeSession(id)`, `auth.revokeAllOtherSessions()`.**

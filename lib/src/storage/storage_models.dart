@@ -147,9 +147,31 @@ class KoolbaseObject {
 
 class UploadResult {
   final KoolbaseObject object;
+
+  /// A signed URL for reading the object now. It EXPIRES: never persist it.
+  /// Persist [path] for a private bucket or [publicUrl] for a public one.
   final String downloadUrl;
 
-  const UploadResult({required this.object, required this.downloadUrl});
+  /// The bucket the object was uploaded to. Nullable only so existing
+  /// constructors keep compiling; [KoolbaseStorageClient.upload] always
+  /// sets it.
+  final String? bucket;
+
+  const UploadResult({
+    required this.object,
+    required this.downloadUrl,
+    this.bucket,
+  });
+
+  /// Where the object lives in its bucket. What to persist for a private
+  /// bucket, since a signed [downloadUrl] expires.
+  String get path => object.path;
+
+  /// The object's stable public CDN URL, or null for a private bucket. Safe
+  /// to persist, unlike [downloadUrl].
+  ///
+  /// Null also when [bucket] is unknown — a result built by hand without it.
+  String? get publicUrl => bucket == null ? null : object.publicUrl(bucket!);
 }
 
 /// Output format for image transformations served via Cloudflare's
