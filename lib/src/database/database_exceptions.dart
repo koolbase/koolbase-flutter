@@ -34,6 +34,67 @@ class KoolbaseDataException extends KoolbaseException {
 ///   showError('That ${e.field ?? 'value'} is already registered.');
 /// }
 /// ```
+/// Thrown when a reference field points at a record that does not exist, is
+/// deleted, or lives in another collection — 400 `reference_invalid`.
+///
+/// References are checked when the write commits, so this can surface from an
+/// insert, an update, an upsert or a batch. In a batch the whole transaction
+/// is refused: nothing in it was written.
+class KoolbaseReferenceInvalidException extends KoolbaseDataException {
+  const KoolbaseReferenceInvalidException([
+    super.message = 'A reference points at a record that does not exist',
+  ]) : super(code: 'reference_invalid');
+
+  @override
+  String toString() => 'KoolbaseReferenceInvalidException: $message';
+}
+
+/// Thrown when a record cannot be deleted because live records still
+/// reference it, under a reference declared `on_delete: restrict` — 409
+/// `reference_in_use`.
+///
+/// Delete the referencing records first, or in the SAME batch: the check runs
+/// at commit, so one batch may delete a parent and its children in any order.
+class KoolbaseReferenceInUseException extends KoolbaseDataException {
+  const KoolbaseReferenceInUseException([
+    super.message = 'This record is still referenced by other records',
+  ]) : super(code: 'reference_in_use');
+
+  @override
+  String toString() => 'KoolbaseReferenceInUseException: $message';
+}
+
+/// Thrown when a reference cannot be declared because existing records
+/// already point at records that do not exist — 409 `dangling_references`.
+///
+/// [dangling] lists the offending records so they can be repaired; Koolbase
+/// never repairs them for you. It is capped at the first 50.
+class KoolbaseDanglingReferencesException extends KoolbaseDataException {
+  /// The records whose reference points at nothing, as record id to value.
+  final List<({String recordId, String value})> dangling;
+
+  const KoolbaseDanglingReferencesException([
+    super.message = 'Existing records point at records that do not exist',
+    this.dangling = const [],
+  ]) : super(code: 'dangling_references');
+
+  @override
+  String toString() =>
+      'KoolbaseDanglingReferencesException(${dangling.length}): $message';
+}
+
+/// Thrown when a collection cannot be deleted because another collection has
+/// a reference field pointing at it — 409 `collection_referenced`. Remove
+/// that reference first.
+class KoolbaseCollectionReferencedException extends KoolbaseDataException {
+  const KoolbaseCollectionReferencedException([
+    super.message = 'Another collection references this one',
+  ]) : super(code: 'collection_referenced');
+
+  @override
+  String toString() => 'KoolbaseCollectionReferencedException: $message';
+}
+
 class KoolbaseConflictException extends KoolbaseDataException {
   /// The field that violated the unique constraint, when known.
   final String? field;
@@ -373,6 +434,23 @@ KoolbaseException koolbaseDataError(
   switch (code) {
     case 'unique_violation':
       return KoolbaseConflictException(message, details?['field'] as String?);
+    case 'reference_invalid':
+      return KoolbaseReferenceInvalidException(message);
+    case 'reference_in_use':
+      return KoolbaseReferenceInUseException(message);
+    case 'dangling_references':
+      return KoolbaseDanglingReferencesException(
+        message,
+        [
+          for (final d in (details?['dangling'] as List<dynamic>? ?? []))
+            (
+              recordId: (d as Map<String, dynamic>)['record_id'] as String? ?? '',
+              value: d['value'] as String? ?? '',
+            ),
+        ],
+      );
+    case 'collection_referenced':
+      return KoolbaseCollectionReferencedException(message);
     case 'plan_limit_reached':
       return KoolbasePlanLimitException(
         message,
