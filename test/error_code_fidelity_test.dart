@@ -23,7 +23,7 @@ const apiCodes = <String>{
   'account_disabled', 'account_exists', 'account_locked', 'ambiguous_match',
   'batch_failed', 'cap_below_usage', 'collection_not_found', 'collection_referenced', 'conflict',
   'constraint_exists', 'constraint_not_found', 'contact_not_verified',
-  'dangling_references', 'duplicate', 'duplicate_values', 'email_in_use', 'email_not_verified',
+  'dangling_references', 'duplicate', 'duplicate_values', 'email_code_disabled', 'email_in_use', 'email_not_verified',
   'error', 'field_not_auto_embed', 'file_too_large',
   'hide_requires_verification', 'idempotency_conflict',
   'idempotency_key_reused', 'identity_not_found', 'insufficient_authority',
@@ -135,6 +135,7 @@ final exceptions = <KoolbaseException>[
   const KoolbaseReferenceInUseException('m'),
   const KoolbaseDanglingReferencesException('m'),
   const KoolbaseCollectionReferencedException('m'),
+  const EmailCodeDisabledException(),
   // Ten classes the suite never checked until the source-derived test above
   // found them on 23 September — five storage exceptions among them, and
   // KoolbaseSessionExpiredException, whose mapping was itself a bug fixed

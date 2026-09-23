@@ -60,6 +60,15 @@ class OtpExpiredException extends KoolbaseAuthException {
             code: 'otp_expired');
 }
 
+/// The project has switched off signing in with an emailed code — 403
+/// `email_code_disabled`. Applies to every address alike, so it reveals
+/// nothing about which accounts exist.
+class EmailCodeDisabledException extends KoolbaseAuthException {
+  const EmailCodeDisabledException()
+      : super('Signing in with an emailed code is switched off for this project',
+            code: 'email_code_disabled');
+}
+
 class OtpInvalidException extends KoolbaseAuthException {
   const OtpInvalidException() : super('Invalid OTP code', code: 'otp_invalid');
 }

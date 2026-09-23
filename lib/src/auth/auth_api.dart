@@ -216,6 +216,33 @@ class AuthApi {
     _checkError(res);
   }
 
+  /// Emails a six-digit sign-in code. Resolves the same way whether or not
+  /// the address has an account.
+  Future<void> requestEmailCode(String email) async {
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/auth/email/code'),
+          headers: _headers,
+          body: jsonEncode({'email': email}),
+        )
+        .timeout(timeout);
+    _checkError(res);
+  }
+
+  Future<AuthSession> signInWithEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/auth/email/code/verify'),
+          headers: _headers,
+          body: jsonEncode({'email': email, 'code': code}),
+        )
+        .timeout(timeout);
+    return _parseSession(res);
+  }
+
   /// Ask for a new verification email, with no session.
   ///
   /// Shaped like [forgotPassword] because it has the same problem: an
@@ -418,6 +445,16 @@ class AuthApi {
         throw const ContactNotVerifiedException();
       case 'account_exists':
         throw AccountExistsException(msg.isEmpty ? null : msg);
+      // Sign-in codes. The otp_* codes are shared with phone sign-in; mapped
+      // here, every path that returns them throws the class an app catches.
+      case 'email_code_disabled':
+        throw const EmailCodeDisabledException();
+      case 'otp_expired':
+        throw const OtpExpiredException();
+      case 'otp_invalid':
+        throw const OtpInvalidException();
+      case 'otp_max_attempts':
+        throw const OtpMaxAttemptsException();
       case 'signups_disabled':
         throw SignupsDisabledException(msg.isEmpty ? null : msg);
       case 'token_expired':

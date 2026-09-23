@@ -165,6 +165,33 @@ class KoolbaseAuthClient {
     return session.user;
   }
 
+  /// Emails a six-digit sign-in code.
+  ///
+  /// Resolves the same way whether or not the address has an account, so it
+  /// cannot be used to check who is registered. A new address receives a
+  /// code only while the project accepts sign-ups; a disabled account
+  /// receives nothing.
+  ///
+  /// Throws [EmailCodeDisabledException] if the project has switched this
+  /// off, and a rate-limit exception after too many requests for one address.
+  Future<void> requestEmailCode(String email) => _api.requestEmailCode(email);
+
+  /// Signs in with a code from [requestEmailCode], storing the session
+  /// exactly as [login] does. An unknown address becomes an account only if
+  /// the project still accepts sign-ups. Each code works once and allows
+  /// three attempts.
+  ///
+  /// Throws [OtpInvalidException], [OtpExpiredException],
+  /// [OtpMaxAttemptsException], or [EmailCodeDisabledException].
+  Future<KoolbaseUser> signInWithEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    final session = await _api.signInWithEmailCode(email: email, code: code);
+    await _setSession(session);
+    return session.user;
+  }
+
   /// Sign in with Apple using a credential obtained from a native Apple
   /// Sign-In SDK.
   ///
