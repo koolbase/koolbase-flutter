@@ -24,7 +24,7 @@ For browser apps, use the Koolbase JS SDK instead.
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^12.7.0
+     koolbase_flutter: ^12.8.0
 ```
 
 4. Initialize before `runApp()`:
@@ -48,7 +48,7 @@ That's it. Every feature below is now available via `Koolbase.*`.
 
 ## Authentication
 
-Email + password, emailed sign-in codes, Apple Sign-In, Google Sign-In, and phone + OTP — out of the box.
+Email + password, emailed sign-in codes, two-step sign-in (TOTP), Apple Sign-In, Google Sign-In, and phone + OTP — out of the box.
 
 ```dart
 // Sign up. Returns a result, not a user — read it before routing.
@@ -180,6 +180,22 @@ final user = await Koolbase.auth.signInWithGoogle(
 ```
 
 Configure Google Sign-In for your environment with the OAuth client IDs from Google Cloud Console (typically one each for iOS, Android, and web). Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+
+### Two-step sign-in (MFA)
+
+```dart
+// After login() throws MfaRequiredException:
+final user = await Koolbase.auth.verifyMfa(
+  challengeToken: e.challengeToken,
+  code: '123456',  // from the person's authenticator app
+);
+
+// Enrol (within 10 minutes of signing in):
+final enrolment = await Koolbase.auth.enrollMfa();
+// show enrolment.otpauthUri as a QR code, then:
+final codes = await Koolbase.auth.confirmMfaEnrollment('123456');
+// save the recovery codes — shown this once only
+```
 
 ### Email code
 

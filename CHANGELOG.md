@@ -1,3 +1,19 @@
+# 12.8.0
+
+- **Two-step sign-in (MFA).** Every sign-in method now throws
+  `MfaRequiredException` carrying a `challengeToken` when the person's account
+  has an authenticator on — including phone, Google and Apple, whose error
+  parsers all map it (a source test now enforces this for any parser added
+  later). `verifyMfa(email: …, code: …)` and `verifyRecoveryCode(challengeToken:
+  …, code: …)` finish sign-in and store the session.
+
+  For managing MFA: `enrollMfa()`, `confirmMfaEnrollment(code)`, `mfaStatus()`,
+  `stepUpMfa(…)`, `disableMfa()`, and `regenerateRecoveryCodes()`. Six new
+  exceptions — `MfaRequiredException`, `RecentAuthRequiredException`,
+  `RecentMfaRequiredException`, `MfaAlreadyEnabledException`,
+  `MfaEnrollmentNotFoundException` and `MfaNotEnabledException` — each
+  registered in the error-code fidelity suite.
+
 # 12.7.0
 
 - **Sign in with an emailed code.** `requestEmailCode(email)` sends a
