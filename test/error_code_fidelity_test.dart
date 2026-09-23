@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koolbase_flutter/koolbase_flutter.dart';
 
@@ -133,6 +135,20 @@ final exceptions = <KoolbaseException>[
   const KoolbaseReferenceInUseException('m'),
   const KoolbaseDanglingReferencesException('m'),
   const KoolbaseCollectionReferencedException('m'),
+  // Ten classes the suite never checked until the source-derived test above
+  // found them on 23 September — five storage exceptions among them, and
+  // KoolbaseSessionExpiredException, whose mapping was itself a bug fixed
+  // the day before. Their codes had never been verified against the API's.
+  const KoolbaseOfflineBaselineUnavailableException('m'),
+  const KoolbaseRevisionMismatchException('m'),
+  const KoolbaseSessionExpiredException('m'),
+  const KoolbaseStorageConflictException(),
+  const KoolbaseStorageNotFoundException(),
+  const KoolbaseStoragePermissionException(),
+  const KoolbaseStorageProjectIdentityException(),
+  const KoolbaseStorageValidationException(),
+  const KoolbaseUnauthenticatedException('m'),
+  const KoolbaseVectorDimensionMismatchException(),
   const KoolbasePermissionException(),
   const KoolbaseRateLimitException(),
   const KoolbaseUploadExpiredException(),
@@ -166,5 +182,55 @@ void main() {
         );
       });
     }
+  });
+
+// Every exception class declared in the source must appear in the list above.
+//
+// The list is hand-maintained, and a class missing from it is simply never
+// checked — no failure, no signal. That happened on 22 September: four
+// reference exceptions existed and this suite passed at 68 tests until they
+// were added by hand, then 72. The TypeScript equivalent discovers its
+// classes and failed on the same change, which is the behaviour we want.
+//
+// Dart has no runtime reflection in a Flutter test, so the classes are read
+// from the source instead — the same approach the API's drift tests take.
+  test('every exception class in the source is registered above', () {
+    const sources = [
+      'lib/src/koolbase_exception.dart',
+      'lib/src/database/database_exceptions.dart',
+      'lib/src/auth/auth_exceptions.dart',
+      'lib/src/storage/storage_exceptions.dart',
+      'lib/src/fiscal/fiscal_models.dart',
+      'lib/src/functions/functions_models.dart',
+    ];
+    final declared = <String>{};
+    for (final path in sources) {
+      final f = File(path);
+      if (!f.existsSync()) {
+        fail('$path is gone — update this list, or the guard silently shrinks');
+      }
+      for (final m in RegExp(r'^class (Koolbase\w*Exception)\b', multiLine: true)
+          .allMatches(f.readAsStringSync())) {
+        declared.add(m.group(1)!);
+      }
+    }
+    // The abstract bases are never thrown directly and carry no code of their
+    // own; only their subclasses report codes.
+    declared.removeAll({
+      'KoolbaseException',
+      'KoolbaseDataException',
+      'KoolbaseAuthException',
+      'KoolbaseStorageException',
+      'KoolbaseFunctionException',
+    });
+
+    final registered = exceptions.map((e) => e.runtimeType.toString()).toSet();
+    final missing = declared.difference(registered).toList()..sort();
+    expect(
+      missing,
+      isEmpty,
+      reason: 'exception class(es) the fidelity suite never checks, because '
+          'they are not in its list: $missing',
+    );
   });
 }
