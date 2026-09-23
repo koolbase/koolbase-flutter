@@ -1,3 +1,25 @@
+# 12.7.0
+
+- **Sign in with an emailed code.** `requestEmailCode(email)` sends a
+  six-digit code; `signInWithEmailCode(email: ..., code: ...)` signs in and
+  stores the session exactly as `login` does. No password needed.
+
+  An unknown address becomes an account only while the project accepts
+  sign-ups, checked at the moment of sign-in. Each code works once and allows
+  three attempts. `requestEmailCode` resolves the same way whether or not the
+  address has an account, so it cannot be used to check who is registered.
+
+  A project can switch this off; requests then throw
+  `EmailCodeDisabledException`. The OTP exceptions phone sign-in already uses
+  — `OtpInvalidException`, `OtpExpiredException`, `OtpMaxAttemptsException` —
+  now come from the shared mapping, so every path that returns them throws the
+  class an app catches.
+
+- **Reference errors are catchable.** `KoolbaseReferenceInvalidException`,
+  `KoolbaseReferenceInUseException`, `KoolbaseDanglingReferencesException`
+  (carrying the offending records) and `KoolbaseCollectionReferencedException`,
+  for collections with declared references.
+
 # 12.6.0
 
 - **`UploadResult` exposes `path` and `publicUrl`**, not only a signed
