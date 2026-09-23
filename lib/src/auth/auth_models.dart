@@ -376,3 +376,34 @@ class KoolbaseAuditPage {
     );
   }
 }
+
+/// What enrolling an authenticator returns: show [otpauthUri] as a QR code,
+/// and [secret] for people who type it in instead. Not retrievable again.
+class MfaEnrollment {
+  final String otpauthUri;
+  final String secret;
+  const MfaEnrollment({required this.otpauthUri, required this.secret});
+  factory MfaEnrollment.fromJson(Map<String, dynamic> j) => MfaEnrollment(
+      otpauthUri: j['otpauth_uri'] as String, secret: j['secret'] as String);
+}
+
+class MfaStatus {
+  final bool enabled;
+  final int recoveryCodesRemaining;
+  const MfaStatus(
+      {required this.enabled, required this.recoveryCodesRemaining});
+  factory MfaStatus.fromJson(Map<String, dynamic> j) => MfaStatus(
+        enabled: j['enabled'] as bool? ?? false,
+        recoveryCodesRemaining:
+            (j['recovery_codes_remaining'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// Signing in with a recovery code. When [recoveryCodesRemaining] reaches
+/// zero, prompt the person to regenerate a set.
+class RecoveryCodeSignInResult {
+  final KoolbaseUser user;
+  final int recoveryCodesRemaining;
+  const RecoveryCodeSignInResult(
+      {required this.user, required this.recoveryCodesRemaining});
+}

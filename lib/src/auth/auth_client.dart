@@ -192,6 +192,60 @@ class KoolbaseAuthClient {
     return session.user;
   }
 
+  // ─── Two-step sign-in (MFA) ───────────────────────────────────────────────
+  //
+  // When an account has MFA on, every sign-in method throws
+  // [MfaRequiredException]. Finish with [verifyMfa] or [verifyRecoveryCode].
+
+  /// Finishes sign-in with a code from the person's authenticator app.
+  Future<KoolbaseUser> verifyMfa(
+      {required String challengeToken, required String code}) async {
+    final session =
+        await _api.verifyMfa(challengeToken: challengeToken, code: code);
+    await _setSession(session);
+    return session.user;
+  }
+
+  /// Finishes sign-in with a recovery code. Each works once; prompt the
+  /// person to regenerate when [RecoveryCodeSignInResult.recoveryCodesRemaining]
+  /// reaches zero.
+  Future<RecoveryCodeSignInResult> verifyRecoveryCode(
+      {required String challengeToken, required String code}) async {
+    final r = await _api.verifyRecoveryCode(
+        challengeToken: challengeToken, code: code);
+    await _setSession(r.session);
+    return RecoveryCodeSignInResult(
+        user: r.session.user, recoveryCodesRemaining: r.remaining);
+  }
+
+  /// Starts adding an authenticator. Needs a sign-in within ten minutes.
+  /// Show [MfaEnrollment.otpauthUri] as a QR code, then call
+  /// [confirmMfaEnrollment] with the first code the app shows.
+  Future<MfaEnrollment> enrollMfa() async =>
+      _api.enrollMfa(await _ensureValidToken());
+
+  /// Turns MFA on and returns ten recovery codes — shown this once only.
+  /// Every other device is signed out.
+  Future<List<String>> confirmMfaEnrollment(String code) async =>
+      _api.confirmMfaEnrollment(await _ensureValidToken(), code);
+
+  Future<MfaStatus> mfaStatus() async =>
+      _api.mfaStatus(await _ensureValidToken());
+
+  /// Re-confirms the second factor, opening ten minutes to change MFA —
+  /// with a code from the authenticator, or a recovery code.
+  Future<void> stepUpMfa({String? code, String? recoveryCode}) async =>
+      _api.stepUpMfa(await _ensureValidToken(),
+          code: code, recoveryCode: recoveryCode);
+
+  /// Turns MFA off. Needs [stepUpMfa] within the last ten minutes.
+  Future<void> disableMfa() async => _api.disableMfa(await _ensureValidToken());
+
+  /// Replaces all recovery codes; the old ones stop working. Needs
+  /// [stepUpMfa] within the last ten minutes.
+  Future<List<String>> regenerateRecoveryCodes() async =>
+      _api.regenerateRecoveryCodes(await _ensureValidToken());
+
   /// Sign in with Apple using a credential obtained from a native Apple
   /// Sign-In SDK.
   ///

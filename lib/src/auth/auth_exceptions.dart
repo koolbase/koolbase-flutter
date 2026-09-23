@@ -29,7 +29,8 @@ class EmailAlreadyInUseException extends KoolbaseAuthException {
 
 class SessionExpiredException extends KoolbaseAuthException {
   const SessionExpiredException()
-      : super('Session expired, please log in again', code: 'invalid_refresh_token');
+      : super('Session expired, please log in again',
+            code: 'invalid_refresh_token');
 }
 
 class UserDisabledException extends KoolbaseAuthException {
@@ -65,7 +66,8 @@ class OtpExpiredException extends KoolbaseAuthException {
 /// nothing about which accounts exist.
 class EmailCodeDisabledException extends KoolbaseAuthException {
   const EmailCodeDisabledException()
-      : super('Signing in with an emailed code is switched off for this project',
+      : super(
+            'Signing in with an emailed code is switched off for this project',
             code: 'email_code_disabled');
 }
 
@@ -282,8 +284,7 @@ class TokenExpiredException extends KoolbaseAuthException {
 /// A one-shot link clicked twice.
 class TokenAlreadyUsedException extends KoolbaseAuthException {
   const TokenAlreadyUsedException([String? message])
-      : super(message ?? 'This link has already been used',
-            code: 'token_used');
+      : super(message ?? 'This link has already been used', code: 'token_used');
 }
 
 /// A password attempt against an account that only has Google or Apple.
@@ -354,4 +355,51 @@ class HideRequiresVerificationException extends KoolbaseAuthException {
                 'Hiding account existence requires verified contact to be '
                     'enabled',
             code: 'hide_requires_verification');
+}
+
+// ─── Two-step sign-in (MFA) ─────────────────────────────────────────────────
+
+/// The first factor passed, and this account needs a second: sign-in is not
+/// finished. Pass [challengeToken] to `verifyMfa` with a code from the
+/// person's authenticator app, or to `verifyRecoveryCode`. Apps that never
+/// enable MFA never see this.
+class MfaRequiredException extends KoolbaseAuthException {
+  final String challengeToken;
+  final DateTime? expiresAt;
+  const MfaRequiredException({required this.challengeToken, this.expiresAt})
+      : super('Two-step sign-in required', code: 'mfa_required');
+}
+
+/// Starting MFA needs a sign-in within the last ten minutes. Sign in again.
+class RecentAuthRequiredException extends KoolbaseAuthException {
+  const RecentAuthRequiredException()
+      : super('Sign in again to change two-step sign-in',
+            code: 'recent_auth_required');
+}
+
+/// Changing MFA needs a second factor confirmed in the last ten minutes.
+/// Call `stepUpMfa` with a code, then retry.
+class RecentMfaRequiredException extends KoolbaseAuthException {
+  const RecentMfaRequiredException()
+      : super('Confirm with your authenticator first',
+            code: 'recent_mfa_required');
+}
+
+class MfaAlreadyEnabledException extends KoolbaseAuthException {
+  const MfaAlreadyEnabledException()
+      : super('Two-step sign-in is already on for this account',
+            code: 'mfa_already_enabled');
+}
+
+/// No enrolment in progress, or it expired after 15 minutes. Start again.
+class MfaEnrollmentNotFoundException extends KoolbaseAuthException {
+  const MfaEnrollmentNotFoundException()
+      : super('No enrolment in progress; start again',
+            code: 'mfa_enrollment_not_found');
+}
+
+class MfaNotEnabledException extends KoolbaseAuthException {
+  const MfaNotEnabledException()
+      : super('Two-step sign-in is not on for this account',
+            code: 'mfa_not_enabled');
 }

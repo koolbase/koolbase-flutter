@@ -243,6 +243,94 @@ class AuthApi {
     return _parseSession(res);
   }
 
+  // ─── Two-step sign-in (MFA) ───────────────────────────────────────────────
+
+  Future<AuthSession> verifyMfa(
+      {required String challengeToken, required String code}) async {
+    final res = await _client
+        .post(Uri.parse('$baseUrl/v1/sdk/auth/mfa/verify'),
+            headers: _headers,
+            body: jsonEncode({'challenge_token': challengeToken, 'code': code}))
+        .timeout(timeout);
+    return _parseSession(res);
+  }
+
+  Future<MfaRecoverySignIn> verifyRecoveryCode(
+      {required String challengeToken, required String code}) async {
+    final res = await _client
+        .post(Uri.parse('$baseUrl/v1/sdk/auth/mfa/verify-recovery'),
+            headers: _headers,
+            body: jsonEncode({'challenge_token': challengeToken, 'code': code}))
+        .timeout(timeout);
+    final session = _parseSession(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return MfaRecoverySignIn(
+        session, (body['recovery_codes_remaining'] as num?)?.toInt() ?? 0);
+  }
+
+  Future<MfaEnrollment> enrollMfa(String accessToken) async {
+    final res = await _client
+        .post(Uri.parse('$baseUrl/v1/sdk/auth/mfa/enroll'),
+            headers: _authHeaders(accessToken))
+        .timeout(timeout);
+    _checkError(res);
+    return MfaEnrollment.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<List<String>> confirmMfaEnrollment(
+      String accessToken, String code) async {
+    final res = await _client
+        .post(Uri.parse('$baseUrl/v1/sdk/auth/mfa/enroll/confirm'),
+            headers: _authHeaders(accessToken),
+            body: jsonEncode({'code': code}))
+        .timeout(timeout);
+    _checkError(res);
+    return ((jsonDecode(res.body) as Map<String, dynamic>)['recovery_codes']
+            as List)
+        .cast<String>();
+  }
+
+  Future<MfaStatus> mfaStatus(String accessToken) async {
+    final res = await _client
+        .get(Uri.parse('$baseUrl/v1/sdk/auth/mfa'),
+            headers: _authHeaders(accessToken))
+        .timeout(timeout);
+    _checkError(res);
+    return MfaStatus.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<void> stepUpMfa(String accessToken,
+      {String? code, String? recoveryCode}) async {
+    final res = await _client
+        .post(Uri.parse('$baseUrl/v1/sdk/auth/mfa/step-up'),
+            headers: _authHeaders(accessToken),
+            body: jsonEncode({
+              if (code != null) 'code': code,
+              if (recoveryCode != null) 'recovery_code': recoveryCode
+            }))
+        .timeout(timeout);
+    _checkError(res);
+  }
+
+  Future<void> disableMfa(String accessToken) async {
+    final res = await _client
+        .post(Uri.parse('$baseUrl/v1/sdk/auth/mfa/disable'),
+            headers: _authHeaders(accessToken))
+        .timeout(timeout);
+    _checkError(res);
+  }
+
+  Future<List<String>> regenerateRecoveryCodes(String accessToken) async {
+    final res = await _client
+        .post(Uri.parse('$baseUrl/v1/sdk/auth/mfa/recovery-codes'),
+            headers: _authHeaders(accessToken))
+        .timeout(timeout);
+    _checkError(res);
+    return ((jsonDecode(res.body) as Map<String, dynamic>)['recovery_codes']
+            as List)
+        .cast<String>();
+  }
+
   /// Ask for a new verification email, with no session.
   ///
   /// Shaped like [forgotPassword] because it has the same problem: an
@@ -398,6 +486,17 @@ class AuthApi {
   /// (contract conformance), so we switch on `body['code']`. The status +
   /// message logic is retained as a fallback for older servers or any
   /// response that arrives without a code.
+  // One builder for every parser, so the four cannot drift apart in how the
+  // challenge reaches the app.
+  MfaRequiredException _mfaRequired(Map body) {
+    final d = body['details'];
+    final token = d is Map ? d['challenge_token'] as String? : null;
+    final exp = d is Map && d['expires_at'] is String
+        ? DateTime.tryParse(d['expires_at'] as String)
+        : null;
+    return MfaRequiredException(challengeToken: token ?? '', expiresAt: exp);
+  }
+
   void _checkError(http.Response res, {bool isRefresh = false}) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
 
@@ -410,6 +509,18 @@ class AuthApi {
 
     // ---- code-first ----
     switch (code) {
+      case 'mfa_required':
+        throw _mfaRequired(body);
+      case 'recent_auth_required':
+        throw const RecentAuthRequiredException();
+      case 'recent_mfa_required':
+        throw const RecentMfaRequiredException();
+      case 'mfa_already_enabled':
+        throw const MfaAlreadyEnabledException();
+      case 'mfa_enrollment_not_found':
+        throw const MfaEnrollmentNotFoundException();
+      case 'mfa_not_enabled':
+        throw const MfaNotEnabledException();
       case 'invalid_credentials':
         throw const InvalidCredentialsException();
       case 'invalid_password':
@@ -578,6 +689,8 @@ class AuthApi {
 
     // ---- code-first ----
     switch (code) {
+      case 'mfa_required':
+        throw _mfaRequired(body);
       case 'invalid_phone':
         throw const InvalidPhoneNumberException();
       case 'otp_expired':
@@ -677,6 +790,8 @@ class AuthApi {
 
     // ---- code-first ----
     switch (code) {
+      case 'mfa_required':
+        throw _mfaRequired(body);
       case 'oauth_not_configured':
         throw const AppleSignInNotConfiguredException();
       case 'invalid_oauth_token':
@@ -765,6 +880,8 @@ class AuthApi {
 
     // ---- code-first ----
     switch (code) {
+      case 'mfa_required':
+        throw _mfaRequired(body);
       case 'oauth_not_configured':
         throw const GoogleSignInNotConfiguredException();
       case 'invalid_oauth_token':
@@ -803,4 +920,11 @@ class AuthApi {
         );
     }
   }
+}
+
+/// A recovery-code sign-in: the session, and how many codes remain.
+class MfaRecoverySignIn {
+  final AuthSession session;
+  final int remaining;
+  const MfaRecoverySignIn(this.session, this.remaining);
 }
