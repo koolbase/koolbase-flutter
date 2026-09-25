@@ -1,3 +1,16 @@
+# 12.9.0
+
+- **Analytics is now off by default.** Pass `analyticsEnabled: true` in
+  `KoolbaseConfig` to send events. While it is off, `Koolbase.analytics` calls do
+  nothing (the first logs how to turn it on), so apps that track events, and
+  `KoolbaseNavigatorObserver(client: Koolbase.analytics)`, keep working.
+- `KoolbaseError.userMessage`: a short message that is safe to show to people for
+  network errors ("We can't connect right now. Check your connection and try
+  again."), alongside the detailed `message` for developers. On the web, the
+  network error's message also names the page's address and Trusted Origins.
+- `Koolbase.db.invalidate(collection)` forgets cached query results for a
+  collection, so the next query waits for the server.
+
 # 12.8.0
 
 - **Two-step sign-in (MFA).** Every sign-in method now throws
