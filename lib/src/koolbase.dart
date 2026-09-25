@@ -95,7 +95,7 @@ class KoolbaseConfig {
     this.codePushChannel = 'stable',
     this.onMandatoryUpdate,
     this.rfwWidgets = const [],
-    this.analyticsEnabled = true,
+    this.analyticsEnabled = false, // opt-in since 12.9.0
     this.messagingEnabled = true,
     this.authTimeout = const Duration(seconds: 10),
     this.httpClient,
@@ -117,6 +117,7 @@ class Koolbase {
   static KoolbaseCodePushClient? _codePush;
   static KoolbaseVmPatchClient? _vmPatch;
   static KoolbaseAnalyticsClient? _analytics;
+  static KoolbaseAnalyticsClient? _analyticsOff;
   static KoolbaseMessaging? _messaging;
 
   final KoolbaseConfig _config;
@@ -446,7 +447,7 @@ class Koolbase {
 
   static KoolbaseAnalyticsClient get analytics {
     _ensureInitialized();
-    return _analytics!;
+    return _analytics ?? (_analyticsOff ??= _AnalyticsOff());
   }
 
   static KoolbaseMessaging get messaging {
@@ -703,4 +704,40 @@ class _EmptyResponseClient extends http.BaseClient {
       request: request,
     );
   }
+}
+
+/// What [Koolbase.analytics] is while analytics is off (the default since
+/// 12.9.0). Every call does nothing, and the first says once how to turn it on,
+/// so an app that tracks events without opting in keeps working.
+class _AnalyticsOff extends KoolbaseAnalyticsClient {
+  _AnalyticsOff() : super(baseUrl: '', apiKey: '', currentUserId: () => null);
+
+  static bool _told = false;
+  void _tell() {
+    if (_told) return;
+    _told = true;
+    debugPrint('[Koolbase] Analytics is off: it is opt-in since 12.9.0. '
+        'Pass analyticsEnabled: true in KoolbaseConfig to send events.');
+  }
+
+  @override
+  Future<void> init() async {}
+  @override
+  void track(String eventName, {Map<String, dynamic>? properties}) => _tell();
+  @override
+  void screenView(String screenName, {Map<String, dynamic>? properties}) => _tell();
+  @override
+  void setUserProperty(String key, dynamic value) => _tell();
+  @override
+  void setUserProperties(Map<String, dynamic> properties) => _tell();
+  @override
+  void identify(String userId) => _tell();
+  @override
+  void reset() {}
+  @override
+  void setEnvironment(String environmentId) {}
+  @override
+  Future<void> flush() async {}
+  @override
+  Future<void> dispose() async {}
 }

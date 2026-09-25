@@ -692,6 +692,14 @@ class KoolbaseDatabaseClient {
     }
     await engine.syncPendingWrites();
   }
+
+  /// Forgets this device's cached query results for [collection], so the next
+  /// query waits for the server. For data changed elsewhere: by a Function, a
+  /// server or another user. The SDK's own writes already do this.
+  Future<void> invalidate(String collection) async {
+    await _cacheStore?.invalidateCollection(collection);
+    unawaited(refreshCollectionStreams(collection));
+  }
 }
 
 // ─── Conflicts ───────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@
 library;
 
 import 'dart:async' show TimeoutException;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show SocketException, HttpException;
 
 import 'package:http/http.dart' show ClientException;
@@ -144,6 +145,13 @@ class KoolbaseError {
   /// the SDK does not yet map. Prefer [code].
   final String? rawCode;
 
+  /// A short message that is safe to show to people, where a generic one is
+  /// honest (network failures). null otherwise: show your own wording for
+  /// those. [message] is for developers.
+  String? get userMessage => code == KoolbaseErrorCode.network
+      ? "We can't connect right now. Check your connection and try again."
+      : null;
+
   const KoolbaseError({
     required this.code,
     required this.message,
@@ -188,7 +196,13 @@ class KoolbaseError {
         e is HttpException) {
       return KoolbaseError(
         code: KoolbaseErrorCode.network,
-        message: e.toString(),
+        // On the web, a request the site's origin may not make fails like a dead
+        // network; name the likely cause the developer can fix.
+        message: kIsWeb
+            ? 'Could not reach Koolbase ($e). If you are online, check that this '
+                "site's address (${Uri.base.origin}) is in the project's Trusted "
+                'Origins in the Koolbase dashboard.'
+            : e.toString(),
       );
     }
 
