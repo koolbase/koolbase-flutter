@@ -1,7 +1,6 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koolbase_flutter/koolbase_flutter.dart';
-import 'package:koolbase_flutter/src/database/database_client.dart';
 import 'package:koolbase_flutter/src/database/offline/local_database.dart';
 import 'package:koolbase_flutter/src/database/offline/write_queue.dart';
 

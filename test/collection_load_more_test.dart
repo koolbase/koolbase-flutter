@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:koolbase_flutter/koolbase_flutter.dart';
 
 class _PagedQuery extends KoolbaseQuery {
-  _PagedQuery(this.all, this.refresh, {this.page = 3})
+  _PagedQuery(this.all, this.refresh)
       : super(
           baseUrl: 'https://api.test',
           publicKey: 'pk_test',
@@ -21,7 +21,7 @@ class _PagedQuery extends KoolbaseQuery {
 
   final List<KoolbaseRecord> all;
   final StreamController<QueryResult> refresh;
-  final int page;
+  final int page = 3;
   int _at = 0;
   int listens = 0;
   final gets = <int>[];
