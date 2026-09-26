@@ -13,7 +13,6 @@ import 'dart:io' show SocketException;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koolbase_flutter/koolbase_flutter.dart';
-import 'package:koolbase_flutter/src/koolbase_error.dart';
 
 void main() {
   KoolbaseErrorCode codeOf(Object e) => KoolbaseError.from(e).code;
