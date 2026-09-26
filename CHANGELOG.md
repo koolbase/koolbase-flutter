@@ -1,3 +1,16 @@
+# 12.10.0
+
+- **`KoolbaseRecordView`: one record by id, as a scope.** Hands the record to
+  `builder`, which returns the caller's own widget: it adds no scrolling or
+  layout, the way a list row's children read their record. `loading`,
+  `notFound` and `error` are slotted, with defaults. `notFound` covers a missing
+  id, a record that does not exist, one this user may not read (the API does not
+  tell them apart) and a record from a different collection. A changed `id`
+  starts a new load, so the same detail route opened for another record never
+  shows the previous one.
+- `KoolbaseRecordController`: the same without the widget. A failed refresh
+  keeps the record shown.
+
 # 12.9.0
 
 - **Analytics is now off by default.** Pass `analyticsEnabled: true` in
