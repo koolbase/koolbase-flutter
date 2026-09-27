@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../testing/test_data.dart';
+
 import '../database/database_exceptions.dart';
 import '../koolbase.dart';
 
@@ -196,10 +198,18 @@ class _KoolbaseRecordViewState extends State<KoolbaseRecordView> {
   void _start() {
     final id = widget.id ?? '';
     final fetch = widget.fetch;
+    // The data SOURCE, and only that: under KoolbaseTestData (widget tests),
+    // the record comes from its records; everything after is the production
+    // controller.
+    final testData = KoolbaseTestData.maybeOf(context);
     _controller = KoolbaseRecordController(
       collection: widget.collection,
       id: id,
-      fetch: fetch == null ? null : () => fetch(id),
+      fetch: fetch != null
+          ? () => fetch(id)
+          : testData != null
+          ? () => testData.record(widget.collection, id)
+          : null,
     )..addListener(_onChanged);
     _controller.load();
   }

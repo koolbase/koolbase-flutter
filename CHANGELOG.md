@@ -1,3 +1,12 @@
+# 12.12.0
+
+- **`KoolbaseTestData`** (`package:koolbase_flutter/testing.dart`): records supplied to
+  `KoolbaseCollectionList` and `KoolbaseRecordView` in widget tests, so a screen can be
+  pumped populated. It replaces only the data source; controllers, paging, states and
+  rendering are the production code. Lists page like the server (limit, offset, exact
+  total); an unknown record id is not found, as the API answers. Testing and
+  certification infrastructure, not a local-data API.
+
 # 12.11.0
 
 - **`KoolbaseCollectionList(scrollsWithPage: true)`**, for a list inside a scrolling page.
