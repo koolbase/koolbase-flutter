@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../testing/test_data.dart';
+
 import '../koolbase.dart';
 
 /// Configures a fresh base query for one fetch. Called every time the
@@ -307,10 +309,17 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
   void initState() {
     super.initState();
     _ownsController = widget.controller == null;
+    // The data SOURCE, and only that: under KoolbaseTestData (widget tests),
+    // the base query answers from its records; everything after is the
+    // production controller.
+    final testData = KoolbaseTestData.maybeOf(context);
     _controller = widget.controller ??
         KoolbaseCollectionController(
           collection: widget.collection,
           queryBuilder: widget.query,
+          baseQuery: testData == null
+              ? null
+              : () => testData.queryFor(widget.collection),
         );
     _controller.addListener(_onChanged);
     _controller.load();
