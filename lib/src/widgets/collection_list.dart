@@ -247,6 +247,7 @@ class KoolbaseCollectionList extends StatefulWidget {
     this.padding,
     @visibleForTesting this.controller,
     this.visible,
+    this.scrollsWithPage = false,
   });
 
   /// The collection to list.
@@ -285,6 +286,14 @@ class KoolbaseCollectionList extends StatefulWidget {
   /// Designer's search-on-list is built on this: a case-insensitive
   /// substring filter over the loaded page.
   final List<KoolbaseRecord> Function(List<KoolbaseRecord> loaded)? visible;
+
+  /// For a list inside a scrolling page -- a screen whose body scrolls. The
+  /// rows lay out at their natural height and the PAGE scrolls; Load more
+  /// stays a row. Pull-to-refresh belongs to the page, so the list adds none.
+  /// Without it, a list with records inside a scrolling column has no height
+  /// to size to and throws ("Vertical viewport was given unbounded height").
+  /// Default false: the list fills a bounded space and scrolls by itself.
+  final bool scrollsWithPage;
 
   @override
   State<KoolbaseCollectionList> createState() => _KoolbaseCollectionListState();
@@ -334,6 +343,11 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
         final loaded = _controller.records;
         final records = widget.visible?.call(loaded) ?? loaded;
         if (records.isEmpty) {
+          // In page mode the page scrolls and refreshes: the empty widget
+          // alone, with no scroll view of its own.
+          if (widget.scrollsWithPage) {
+            return widget.empty?.call(context) ?? const _DefaultEmpty();
+          }
           // Refreshable even when empty: wrap in a scrollable so the pull
           // gesture works over the empty slot.
           // The empty slot fills the available height so the pull gesture
@@ -360,10 +374,11 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
             ),
           );
         }
-        return RefreshIndicator(
-          onRefresh: _controller.refresh,
-          child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
+        final list = ListView.separated(
+            shrinkWrap: widget.scrollsWithPage,
+            physics: widget.scrollsWithPage
+                ? const NeverScrollableScrollPhysics()
+                : const AlwaysScrollableScrollPhysics(),
             padding: widget.padding,
             // One more row while there is more to load: the control that
             // says so. A list that showed twenty and stopped was quietly
@@ -380,8 +395,11 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
               }
               return widget.itemBuilder(context, records[index]);
             },
-          ),
-        );
+          );
+        // In page mode the page scrolls and refreshes; the list only lays out
+        // its rows.
+        if (widget.scrollsWithPage) return list;
+        return RefreshIndicator(onRefresh: _controller.refresh, child: list);
     }
   }
 }
