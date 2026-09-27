@@ -1,3 +1,11 @@
+# 12.11.0
+
+- **`KoolbaseCollectionList(scrollsWithPage: true)`**, for a list inside a scrolling page.
+  The rows lay out at their natural height and the page does the scrolling; Load more
+  stays a row; pull-to-refresh belongs to the page, so the list adds none. Without it,
+  a list with records inside a scrolling column cannot size itself ("Vertical viewport
+  was given unbounded height"). The default is unchanged.
+
 # 12.10.0
 
 - **`KoolbaseRecordView`: one record by id, as a scope.** Hands the record to
