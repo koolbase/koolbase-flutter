@@ -62,10 +62,19 @@ void main() {
 
   testWidgets('the default mode WITH records throws inside a scrolling page '
       '(why page mode exists)', (t) async {
+    // A grid that cannot size itself fails at every layer above it, so the
+    // errors are collected rather than taken one at a time.
+    final errors = <FlutterErrorDetails>[];
+    final original = FlutterError.onError;
+    FlutterError.onError = errors.add;
     await t.pumpWidget(_page(
       KoolbaseCollectionGrid(collection: 'songs', crossAxisCount: 2, itemBuilder: _cell),
     ));
-    await t.pumpAndSettle();
-    expect(t.takeException(), isNotNull);
+    // Two frames, not pumpAndSettle: a grid that cannot size itself keeps
+    // scheduling frames, so the screen never settles.
+    await t.pump();
+    await t.pump();
+    FlutterError.onError = original;
+    expect(errors, isNotEmpty);
   });
 }
