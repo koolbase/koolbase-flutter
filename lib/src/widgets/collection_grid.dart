@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../testing/test_data.dart';
 import 'package:koolbase_flutter/koolbase_flutter.dart';
 
 /// A collection rendered as a grid rather than a list.
@@ -20,6 +22,7 @@ class KoolbaseCollectionGrid extends StatefulWidget {
     this.error,
     this.loading,
     this.padding,
+    this.scrollsWithPage = false,
     @visibleForTesting this.controller,
   });
 
@@ -56,6 +59,14 @@ class KoolbaseCollectionGrid extends StatefulWidget {
 
   final EdgeInsetsGeometry? padding;
 
+  /// For a grid inside a scrolling page -- a screen whose body scrolls. The
+  /// cells lay out at their natural height and the PAGE scrolls; Load more is
+  /// a button below them. Pull-to-refresh belongs to the page, so the grid
+  /// adds none. Without it, a grid with records inside a scrolling column has
+  /// no height to size to. Default false: the grid fills a bounded space and
+  /// scrolls by itself.
+  final bool scrollsWithPage;
+
   /// Test seam only.
   final KoolbaseCollectionController? controller;
 
@@ -75,6 +86,11 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
         KoolbaseCollectionController(
           collection: widget.collection,
           queryBuilder: widget.query,
+          // The data SOURCE, and only that: under KoolbaseTestData (widget
+          // tests) the base query answers from its records, as the list's does.
+          baseQuery: KoolbaseTestData.maybeOf(context) == null
+              ? null
+              : () => KoolbaseTestData.maybeOf(context)!.queryFor(widget.collection),
         );
     _controller.addListener(_onChanged);
     _controller.load();
@@ -104,6 +120,11 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
       case KoolbaseListStatus.loaded:
         final records = _controller.records;
         if (records.isEmpty) {
+          // In page mode the page scrolls and refreshes: the empty widget alone.
+          if (widget.scrollsWithPage) {
+            return widget.empty?.call(context) ??
+                const Center(child: Text('Nothing here yet'));
+          }
           // Refreshable even when empty: the pull gesture needs something
           // scrollable over the empty slot.
           return RefreshIndicator(
@@ -112,12 +133,45 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
               builder: (context, constraints) => SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  // Only a height there IS: inside a scrolling page maxHeight
+                  // is infinite, and minHeight: infinity threw (KB-CERT-008) --
+                  // the list's empty state had this bug first.
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight.isFinite
+                        ? constraints.maxHeight
+                        : 0,
+                  ),
                   child: widget.empty?.call(context) ??
                       const Center(child: Text('Nothing here yet')),
                 ),
               ),
             ),
+          );
+        }
+        if (widget.scrollsWithPage) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: widget.padding ?? EdgeInsets.zero,
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: widget.crossAxisCount,
+                    mainAxisSpacing: widget.spacing,
+                    crossAxisSpacing: widget.spacing,
+                    childAspectRatio: widget.childAspectRatio,
+                  ),
+                  itemCount: records.length,
+                  itemBuilder: (context, i) =>
+                      widget.itemBuilder(context, records[i]),
+                ),
+              ),
+              if (_controller.hasMore) _loadMore(),
+            ],
           );
         }
         return RefreshIndicator(
@@ -142,27 +196,28 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
                   ),
                 ),
               ),
-              if (_controller.hasMore)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Center(
-                      child: _controller.loadingMore
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : TextButton(
-                              onPressed: _controller.loadMore,
-                              child: const Text('Load more'),
-                            ),
-                    ),
-                  ),
-                ),
+              if (_controller.hasMore) SliverToBoxAdapter(child: _loadMore()),
             ],
           ),
         );
     }
   }
+
+  /// The control below the cells while there are more: a button, or a small
+  /// spinner while the next page loads.
+  Widget _loadMore() => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Center(
+      child: _controller.loadingMore
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : TextButton(
+              onPressed: _controller.loadMore,
+              child: const Text('Load more'),
+            ),
+    ),
+  );
 }

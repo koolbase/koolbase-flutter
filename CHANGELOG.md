@@ -1,3 +1,10 @@
+# 12.13.0
+
+- **`KoolbaseCollectionGrid`** works inside a scrolling page: its empty state fills a height
+  only when there is one (it threw "BoxConstraints forces an infinite height"), and
+  **`scrollsWithPage: true`** lays the cells out at their natural height with Load more below
+  them, as the list's page mode does. The grid now renders from `KoolbaseTestData` too.
+
 # 12.12.0
 
 - **`KoolbaseTestData`** (`package:koolbase_flutter/testing.dart`): records supplied to

@@ -50,7 +50,7 @@ class KoolbaseCollectionController extends ChangeNotifier {
   KoolbaseCollectionController({
     required this.collection,
     this.queryBuilder,
-    @visibleForTesting KoolbaseQuery Function()? baseQuery,
+    KoolbaseQuery Function()? baseQuery,
   }) : _baseQuery = baseQuery;
 
   /// The collection to list.
@@ -59,8 +59,10 @@ class KoolbaseCollectionController extends ChangeNotifier {
   /// Shapes each fresh query (filters, order, limit). Null lists unfiltered.
   final KoolbaseQueryBuilder? queryBuilder;
 
-  /// Test seam only: how a fresh base query is constructed. Production uses
-  /// `Koolbase.db.collection(collection)`.
+  /// The data source: how a fresh base query is constructed. Production
+  /// leaves it null and uses `Koolbase.db.collection(collection)`;
+  /// KoolbaseTestData supplies one in widget tests, through the list and the
+  /// grid alike.
   final KoolbaseQuery Function()? _baseQuery;
 
   KoolbaseListStatus _status = KoolbaseListStatus.loading;
