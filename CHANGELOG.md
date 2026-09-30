@@ -1,12 +1,24 @@
-# 12.13.0
+## 12.14.0
 
+- **Live lists refresh after `doc(id).update` and `doc(id).delete`.** Every open query on the
+  record's collection re-runs in the background, as it already did after `insert`, `upsert`,
+  `batch` and `deleteWhere`; before, an update or delete through a document reference left every
+  list showing that collection stale until it was reloaded. A delete of a record never read on
+  this device refreshes every open query rather than guessing its collection
+  (`refreshAllCollectionStreams`).
+- **A refused conditional write refreshes too.** When `update` or `delete` with
+  `expectedRevision` is refused because the record changed (`KoolbaseRevisionMismatchException`),
+  the collection's open queries re-run, so the list already shows the newer data.
+- **Release notes.** Version headings in this changelog are now `##`, which the release workflow
+  reads; with `#` every GitHub release since the workflow began had empty notes.
+
+## 12.13.0
 - **`KoolbaseCollectionGrid`** works inside a scrolling page: its empty state fills a height
   only when there is one (it threw "BoxConstraints forces an infinite height"), and
   **`scrollsWithPage: true`** lays the cells out at their natural height with Load more below
   them, as the list's page mode does. The grid now renders from `KoolbaseTestData` too.
 
-# 12.12.0
-
+## 12.12.0
 - **`KoolbaseTestData`** (`package:koolbase_flutter/testing.dart`): records supplied to
   `KoolbaseCollectionList` and `KoolbaseRecordView` in widget tests, so a screen can be
   pumped populated. It replaces only the data source; controllers, paging, states and
@@ -14,16 +26,14 @@
   total); an unknown record id is not found, as the API answers. Testing and
   certification infrastructure, not a local-data API.
 
-# 12.11.0
-
+## 12.11.0
 - **`KoolbaseCollectionList(scrollsWithPage: true)`**, for a list inside a scrolling page.
   The rows lay out at their natural height and the page does the scrolling; Load more
   stays a row; pull-to-refresh belongs to the page, so the list adds none. Without it,
   a list with records inside a scrolling column cannot size itself ("Vertical viewport
   was given unbounded height"). The default is unchanged.
 
-# 12.10.0
-
+## 12.10.0
 - **`KoolbaseRecordView`: one record by id, as a scope.** Hands the record to
   `builder`, which returns the caller's own widget: it adds no scrolling or
   layout, the way a list row's children read their record. `loading`,
@@ -35,8 +45,7 @@
 - `KoolbaseRecordController`: the same without the widget. A failed refresh
   keeps the record shown.
 
-# 12.9.0
-
+## 12.9.0
 - **Analytics is now off by default.** Pass `analyticsEnabled: true` in
   `KoolbaseConfig` to send events. While it is off, `Koolbase.analytics` calls do
   nothing (the first logs how to turn it on), so apps that track events, and
@@ -48,8 +57,7 @@
 - `Koolbase.db.invalidate(collection)` forgets cached query results for a
   collection, so the next query waits for the server.
 
-# 12.8.0
-
+## 12.8.0
 - **Two-step sign-in (MFA).** Every sign-in method now throws
   `MfaRequiredException` carrying a `challengeToken` when the person's account
   has an authenticator on — including phone, Google and Apple, whose error
@@ -64,8 +72,7 @@
   `MfaEnrollmentNotFoundException` and `MfaNotEnabledException` — each
   registered in the error-code fidelity suite.
 
-# 12.7.0
-
+## 12.7.0
 - **Sign in with an emailed code.** `requestEmailCode(email)` sends a
   six-digit code; `signInWithEmailCode(email: ..., code: ...)` signs in and
   stores the session exactly as `login` does. No password needed.
@@ -86,8 +93,7 @@
   (carrying the offending records) and `KoolbaseCollectionReferencedException`,
   for collections with declared references.
 
-# 12.6.0
-
+## 12.6.0
 - **`UploadResult` exposes `path` and `publicUrl`**, not only a signed
   `downloadUrl`.
 
@@ -103,8 +109,7 @@
   Found through the Designer: its exporter reads upload-result fields by
   name, so a binding to an upload's `path` emitted code that did not compile.
 
-# 12.5.0
-
+## 12.5.0
 - **`auth.listSessions()`, `auth.revokeSession(id)`, `auth.revokeAllOtherSessions()`.**
   Three endpoints had been live on the server the whole time and no SDK
   exposed any of them — so "sign out my other devices" existed and was
@@ -144,7 +149,7 @@
   test against the set the API allows, so they cannot drift without failing
   here.
 
-# 12.4.0
+## 12.4.0
 - **Fourteen exceptions reported codes the API has never emitted.**
   `EmailAlreadyInUseException` said `email_taken` for a server that says
   `email_in_use`; `UserDisabledException` said `user_disabled` for
@@ -191,7 +196,7 @@ Both halves are now guarded here: one test asserts every code maps to its own
 exception, another that every exception reports a code the server sends. The
 auth error mapping had never had a test before this release.
 
-# 12.3.0
+## 12.3.0
 - `auth.changePassword(currentPassword:, newPassword:)`. An app could not
   offer a change-password screen until now; the only route to a new
   password was the reset email. The current password is verified first.
@@ -208,7 +213,7 @@ auth error mapping had never had a test before this release.
   and as `invalid_token` on reset. All three password paths now return
   `weak_password`, so the same `catch` covers signup, reset and change.
 
-# 12.2.0
+## 12.2.0
 - Pagination. `KoolbaseCollectionList` and `KoolbaseCollectionGrid` show
   a "Load more" past the last loaded record while the collection has
   more -- exact, from the query's total, not a guess from a short page.
@@ -219,7 +224,7 @@ auth error mapping had never had a test before this release.
   the first page, so a live insert updates that page in place and the
   pages loaded after it stay put. `refresh()` resets to one page.
 
-# 12.1.0
+## 12.1.0
 - `Koolbase.db.aggregate(...)`: `count`, `sum`, `avg`, `min`, `max` over
   the whole authorized set, grouped by a field or a calendar bucket.
   Every result carries its accounting -- how many records contributed
@@ -228,7 +233,7 @@ auth error mapping had never had a test before this release.
   `KoolbaseGroupBy.month(...)` constructors make it impossible to omit.
   Online-only. Read rules apply inside the query.
 
-# 12.0.0
+## 12.0.0
 - Flutter Web. `Koolbase.initialize` no longer refuses the browser: auth,
   database, storage, realtime and functions work. Two capabilities are
   absent on web and say so — code push (no binary to patch;
@@ -239,15 +244,15 @@ auth error mapping had never had a test before this release.
 - BREAKING: `Koolbase.codePush` throws `UnsupportedError` on web instead of
   `initialize` throwing. Guard with `kIsWeb` or `isCodePushAvailable`.
 
-# 11.6.1
+## 11.6.1
 - README documents `KoolbaseCollectionList.visible`; install snippet at ^11.6.1.
 
-# 11.6.0
+## 11.6.0
 - `KoolbaseCollectionList.visible`: transform the loaded records before both
   the empty decision and the rows. Runs on every build over what is already
   loaded; it does not query. A filter that leaves nothing shows the empty slot.
 
-# 11.5.0
+## 11.5.0
 - Widget tests can now build Koolbase screens. `Koolbase.initializeForTesting()`
   sets up enough SDK for widgets to render — `db` and `auth` exist, every HTTP
   request answers with an empty success, auth storage is in memory — and none
@@ -261,7 +266,7 @@ auth error mapping had never had a test before this release.
   slot pinned its minimum height to the parent's maximum, which in an
   unbounded parent is infinite. Found by a generated widget test.
 
-# 11.4.2
+## 11.4.2
 - Device outcomes are now attributable. Every patch event the SDK sent omitted
   `patch_id`, and the server only increments a patch's counters when that field
   is present — so every download and activation ever reported landed in the
@@ -279,7 +284,7 @@ auth error mapping had never had a test before this release.
   indistinguishable from one that never tried.
 - `app_version` is populated on events rather than sent as an empty string.
 
-# 11.4.1
+## 11.4.1
 - Flutter Web now REFUSES at `Koolbase.initialize` rather than starting a
   client whose most important features silently do nothing. Code push, OTA
   updates, offline-first sync and version enforcement have no browser
@@ -293,8 +298,7 @@ auth error mapping had never had a test before this release.
   drift's web options. Both are what make the package compile off-device at
   all; neither makes web a supported target.
 
-# 11.4.0
-
+## 11.4.0
 - `Koolbase.storage.publicUrlFor(bucket:, path:, transform:)` — the runtime
   form of `publicUrl` that needs no `projectId` argument. The SDK learns its
   project identity from the bootstrap payload it already fetches and caches;
@@ -1221,8 +1225,7 @@ try {
 - Requires a Koolbase server build with `PATH_CONFLICT` 409 support
   (shipped alongside this release).
 
-# 5.1.0
-
+## 5.1.0
 ### Fixed
 
 - Realtime now connects. The client was protocol-correct but was never handed an access token (the push-based `setToken` was never wired), so it never connected. Switched to the same token-provider model as the other clients; it now authenticates with the user session and streams `created`/`updated`/`deleted` events.
@@ -1231,8 +1234,7 @@ try {
 
 - `KoolbaseRealtimeClient.setToken` — dead push-model plumbing that was never wired. The token now flows from the SDK automatically.
 
-# 5.0.0
-
+## 5.0.0
 ### BREAKING — security
 
 - Data-plane requests (database, storage, functions, offline sync)
@@ -1272,8 +1274,7 @@ try {
   library-agnostic, so the SDK no longer pulls it. If your app uses Apple
   Sign-In, declare `sign_in_with_apple` in your own `pubspec.yaml`.
 
-# 3.3.0
-
+## 3.3.0
 - Auth exceptions are now selected from the server's stable error `code`
   (with status/message fallback for older servers), retiring brittle message
   string-matching.
@@ -1409,8 +1410,7 @@ Client IDs. You'll need one per platform (iOS, Android, web).
   feature inventory.
 - Bumped install snippet from `^2.8.0` to `^2.10.0`.
 
-# 2.10.0
-
+## 2.10.0
 ## ✨ New features
 
 **Sign in with Apple — production-ready end-user OAuth.**
@@ -1542,8 +1542,7 @@ if (!ok) {
 }
 ```
 
-# 2.9.0
-
+## 2.9.0
 A comprehensive overhaul of the authentication module. This release closes seven independent gaps identified by a focused security and reliability audit, adds proper device-attributed session tracking, fixes a refresh-token race that could invalidate concurrent in-flight requests, and honestly deprecates OAuth methods that were never fully wired up on the server side.
 
 ## Highlights
@@ -1655,8 +1654,7 @@ try {
 - `KoolbaseAuthClient` no longer imports `package:flutter/material.dart` (was only needed for `debugPrint` in OAuth error paths, which are now deprecated stubs).
 - New `lib/src/auth/device_metadata.dart` module.
 
-# 2.8.0
-
+## 2.8.0
 - **Functions:** Authenticated invocations now forward the signed-in user's session automatically.
   - When a user is signed in via `Koolbase.auth`, calls to `Koolbase.functions.invoke()` include their access token in the request.
   - Functions receive caller identity via `ctx.auth` — a map with `user_id` (string or null) and `is_authenticated` (bool).
