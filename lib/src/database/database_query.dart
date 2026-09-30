@@ -43,6 +43,29 @@ Future<void> refreshCollectionStreams(String collection) async {
   }
 }
 
+/// Refreshes every open query, on every collection.
+///
+/// For a write whose collection is not known -- a delete of a record never
+/// read on this device -- rather than guessing which streams it affects.
+Future<void> refreshAllCollectionStreams() async {
+  for (final refresh in _refreshers.values.toList()) {
+    try {
+      await refresh();
+    } catch (e) {
+      debugPrint('[Koolbase] Stream refresh failed after write: $e');
+    }
+  }
+}
+
+/// After a write through a document reference: its collection's streams in
+/// the background, as the client's writes do -- every stream when the
+/// collection is not known.
+void _refreshStreamsAfterWrite(String? collection) {
+  unawaited(collection == null
+      ? refreshAllCollectionStreams()
+      : refreshCollectionStreams(collection));
+}
+
 /// Registers a refresher directly.
 ///
 /// Tests only — in production this happens when a query's stream is first
@@ -594,9 +617,14 @@ class KoolbaseDocRef {
     }
 
     if (res.statusCode != 200) {
-      throw await koolbaseDataErrorNotifying(res,
+      final error = await koolbaseDataErrorNotifying(res,
           onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Update failed');
+      // Refused as stale: the server holds newer data, so show it.
+      if (error is KoolbaseRevisionMismatchException) {
+        _refreshStreamsAfterWrite(collection);
+      }
+      throw error;
     }
 
     final record =
@@ -607,6 +635,9 @@ class KoolbaseDocRef {
       await _cacheStore?.saveRecord(record.id, col, record.data, _userId,
           revision: record.revision);
     }
+    // Live lists showing this collection re-run, as after the client's writes
+    // (they did not: an update through doc() left every list stale).
+    _refreshStreamsAfterWrite(col);
     return record;
   }
 
@@ -789,12 +820,19 @@ class KoolbaseDocRef {
     }
 
     if (res.statusCode != 204) {
-      throw await koolbaseDataErrorNotifying(res,
+      final error = await koolbaseDataErrorNotifying(res,
           onSessionExpired: _onSessionExpired,
           fallbackMessage: 'Delete failed');
+      // Refused as stale: the server holds newer data, so show it.
+      if (error is KoolbaseRevisionMismatchException) {
+        _refreshStreamsAfterWrite(collection);
+      }
+      throw error;
     }
-
     await _cacheStore?.deleteRecord(recordId);
+    // Live lists showing this collection re-run -- every one when the
+    // record's collection is not known (never read on this device).
+    _refreshStreamsAfterWrite(collection);
   }
 
   /// Write (or replace) a vector for this record on the named [field].

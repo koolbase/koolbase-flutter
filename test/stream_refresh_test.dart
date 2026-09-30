@@ -76,4 +76,24 @@ void main() {
 
     expect(ran, contains('second'));
   });
+
+  group('refreshAllCollectionStreams', () {
+    setUp(debugClearStreamRefreshers);
+
+    test('refreshes every open query, on every collection', () async {
+      final ran = <String>[];
+      debugRegisterStreamRefresher('tasks:a', () async => ran.add('tasks'));
+      debugRegisterStreamRefresher('songs:b', () async => ran.add('songs'));
+      await refreshAllCollectionStreams();
+      expect(ran..sort(), ['songs', 'tasks']);
+    });
+
+    test('a failed refresh never stops the others', () async {
+      final ran = <String>[];
+      debugRegisterStreamRefresher('tasks:a', () async => throw Exception('boom'));
+      debugRegisterStreamRefresher('tasks:b', () async => ran.add('second'));
+      await refreshAllCollectionStreams();
+      expect(ran, ['second']);
+    });
+  });
 }
