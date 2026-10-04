@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../testing/test_data.dart';
@@ -35,12 +37,17 @@ enum KoolbaseRecordStatus {
 ///  * stale beats blank: a failed refresh keeps the record
 ///  * a result that lands after [dispose], or that a later refresh
 ///    superseded, is dropped
+///  * [live]: realtime events for THIS record only -- an update re-reads it
+///    silently, once per burst; a delete is notFound at once
 class KoolbaseRecordController extends ChangeNotifier {
   KoolbaseRecordController({
     required this.collection,
     required this.id,
+    this.live = false,
     @visibleForTesting Future<KoolbaseRecord> Function()? fetch,
-  }) : _fetch = fetch;
+    @visibleForTesting Stream<RealtimeEvent> Function(String collection)? liveEvents,
+  })  : _fetch = fetch,
+        _liveEvents = liveEvents;
 
   /// The collection the record must belong to.
   final String collection;
@@ -51,6 +58,20 @@ class KoolbaseRecordController extends ChangeNotifier {
   /// Test seam only: how the record is fetched. Production uses
   /// `Koolbase.db.doc(id).get()`.
   final Future<KoolbaseRecord> Function()? _fetch;
+
+  /// Follow this record through Koolbase realtime: when it changes it is read
+  /// again silently -- no [refreshing] -- once per burst (250 ms); when it is
+  /// deleted the status is notFound at once. Changes to other records are
+  /// ignored. Realtime needs a signed-in user; until there is one, and with
+  /// no [id], this behaves as a normal record view.
+  final bool live;
+
+  /// Test seam only: the collection's realtime events. Production uses
+  /// `Koolbase.realtime.on(collection:)`.
+  final Stream<RealtimeEvent> Function(String collection)? _liveEvents;
+
+  StreamSubscription<RealtimeEvent>? _liveSub;
+  Timer? _liveTimer;
 
   KoolbaseRecordStatus _status = KoolbaseRecordStatus.loading;
   KoolbaseRecord? _record;
@@ -71,7 +92,48 @@ class KoolbaseRecordController extends ChangeNotifier {
   /// First load. Safe to call once; [refresh] for later loads.
   Future<void> load() async {
     if (_disposed) return;
+    _goLive();
     await _run();
+  }
+
+  /// The realtime subscription. Once, on the first load; needs an id.
+  void _goLive() {
+    if (!live || id.isEmpty || _liveSub != null || _disposed) return;
+    final events = _liveEvents?.call(collection) ?? _realtimeEvents(collection);
+    _liveSub = events.listen(_onLive, onError: (Object _) {});
+  }
+
+  /// Before Koolbase is initialized there is no realtime client, and a live
+  /// record view is simply a record view.
+  static Stream<RealtimeEvent> _realtimeEvents(String collection) {
+    try {
+      return Koolbase.realtime.on(collection: collection);
+    } catch (_) {
+      return const Stream<RealtimeEvent>.empty();
+    }
+  }
+
+  /// An event in this record's collection. Only one naming THIS record counts.
+  void _onLive(RealtimeEvent e) {
+    if (_disposed) return;
+    final deleted = e.type == RealtimeEventType.recordDeleted;
+    final rec = e.record;
+    final target = deleted ? e.recordId : (rec?[r'$id'] ?? rec?['id']) as String?;
+    if (target == null || target != id) return;
+    if (deleted) {
+      // Gone: say so now, and drop any read still in flight.
+      _liveTimer?.cancel();
+      _liveTimer = null;
+      _generation++;
+      _refreshing = false;
+      _show(KoolbaseRecordStatus.notFound, null, null);
+      return;
+    }
+    if (_liveTimer != null) return;
+    _liveTimer = Timer(const Duration(milliseconds: 250), () {
+      _liveTimer = null;
+      unawaited(_run());
+    });
   }
 
   /// Fetch again. The record stays visible while it runs, and stays if it
@@ -126,6 +188,10 @@ class KoolbaseRecordController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _liveSub?.cancel();
+    _liveSub = null;
+    _liveTimer?.cancel();
+    _liveTimer = null;
     super.dispose();
   }
 }
@@ -157,7 +223,9 @@ class KoolbaseRecordView extends StatefulWidget {
     this.loading,
     this.notFound,
     this.error,
+    this.live = false,
     @visibleForTesting this.fetch,
+    @visibleForTesting this.liveEvents,
   });
 
   /// The collection the record must belong to.
@@ -181,6 +249,13 @@ class KoolbaseRecordView extends StatefulWidget {
 
   /// Test seam only: fetch a record by id instead of calling the SDK.
   final Future<KoolbaseRecord> Function(String id)? fetch;
+
+  /// Follow the record through Koolbase realtime: changes re-read it
+  /// silently; a delete shows [notFound]. Needs a signed-in user.
+  final bool live;
+
+  /// Test seam only: the collection's realtime events.
+  final Stream<RealtimeEvent> Function(String collection)? liveEvents;
 
   @override
   State<KoolbaseRecordView> createState() => _KoolbaseRecordViewState();
@@ -210,6 +285,8 @@ class _KoolbaseRecordViewState extends State<KoolbaseRecordView> {
           : testData != null
           ? () => testData.record(widget.collection, id)
           : null,
+      live: widget.live,
+      liveEvents: widget.liveEvents,
     )..addListener(_onChanged);
     _controller.load();
   }
@@ -221,7 +298,9 @@ class _KoolbaseRecordViewState extends State<KoolbaseRecordView> {
   @override
   void didUpdateWidget(KoolbaseRecordView old) {
     super.didUpdateWidget(old);
-    if (old.id != widget.id || old.collection != widget.collection) {
+    if (old.id != widget.id ||
+        old.collection != widget.collection ||
+        old.live != widget.live) {
       _controller
         ..removeListener(_onChanged)
         ..dispose();

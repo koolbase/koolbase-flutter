@@ -1,3 +1,17 @@
+## 12.16.0
+
+- **Live record views: `KoolbaseRecordView(..., live: true)`** (also `KoolbaseRecordController(live: true)`). When Koolbase realtime reports a change to THIS record, it is read again silently -- no `refreshing` state -- and a burst of changes within 250 ms is one read. When it is deleted, the view shows not-found at once, and a read still in flight is dropped. Changes to other records in the collection are ignored: no extra reads. Same contract as `@koolbase/*` 12.12.0.
+- **One connection.** Live records and live lists share the app's single realtime connection (12.15.1).
+- **Needs a signed-in user**, as realtime does; until there is one -- or before Koolbase is initialized -- a live record view behaves as a normal one. With no id there is nothing to follow and nothing subscribes. Without the option nothing changes.
+- **Tested** through a realtime seam (`liveEvents`): a silent re-read on a change, other records ignored, one read for a burst, a delete at once and without a read, a delete dropping a pending re-read, no subscription unless live or without an id, and dispose unsubscribing and cancelling.
+
+## 12.15.1
+
+- **Realtime subscriptions are counted exactly.** Two listeners on one collection -- a live list and a live grid on the same screen -- were counted twice but cancelled once, so the collection was never unsubscribed and its events kept arriving after both had gone. A collection is now subscribed while its stream has a listener and unsubscribed when the last one leaves, however many share it.
+- **An unused connection closes.** When the last listener leaves, the connection closes after a moment (`idleGrace`, 1 s). A listener back within it -- navigating back to a screen -- keeps the same connection; one after it opens a fresh one. Nothing reconnects without a subscription. Same contract as `@koolbase/*` 12.11.1.
+- **Sturdier.** A token that throws no longer leaves the client stuck connecting; if everyone left before the token arrived, nothing is opened.
+- **Tested** through a connection seam (`connector`), without a server: one connection for many listeners, unsubscribing only when the last listener leaves, the close after the moment, reuse within it, a fresh connection after it, nothing opened for nobody, and recovery from a failed token.
+
 ## 12.15.0
 
 - **Live lists: `KoolbaseCollectionList(..., live: true)`** and `KoolbaseCollectionGrid(..., live: true)`
