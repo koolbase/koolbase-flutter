@@ -24,6 +24,7 @@ class KoolbaseCollectionGrid extends StatefulWidget {
     this.padding,
     this.scrollsWithPage = false,
     @visibleForTesting this.controller,
+    this.live = false,
   });
 
   /// The collection to show.
@@ -70,6 +71,10 @@ class KoolbaseCollectionGrid extends StatefulWidget {
   /// Test seam only.
   final KoolbaseCollectionController? controller;
 
+  /// Keeps the grid current with changes other people make. Needs a
+  /// signed-in user. See [KoolbaseCollectionController.live].
+  final bool live;
+
   @override
   State<KoolbaseCollectionGrid> createState() => _KoolbaseCollectionGridState();
 }
@@ -84,6 +89,7 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
     _ownsController = widget.controller == null;
     _controller = widget.controller ??
         KoolbaseCollectionController(
+          live: widget.live,
           collection: widget.collection,
           queryBuilder: widget.query,
           // The data SOURCE, and only that: under KoolbaseTestData (widget
