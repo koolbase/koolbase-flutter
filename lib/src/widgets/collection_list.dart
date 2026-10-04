@@ -51,7 +51,10 @@ class KoolbaseCollectionController extends ChangeNotifier {
     required this.collection,
     this.queryBuilder,
     KoolbaseQuery Function()? baseQuery,
-  }) : _baseQuery = baseQuery;
+    this.live = false,
+    @visibleForTesting Stream<Object?> Function(String collection)? liveEvents,
+  })  : _baseQuery = baseQuery,
+        _liveEvents = liveEvents;
 
   /// The collection to list.
   final String collection;
@@ -64,6 +67,20 @@ class KoolbaseCollectionController extends ChangeNotifier {
   /// KoolbaseTestData supplies one in widget tests, through the list and the
   /// grid alike.
   final KoolbaseQuery Function()? _baseQuery;
+
+  /// Re-read page one, silently, when Koolbase realtime reports a record
+  /// created, updated or deleted in [collection] -- once per burst (250 ms),
+  /// not once per event. The list's own query re-runs, so filters, order
+  /// and read rules stay right. Realtime needs a signed-in user; until there
+  /// is one the list behaves as a normal list.
+  final bool live;
+
+  /// Test seam only: the collection's realtime events. Production uses
+  /// `Koolbase.realtime.on(collection:)`.
+  final Stream<Object?> Function(String collection)? _liveEvents;
+
+  StreamSubscription<Object?>? _liveSub;
+  Timer? _liveTimer;
 
   KoolbaseListStatus _status = KoolbaseListStatus.loading;
   List<KoolbaseRecord> _records = const [];
@@ -99,6 +116,7 @@ class KoolbaseCollectionController extends ChangeNotifier {
   Future<void> load() async {
     final query = _freshQuery();
     _resubscribe(query);
+    _goLive();
     try {
       final result = await query.get();
       if (_disposed) return;
@@ -185,6 +203,56 @@ class KoolbaseCollectionController extends ChangeNotifier {
     }
   }
 
+  /// A live list's realtime subscription. Once, on the first load.
+  void _goLive() {
+    if (!live || _liveSub != null || _disposed) return;
+    final events = _liveEvents?.call(collection) ?? _realtimeEvents(collection);
+    _liveSub = events.listen((_) => _scheduleLiveRefresh(), onError: (_) {});
+  }
+
+  /// Record events only: not the subscribe acknowledgements. Before Koolbase
+  /// is initialized there is no realtime client, and a live list is simply a
+  /// list.
+  static Stream<Object?> _realtimeEvents(String collection) {
+    try {
+      return Koolbase.realtime.on(collection: collection).where((e) =>
+          e.type == RealtimeEventType.recordCreated ||
+          e.type == RealtimeEventType.recordUpdated ||
+          e.type == RealtimeEventType.recordDeleted);
+    } catch (_) {
+      return const Stream<Object?>.empty();
+    }
+  }
+
+  /// A change someone made, reported by realtime: page one again, once per
+  /// burst.
+  void _scheduleLiveRefresh() {
+    if (_disposed || _liveTimer != null) return;
+    _liveTimer = Timer(const Duration(milliseconds: 250), () {
+      _liveTimer = null;
+      unawaited(_liveRefresh());
+    });
+  }
+
+  /// Page one from the network, shown without the [refreshing] state -- the
+  /// list just changes, as it does after the app's own writes. A failure
+  /// keeps what is shown (stale beats blank).
+  Future<void> _liveRefresh() async {
+    if (_disposed) return;
+    try {
+      final result = await _freshQuery().get(fresh: true);
+      if (_disposed) return;
+      _status = KoolbaseListStatus.loaded;
+      _records = result.records;
+      _isFromCache = false;
+      _error = null;
+      _hasMore = _records.length < result.total;
+      notifyListeners();
+    } catch (_) {
+      // Keep what we have; the next change tries again.
+    }
+  }
+
   /// Subscribes to the query's refresh stream, replacing the subscription
   /// only when the query IDENTITY changes — a deterministic builder yields
   /// the same identity every time, so in the steady state this subscribes
@@ -209,6 +277,8 @@ class KoolbaseCollectionController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _sub?.cancel();
+    _liveSub?.cancel();
+    _liveTimer?.cancel();
     super.dispose();
   }
 }
@@ -252,6 +322,7 @@ class KoolbaseCollectionList extends StatefulWidget {
     @visibleForTesting this.controller,
     this.visible,
     this.scrollsWithPage = false,
+    this.live = false,
   });
 
   /// The collection to list.
@@ -299,6 +370,11 @@ class KoolbaseCollectionList extends StatefulWidget {
   /// Default false: the list fills a bounded space and scrolls by itself.
   final bool scrollsWithPage;
 
+  /// Keeps the list current with changes other people make: page one is
+  /// re-read silently when realtime reports a change in [collection]. Needs
+  /// a signed-in user. See [KoolbaseCollectionController.live].
+  final bool live;
+
   @override
   State<KoolbaseCollectionList> createState() => _KoolbaseCollectionListState();
 }
@@ -319,6 +395,7 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
         KoolbaseCollectionController(
           collection: widget.collection,
           queryBuilder: widget.query,
+          live: widget.live,
           baseQuery: testData == null
               ? null
               : () => testData.queryFor(widget.collection),

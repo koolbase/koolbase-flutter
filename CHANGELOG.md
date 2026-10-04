@@ -1,3 +1,14 @@
+## 12.15.0
+
+- **Live lists: `KoolbaseCollectionList(..., live: true)`** and `KoolbaseCollectionGrid(..., live: true)`
+  (also `KoolbaseCollectionController(live: true)`). When Koolbase realtime reports a record
+  created, updated or deleted in the collection, the list re-reads its first page from the network,
+  silently -- no `refreshing` state -- and a burst of changes within 250 ms is one read. The list's
+  own query is what re-runs, so filters, order and read rules stay exactly right. A failed re-read
+  keeps what is shown. Same contract as `@koolbase/*` 12.11.0.
+- **Needs a signed-in user**, as realtime does. Until there is one -- or before Koolbase is
+  initialized -- a live list behaves as a normal list. Without the option nothing changes.
+
 ## 12.14.0
 
 - **Live lists refresh after `doc(id).update` and `doc(id).delete`.** Every open query on the
