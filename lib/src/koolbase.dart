@@ -240,7 +240,11 @@ class Koolbase {
       publicKey: config.publicKey,
       accessTokenProvider: () =>
           _auth?.validAccessToken() ?? Future<String?>.value(null),
+      userIdProvider: () => _auth?.currentUser?.id,
     );
+    // Signed in, signed out, another user: the realtime connection is
+    // replaced to match (signed out, collections anyone can read only).
+    _auth?.authStateChanges.listen((_) => _realtime?.sessionChanged());
 
     // Initialize offline database (Drift)
     // Offline sync needs drift's sqlite3.wasm and worker shipped beside a
@@ -725,7 +729,8 @@ class _AnalyticsOff extends KoolbaseAnalyticsClient {
   @override
   void track(String eventName, {Map<String, dynamic>? properties}) => _tell();
   @override
-  void screenView(String screenName, {Map<String, dynamic>? properties}) => _tell();
+  void screenView(String screenName, {Map<String, dynamic>? properties}) =>
+      _tell();
   @override
   void setUserProperty(String key, dynamic value) => _tell();
   @override

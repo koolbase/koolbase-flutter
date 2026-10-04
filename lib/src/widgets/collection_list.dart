@@ -71,8 +71,9 @@ class KoolbaseCollectionController extends ChangeNotifier {
   /// Re-read page one, silently, when Koolbase realtime reports a record
   /// created, updated or deleted in [collection] -- once per burst (250 ms),
   /// not once per event. The list's own query re-runs, so filters, order
-  /// and read rules stay right. Realtime needs a signed-in user; until there
-  /// is one the list behaves as a normal list.
+  /// and read rules stay right. Signed out, only a collection anyone can read
+  /// (read rule "public") is live; any other behaves as a normal list until a
+  /// user signs in.
   final bool live;
 
   /// Test seam only: the collection's realtime events. Production uses

@@ -1,3 +1,10 @@
+## 12.17.0
+
+- **Realtime for signed-out visitors.** With nobody signed in, live lists and live record views on a collection anyone can read (read rule `public`) now update live: the SDK connects with the project's public key. Any other collection behaves as a normal list or view until a user signs in. Needs the Koolbase API from 2026-10-04 or later. Same contract as `@koolbase/*` 12.13.0.
+- **Follows sign-in and sign-out.** Signing in, signing out or switching user replaces the realtime connection with one for the new session and resubscribes everything; a token refresh for the same user changes nothing. `KoolbaseRealtimeClient.sessionChanged()` does this; `Koolbase.initialize` wires it to `authStateChanges`.
+- **Never public-only by mistake.** Signed in without a usable token right now, or a token that fails to refresh: the SDK tries again later, as before, rather than drop to public-only.
+- **Tested.** The public-key connection and its messages, events reaching listeners, no fallback while signed in, sign-in and sign-out replacing the connection, a refresh keeping it, nothing opened with nothing listening, and a session change while the token is on its way.
+
 ## 12.16.0
 
 - **Live record views: `KoolbaseRecordView(..., live: true)`** (also `KoolbaseRecordController(live: true)`). When Koolbase realtime reports a change to THIS record, it is read again silently -- no `refreshing` state -- and a burst of changes within 250 ms is one read. When it is deleted, the view shows not-found at once, and a read still in flight is dropped. Changes to other records in the collection are ignored: no extra reads. Same contract as `@koolbase/*` 12.12.0.

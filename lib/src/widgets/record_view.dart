@@ -62,8 +62,9 @@ class KoolbaseRecordController extends ChangeNotifier {
   /// Follow this record through Koolbase realtime: when it changes it is read
   /// again silently -- no [refreshing] -- once per burst (250 ms); when it is
   /// deleted the status is notFound at once. Changes to other records are
-  /// ignored. Realtime needs a signed-in user; until there is one, and with
-  /// no [id], this behaves as a normal record view.
+  /// ignored. Signed out, only a collection anyone can read (read rule
+  /// "public") is followed; any other, and a view with no [id], behaves as a
+  /// normal record view.
   final bool live;
 
   /// Test seam only: the collection's realtime events. Production uses
@@ -251,7 +252,8 @@ class KoolbaseRecordView extends StatefulWidget {
   final Future<KoolbaseRecord> Function(String id)? fetch;
 
   /// Follow the record through Koolbase realtime: changes re-read it
-  /// silently; a delete shows [notFound]. Needs a signed-in user.
+  /// silently; a delete shows [notFound]. Signed out: public collections
+  /// only.
   final bool live;
 
   /// Test seam only: the collection's realtime events.
