@@ -276,8 +276,19 @@ class KoolbaseQuery {
   Future<void> _refreshFromNetwork(String cacheKey) {
     return _fetchFromNetwork(cacheKey).then((result) {
       _getController(cacheKey).add(result);
-    }).catchError((e) {
+    }).catchError((Object e) async {
       debugPrint('[Koolbase] Background refresh failed: $e');
+      // The server cannot be reached: what the device has saved -- which an
+      // offline add, edit or delete has just updated -- so an open list shows
+      // the user's own change, marked as saved data.
+      final saved = await _cacheStore?.getQuery(cacheKey);
+      if (saved == null) return;
+      final records = saved.map(KoolbaseRecord.fromJson).toList();
+      _getController(cacheKey).add(QueryResult(
+        records: records,
+        total: records.length,
+        isFromCache: true,
+      ));
     });
   }
 
@@ -521,6 +532,27 @@ class KoolbaseDocRef {
     return headers;
   }
 
+  /// The device's saved copy of this record: what this device last read, with
+  /// the changes queued on it applied. Never contacts the server. Null when
+  /// there is none: never read here, or deleted on this device.
+  ///
+  /// For showing something at once while [get] asks the server -- saved-first,
+  /// never saved-only. The saved copy holds data and revision, not the
+  /// timestamps: createdAt and updatedAt are the epoch here.
+  Future<KoolbaseRecord?> getSaved() async {
+    final resolved = await _resolveBaseline();
+    if (resolved == null) return null;
+    final epoch = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    return KoolbaseRecord(
+      id: recordId,
+      collection: resolved.collection,
+      data: Map<String, dynamic>.of(resolved.baseline),
+      createdAt: epoch,
+      updatedAt: epoch,
+      revision: resolved.revision,
+    );
+  }
+
   Future<KoolbaseRecord> get() async {
     final res = await _client
         .get(
@@ -677,6 +709,9 @@ class KoolbaseDocRef {
     final merged = {...baseline, ...data};
     await _cacheStore?.saveRecord(recordId, collection, merged, _userId,
         revision: baseRevision);
+    // And in the saved lists, so they show what the user just changed.
+    await _cacheStore?.updateInQueries(collection, recordId, data);
+    _refreshStreamsAfterWrite(collection);
     // Optimistic: durable locally and queued to send, not yet accepted.
     return KoolbaseRecord(
       id: recordId,
@@ -718,6 +753,9 @@ class KoolbaseDocRef {
     // cached record now costs nothing and keeps local reads consistent with what
     // the user just did.
     await _cacheStore?.deleteRecord(recordId);
+    // Saved lists included.
+    await _cacheStore?.removeFromQueries(collection, recordId);
+    _refreshStreamsAfterWrite(collection);
   }
 
   /// Whether the device reports having no network at all.

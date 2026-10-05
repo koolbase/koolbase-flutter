@@ -134,13 +134,55 @@ class KoolbaseDatabaseClient {
     ];
   }
 
+  final StreamController<void> _sessionTicks =
+      StreamController<void>.broadcast();
+
+  /// The signed-in user changed: per-user watchers ([watchPendingWrites]) read
+  /// again, for the new user -- or report signed out. Koolbase.initialize
+  /// wires it to auth changes.
+  void sessionChanged() => _sessionTicks.add(null);
+
+  /// [source] mapped by [map], and mapped again on every session change: a
+  /// queue that did not change can still mean something else for another user.
+  Stream<T> _followSession<R, T>(Stream<R> source, T Function(R rows) map) {
+    late final StreamController<T> out;
+    StreamSubscription<R>? rowsSub;
+    StreamSubscription<void>? sessionSub;
+    late R last;
+    var has = false;
+    void emit() {
+      if (!has || out.isClosed) return;
+      try {
+        out.add(map(last));
+      } catch (e, s) {
+        out.addError(e, s);
+      }
+    }
+
+    out = StreamController<T>(
+      onListen: () {
+        rowsSub = source.listen((rows) {
+          last = rows;
+          has = true;
+          emit();
+        }, onError: out.addError);
+        sessionSub = _sessionTicks.stream.listen((_) => emit());
+      },
+      onCancel: () async {
+        await rowsSub?.cancel();
+        await sessionSub?.cancel();
+      },
+    );
+    return out.stream;
+  }
+
   /// Emits the pending writes, and again whenever they change.
   ///
   /// For a sync badge that reflects reality. Per-user, like [pendingWrites].
   Stream<List<PendingWrite>> watchPendingWrites() {
     final queue = _writeQueue;
     if (queue == null) return Stream.value(const []);
-    return queue.watchPending().map((rows) {
+    return _followSession(queue.watchPending(), (rows) {
       // Read per emission: the signed-in user can change under a live stream —
       // and a sign-out mid-stream becomes an error event, not a fake-empty
       // emission. The badge stops lying the moment the session dies.
@@ -481,12 +523,7 @@ class KoolbaseDatabaseClient {
         // No revision: the record does not exist on the server yet, so there
         // is nothing to be conditional against. An offline edit to it composes
         // against the queued insert rather than a cached revision.
-        await _cacheStore?.saveRecord(recordId, collection, payload, _userId);
-        await _cacheStore?.invalidateCollection(collection);
-        unawaited(refreshCollectionStreams(collection));
-
-        // Return optimistic record
-        return KoolbaseRecord(
+        final optimistic = KoolbaseRecord(
           id: recordId,
           collection: collection,
           createdBy: _userId,
@@ -494,6 +531,13 @@ class KoolbaseDatabaseClient {
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
+        await _cacheStore?.saveRecord(recordId, collection, payload, _userId);
+        // Into the saved lists, not dropping them: a device that stays
+        // offline must still have its lists -- now with the new record.
+        await _cacheStore?.addToQueries(collection, optimistic.toJson());
+        unawaited(refreshCollectionStreams(collection));
+
+        return optimistic;
       }
       rethrow;
     }

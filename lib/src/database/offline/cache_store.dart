@@ -188,6 +188,57 @@ class CacheStore {
     await (_db.delete(_db.cachedRecords)..where((t) => t.id.equals(id))).go();
   }
 
+  /// Puts a record made offline at the top of every cached result of
+  /// [collection], so saved lists show it (filters and order are the server's
+  /// to apply when it next answers).
+  Future<void> addToQueries(
+      String collection, Map<String, dynamic> json) async {
+    final rows = await (_db.select(_db.cachedQueries)
+          ..where((t) => t.collection.equals(collection)))
+        .get();
+    for (final row in rows) {
+      final List<dynamic> list;
+      try {
+        list = jsonDecode(row.response) as List<dynamic>;
+      } catch (_) {
+        continue;
+      }
+      await (_db.update(_db.cachedQueries)..where((t) => t.key.equals(row.key)))
+          .write(CachedQueriesCompanion(
+              response: Value(jsonEncode([json, ...list]))));
+    }
+  }
+
+  /// Applies an offline edit to the record wherever a cached result holds it.
+  Future<void> updateInQueries(
+      String collection, String recordId, Map<String, dynamic> data) async {
+    final rows = await (_db.select(_db.cachedQueries)
+          ..where((t) => t.collection.equals(collection)))
+        .get();
+    for (final row in rows) {
+      final List<dynamic> list;
+      try {
+        list = jsonDecode(row.response) as List<dynamic>;
+      } catch (_) {
+        continue;
+      }
+      var changed = false;
+      final next = [
+        for (final r in list)
+          if (r is Map && r[r'$id'] == recordId)
+            (() {
+              changed = true;
+              return {...r, ...data};
+            })()
+          else
+            r,
+      ];
+      if (!changed) continue;
+      await (_db.update(_db.cachedQueries)..where((t) => t.key.equals(row.key)))
+          .write(CachedQueriesCompanion(response: Value(jsonEncode(next))));
+    }
+  }
+
   /// Takes one record out of every cached result of [collection].
   ///
   /// Precise on purpose: [invalidateCollection] would also get rid of it, by

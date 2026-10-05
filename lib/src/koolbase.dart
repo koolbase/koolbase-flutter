@@ -45,6 +45,7 @@ export 'payload.dart';
 export 'auth/auth_models.dart';
 export 'auth/auth_exceptions.dart';
 import 'code_push/patch_client.dart';
+import 'connectivity/connectivity.dart';
 
 /// Configuration for the Koolbase SDK.
 class KoolbaseConfig {
@@ -109,6 +110,7 @@ class Koolbase {
   static KoolbaseStorageClient? _storage;
   static KoolbaseDatabaseClient? _database;
   static KoolbaseRealtimeClient? _realtime;
+  static KoolbaseConnectivity? _connectivity;
   static KoolbaseFunctionsClient? _functions;
   static KoolbaseFiscalClient? _fiscal;
   static KoolbaseLocalDatabase? _localDb;
@@ -246,6 +248,9 @@ class Koolbase {
     // replaced to match (signed out, collections anyone can read only).
     _auth?.authStateChanges.listen((_) => _realtime?.sessionChanged());
 
+    // Whether the device reports a connection: unknown until it first answers.
+    _connectivity = KoolbaseConnectivity()..start();
+
     // Initialize offline database (Drift)
     // Offline sync needs drift's sqlite3.wasm and worker shipped beside a
     // web app; most apps will not, and a missing worker took the whole
@@ -298,7 +303,11 @@ class Koolbase {
     // so queued offline writes are attributed without the app having to
     // remember. A missed setUserId would queue writes with no owner, and those
     // are never replayed.
-    _auth?.authStateChanges.listen((user) => _database?.setUserId(user?.id));
+    _auth?.authStateChanges.listen((user) {
+      _database?.setUserId(user?.id);
+      // Pending writes are per-user: watchers read again for the new user.
+      _database?.sessionChanged();
+    });
     _database?.setUserId(_auth?.currentUser?.id);
 
     // Initialize storage client
@@ -410,6 +419,13 @@ class Koolbase {
   static KoolbaseRealtimeClient get realtime {
     _ensureInitialized();
     return _realtime!;
+  }
+
+  /// Whether the device reports a network connection (a hint): unknown,
+  /// online or offline.
+  static KoolbaseConnectivity get connectivity {
+    _ensureInitialized();
+    return _connectivity ??= KoolbaseConnectivity();
   }
 
   /// Access the database client

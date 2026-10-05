@@ -4,7 +4,6 @@ import 'package:uuid/uuid.dart';
 import '../database_exceptions.dart';
 import 'local_database.dart';
 
-
 class WriteQueue {
   final KoolbaseLocalDatabase _db;
   static const _uuid = Uuid();
@@ -19,6 +18,7 @@ class WriteQueue {
     required Map<String, dynamic> payload,
     String? recordId,
     String? userId,
+
     /// The record's state as the client last saw it, for update and delete.
     ///
     /// Replay compares this against the server's current state to tell an
@@ -270,8 +270,11 @@ class WriteQueue {
           break;
         case 'update':
           // Merge, matching how the server applies a patch: omitted keys are
-          // retained rather than removed.
-          state = {...?state, ...decodePayload(w)};
+          // retained rather than removed. Applied to the record as it was --
+          // the queued insert's state, or, first in a chain with no insert,
+          // the baseline the edit was made against. Starting from nothing
+          // dropped every field the edits did not touch.
+          state = {...(state ?? _baselineOf(w)), ...decodePayload(w)};
           break;
         case 'delete':
           state = null;
@@ -315,7 +318,6 @@ class WriteQueue {
 
   // ─── Check if should drop ─────────────────────────────────────────────────
 
-
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
   Future<int> _getRetryCount(String id) async {
@@ -323,6 +325,16 @@ class WriteQueue {
           ..where((t) => t.id.equals(id)))
         .getSingleOrNull();
     return row?.retryCount ?? 0;
+  }
+
+  Map<String, dynamic> _baselineOf(PendingWrite write) {
+    final raw = write.baseline;
+    if (raw == null) return <String, dynamic>{};
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return <String, dynamic>{};
+    }
   }
 
   Map<String, dynamic> decodePayload(PendingWrite write) {

@@ -1,3 +1,14 @@
+## 12.18.0
+
+Offline observability: what an app needs to show offline state honestly. Same contract as `@koolbase/*` 12.14.0.
+
+- **`Koolbase.connectivity`** -- `KoolbaseConnectivityState.unknown | online | offline`, with `state` and `changes`. Whether the device reports a connection: a hint, not a promise the server is reachable. `unknown` until the platform first answers, so an app neither flashes "offline" nor runs online-only logic on a guess.
+- **`watchPendingWrites()` follows sign-in and sign-out.** It re-reads for the new user (or reports signed out) instead of waiting for the queue to change. `db.sessionChanged()`, wired to auth by `Koolbase.initialize`.
+- **Saved-first record views.** `db.doc(id).getSaved()` returns the device's saved copy (with changes queued on this device applied) without the network. `KoolbaseRecordController` shows it at once with `isSaved` true while the server is asked: success replaces it (`isSaved` false), failure keeps it, not found is notFound. Opening a record offline now shows the saved copy instead of an error.
+- **Saved lists follow offline changes.** An offline add, edit or delete updates the saved lists in place -- an offline add used to drop them entirely -- and an open list that cannot reach the server shows that saved copy (`isFromCache` true) instead of staying as it was.
+- **Fix: a second offline edit no longer drops fields.** A record with queued edits was projected from the edits alone, so a second offline edit lost every field neither edit touched until the next sync.
+- **Tested**: connectivity, per-user watching across a session change, the chain projection, getSaved, saved lists after an offline add/edit/delete, the open-list fallback, and saved-first in each outcome.
+
 ## 12.17.1
 
 Offline correctness fixes.

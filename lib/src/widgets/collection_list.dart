@@ -265,10 +265,11 @@ class KoolbaseCollectionController extends ChangeNotifier {
     _subscribedKey = key;
     _sub = query.stream.listen((result) {
       if (_disposed) return;
-      // SWR later arrival: a background network refresh landed.
+      // A later arrival: a background refresh landed -- from the server, or,
+      // when it cannot be reached, the saved copy an offline change updated.
       _status = KoolbaseListStatus.loaded;
       _records = result.records;
-      _isFromCache = false;
+      _isFromCache = result.isFromCache;
       _error = null;
       notifyListeners();
     });
@@ -464,27 +465,27 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
           );
         }
         final list = ListView.separated(
-            shrinkWrap: widget.scrollsWithPage,
-            physics: widget.scrollsWithPage
-                ? const NeverScrollableScrollPhysics()
-                : const AlwaysScrollableScrollPhysics(),
-            padding: widget.padding,
-            // One more row while there is more to load: the control that
-            // says so. A list that showed twenty and stopped was quietly
-            // claiming to be the whole collection.
-            itemCount: records.length + (_controller.hasMore ? 1 : 0),
-            separatorBuilder:
-                widget.separatorBuilder ?? (_, __) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              if (index == records.length) {
-                return _LoadMore(
-                  loading: _controller.loadingMore,
-                  onTap: _controller.loadMore,
-                );
-              }
-              return widget.itemBuilder(context, records[index]);
-            },
-          );
+          shrinkWrap: widget.scrollsWithPage,
+          physics: widget.scrollsWithPage
+              ? const NeverScrollableScrollPhysics()
+              : const AlwaysScrollableScrollPhysics(),
+          padding: widget.padding,
+          // One more row while there is more to load: the control that
+          // says so. A list that showed twenty and stopped was quietly
+          // claiming to be the whole collection.
+          itemCount: records.length + (_controller.hasMore ? 1 : 0),
+          separatorBuilder:
+              widget.separatorBuilder ?? (_, __) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            if (index == records.length) {
+              return _LoadMore(
+                loading: _controller.loadingMore,
+                onTap: _controller.loadMore,
+              );
+            }
+            return widget.itemBuilder(context, records[index]);
+          },
+        );
         // In page mode the page scrolls and refreshes; the list only lays out
         // its rows.
         if (widget.scrollsWithPage) return list;

@@ -16,6 +16,7 @@ export 'src/database/database_models.dart';
 export 'src/database/database_query.dart';
 export 'src/realtime/realtime_client.dart';
 export 'src/realtime/realtime_models.dart';
+export 'src/connectivity/connectivity.dart';
 export 'src/storage/storage_models.dart';
 export 'src/functions/functions_client.dart';
 export 'src/functions/functions_models.dart';

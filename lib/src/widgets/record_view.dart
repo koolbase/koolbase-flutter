@@ -45,9 +45,17 @@ class KoolbaseRecordController extends ChangeNotifier {
     required this.id,
     this.live = false,
     @visibleForTesting Future<KoolbaseRecord> Function()? fetch,
-    @visibleForTesting Stream<RealtimeEvent> Function(String collection)? liveEvents,
+    @visibleForTesting
+    Stream<RealtimeEvent> Function(String collection)? liveEvents,
+    @visibleForTesting Future<KoolbaseRecord?> Function()? saved,
   })  : _fetch = fetch,
-        _liveEvents = liveEvents;
+        _liveEvents = liveEvents,
+        _saved = saved;
+
+  /// Test seam only: the device's saved copy. Production uses
+  /// `Koolbase.db.doc(id).getSaved()` -- unless [fetch] is a test seam, in
+  /// which case there is no saved copy.
+  final Future<KoolbaseRecord?> Function()? _saved;
 
   /// The collection the record must belong to.
   final String collection;
@@ -78,6 +86,7 @@ class KoolbaseRecordController extends ChangeNotifier {
   KoolbaseRecord? _record;
   Object? _error;
   bool _refreshing = false;
+  bool _isSaved = false;
   int _generation = 0;
   bool _disposed = false;
 
@@ -90,11 +99,41 @@ class KoolbaseRecordController extends ChangeNotifier {
   /// True while an explicit [refresh] is in flight.
   bool get refreshing => _refreshing;
 
+  /// True while the record shown is the device's saved copy and the server has
+  /// not confirmed it on this load. Stays true if the server cannot be
+  /// reached; a successful read clears it.
+  bool get isSaved => _isSaved;
+
   /// First load. Safe to call once; [refresh] for later loads.
   Future<void> load() async {
     if (_disposed) return;
     _goLive();
+    await _showSaved();
     await _run();
+  }
+
+  /// Saved-first, never saved-only: the device's saved copy at once, while the
+  /// server is asked.
+  Future<void> _showSaved() async {
+    if (id.isEmpty) return;
+    final read = _saved ??
+        (_fetch == null ? () => Koolbase.db.doc(id).getSaved() : null);
+    if (read == null) return;
+    final gen = _generation;
+    KoolbaseRecord? saved;
+    try {
+      saved = await read();
+    } catch (_) {
+      return; // before Koolbase is initialized, or no saved copy readable
+    }
+    if (saved == null ||
+        _isStale(gen) ||
+        _status != KoolbaseRecordStatus.loading) {
+      return;
+    }
+    if (saved.collection != null && saved.collection != collection) return;
+    _isSaved = true;
+    _show(KoolbaseRecordStatus.loaded, saved, null);
   }
 
   /// The realtime subscription. Once, on the first load; needs an id.
@@ -119,7 +158,8 @@ class KoolbaseRecordController extends ChangeNotifier {
     if (_disposed) return;
     final deleted = e.type == RealtimeEventType.recordDeleted;
     final rec = e.record;
-    final target = deleted ? e.recordId : (rec?[r'$id'] ?? rec?['id']) as String?;
+    final target =
+        deleted ? e.recordId : (rec?[r'$id'] ?? rec?['id']) as String?;
     if (target == null || target != id) return;
     if (deleted) {
       // Gone: say so now, and drop any read still in flight.
@@ -127,6 +167,7 @@ class KoolbaseRecordController extends ChangeNotifier {
       _liveTimer = null;
       _generation++;
       _refreshing = false;
+      _isSaved = false;
       _show(KoolbaseRecordStatus.notFound, null, null);
       return;
     }
@@ -159,7 +200,9 @@ class KoolbaseRecordController extends ChangeNotifier {
     try {
       final record = await (_fetch?.call() ?? Koolbase.db.doc(id).get());
       if (_isStale(gen)) return gen;
-      final other = record.collection != null && record.collection != collection;
+      final other =
+          record.collection != null && record.collection != collection;
+      _isSaved = false;
       _show(
         other ? KoolbaseRecordStatus.notFound : KoolbaseRecordStatus.loaded,
         other ? null : record,
@@ -167,6 +210,7 @@ class KoolbaseRecordController extends ChangeNotifier {
       );
     } on KoolbaseNotFoundException {
       if (_isStale(gen)) return gen;
+      _isSaved = false;
       _show(KoolbaseRecordStatus.notFound, null, null);
     } catch (e) {
       if (_isStale(gen)) return gen;
@@ -178,7 +222,8 @@ class KoolbaseRecordController extends ChangeNotifier {
 
   bool _isStale(int gen) => _disposed || gen != _generation;
 
-  void _show(KoolbaseRecordStatus status, KoolbaseRecord? record, Object? error) {
+  void _show(
+      KoolbaseRecordStatus status, KoolbaseRecord? record, Object? error) {
     if (_disposed) return;
     _status = status;
     _record = record;
@@ -285,8 +330,8 @@ class _KoolbaseRecordViewState extends State<KoolbaseRecordView> {
       fetch: fetch != null
           ? () => fetch(id)
           : testData != null
-          ? () => testData.record(widget.collection, id)
-          : null,
+              ? () => testData.record(widget.collection, id)
+              : null,
       live: widget.live,
       liveEvents: widget.liveEvents,
     )..addListener(_onChanged);
