@@ -457,12 +457,21 @@ class KoolbaseDatabaseClient {
         // on device as a parked ticket that never reached the server and was
         // invisible to pendingWrites() and conflicts() alike.
         debugPrint('[Koolbase] Offline insert queued for $collection');
-        final tempId = _uuid.v4();
+        // One id from birth. The id the app is given is the queued add's
+        // record id AND travels inside its data, so the server -- which
+        // honours a caller-supplied id -- creates the record under it. Before
+        // and after sync are the same string, and every offline edit to the
+        // new record chains onto it. A temporary id the server never saw is
+        // how an add followed by an edit used to end: the edit addressed an id
+        // that did not exist, and was refused.
+        final recordId = _uuid.v4();
+        final payload = {...data, 'id': recordId};
 
         await _writeQueue!.enqueue(
           collection: collection,
           operation: 'insert',
-          payload: data,
+          payload: payload,
+          recordId: recordId,
           // Recorded so this write is never replayed under a different
           // user's session: the queue outlives the session that filled it.
           userId: _userId,
@@ -472,16 +481,16 @@ class KoolbaseDatabaseClient {
         // No revision: the record does not exist on the server yet, so there
         // is nothing to be conditional against. An offline edit to it composes
         // against the queued insert rather than a cached revision.
-        await _cacheStore?.saveRecord(tempId, collection, data, _userId);
+        await _cacheStore?.saveRecord(recordId, collection, payload, _userId);
         await _cacheStore?.invalidateCollection(collection);
         unawaited(refreshCollectionStreams(collection));
 
         // Return optimistic record
         return KoolbaseRecord(
-          id: tempId,
+          id: recordId,
           collection: collection,
           createdBy: _userId,
-          data: data,
+          data: payload,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
@@ -489,7 +498,6 @@ class KoolbaseDatabaseClient {
       rethrow;
     }
   }
-
 
   /// "How many" or "how much" over a collection -- the WHOLE authorized
   /// set, never the first page, with the caller's read rule applied
@@ -520,6 +528,7 @@ class KoolbaseDatabaseClient {
     return KoolbaseAggregateResult.fromJson(
         jsonDecode(res.body) as Map<String, dynamic>);
   }
+
   /// Insert a record, or update the existing one matching [match].
   ///
   /// The server decides the outcome: exactly one match updates that record,

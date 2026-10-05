@@ -109,6 +109,14 @@ class SyncEngine {
     // Records whose chain stopped this pass, so later writes for them are held
     // rather than applied against a state their baseline does not describe.
     final blocked = <String?>{};
+    // And records whose chain stopped in an EARLIER pass: a conflict waits for
+    // a decision across restarts, and so must the writes behind it. Seeded
+    // only from this pass's finds, the next pass replayed them against a state
+    // their baselines never described -- each becoming its own conflict.
+    // Deciding the conflict rebases and releases them.
+    for (final c in await writeQueue.conflicts()) {
+      if (c.recordId.isNotEmpty) blocked.add(c.recordId);
+    }
 
     for (final write in writes) {
       if (write.recordId != null && blocked.contains(write.recordId)) {
@@ -148,7 +156,8 @@ class SyncEngine {
         // retry — retrying cannot help, and the retry counter would discard the
         // write after three passes, which is the silent loss this exists to
         // prevent. It becomes durable unresolved state instead.
-        debugPrint('[Koolbase] Conflict on ${write.id}: the record has changed');
+        debugPrint(
+            '[Koolbase] Conflict on ${write.id}: the record has changed');
         await writeQueue.moveToConflict(write, e);
         // Everything queued after this for the same record was composed against
         // the state this write would have produced. Replaying those now would
@@ -162,6 +171,15 @@ class SyncEngine {
         // user believes is saved. It waits, with what the server said.
         debugPrint('[Koolbase] ${write.id} refused: ${e.message}');
         await writeQueue.moveToRejected(write, e.message);
+        // A refused add leaves its optimistic record behind, cached for a
+        // record the server will not create. Left alone it renders as saved.
+        // Removed from the record cache and from every cached list holding it
+        // -- precisely, so a device still offline keeps its saved lists. The
+        // conflict keeps the user's data and the server's verdict.
+        if (write.operation == 'insert' && write.recordId != null) {
+          await cacheStore.deleteRecord(write.recordId!);
+          await cacheStore.removeFromQueries(write.collection, write.recordId!);
+        }
         if (write.recordId != null) blocked.add(write.recordId);
       } on _MalformedWrite catch (e) {
         // Cannot succeed on any attempt. Retrying would burn the budget and

@@ -111,9 +111,10 @@ class CacheStore {
   /// be cached — that is where its baseline comes from — the same lookup can
   /// supply both, and no API change is needed to ask callers for a collection
   /// they should not have to know.
-  Future<({String collection, Map<String, dynamic> data})?> getRecordWithCollection(
-      String id) async {
-    final row = await (_db.select(_db.cachedRecords)..where((t) => t.id.equals(id)))
+  Future<({String collection, Map<String, dynamic> data})?>
+      getRecordWithCollection(String id) async {
+    final row = await (_db.select(_db.cachedRecords)
+          ..where((t) => t.id.equals(id)))
         .getSingleOrNull();
     if (row == null) return null;
     try {
@@ -177,12 +178,39 @@ class CacheStore {
   /// Null for records cached before revisions existed — those cannot be mutated
   /// offline, and the baseline rules refuse rather than replay blindly.
   Future<int?> revisionFor(String id) async {
-    final row = await (_db.select(_db.cachedRecords)..where((t) => t.id.equals(id)))
+    final row = await (_db.select(_db.cachedRecords)
+          ..where((t) => t.id.equals(id)))
         .getSingleOrNull();
     return row?.revision;
   }
 
   Future<void> deleteRecord(String id) async {
     await (_db.delete(_db.cachedRecords)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// Takes one record out of every cached result of [collection].
+  ///
+  /// Precise on purpose: [invalidateCollection] would also get rid of it, by
+  /// dropping every saved list of the collection -- leaving a device that is
+  /// still offline with nothing to show, to remove one record.
+  Future<void> removeFromQueries(String collection, String recordId) async {
+    final rows = await (_db.select(_db.cachedQueries)
+          ..where((t) => t.collection.equals(collection)))
+        .get();
+    for (final row in rows) {
+      final List<dynamic> list;
+      try {
+        list = jsonDecode(row.response) as List<dynamic>;
+      } catch (_) {
+        continue;
+      }
+      final kept = [
+        for (final r in list)
+          if (!(r is Map && (r[r'$id'] == recordId || r['id'] == recordId))) r,
+      ];
+      if (kept.length == list.length) continue;
+      await (_db.update(_db.cachedQueries)..where((t) => t.key.equals(row.key)))
+          .write(CachedQueriesCompanion(response: Value(jsonEncode(kept))));
+    }
   }
 }

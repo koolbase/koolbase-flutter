@@ -1,3 +1,12 @@
+## 12.17.1
+
+Offline correctness fixes.
+
+- **An offline add keeps one id.** The id the app is given is now the id the record is created under when it syncs. Before, the server created the record under a different id, so an offline edit to a record added offline was sent to an id that did not exist and refused. (The same fix the JS SDK made earlier.)
+- **A refused offline add no longer lingers.** When the server refuses an add made offline, the record is removed from the device's saved record and saved lists; the conflict keeps the user's data.
+- **Writes held behind a conflict stay held.** Later queued changes to a record with an undecided conflict now wait across sync passes and restarts, instead of each becoming its own conflict on the next pass.
+- **Tested**: the queued add's id, an add-then-edit chain replayed onto one id, the refused add leaving the saved copies, and a held write on a later pass.
+
 ## 12.17.0
 
 - **Realtime for signed-out visitors.** With nobody signed in, live lists and live record views on a collection anyone can read (read rule `public`) now update live: the SDK connects with the project's public key. Any other collection behaves as a normal list or view until a user signs in. Needs the Koolbase API from 2026-10-04 or later. Same contract as `@koolbase/*` 12.13.0.
