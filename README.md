@@ -1026,6 +1026,26 @@ KoolbaseCollectionList(
 )
 ```
 
+**Horizontal lists** (12.19.0). Pass `scrollDirection: Axis.horizontal` for a row
+that scrolls sideways, such as a "Featured" strip. Rows sit side by side and are
+stretched to the tallest, so the list needs no height, even inside a scrolling
+page; the next page loads as the end comes near. Give each row a width, and use
+rows that can report their height (a card or a column, not a scrollable). The
+default separator is a `VerticalDivider`; `scrollsWithPage` and pull-to-refresh
+do not apply sideways.
+
+```dart
+KoolbaseCollectionList(
+  collection: 'events',
+  scrollDirection: Axis.horizontal,
+  separatorBuilder: (_, __) => const SizedBox(width: 12),
+  itemBuilder: (context, record) => SizedBox(
+    width: 280,
+    child: EventCard(record),
+  ),
+)
+```
+
 An opinionated scrollable list with pull-to-refresh over a collection. The
 stale-while-revalidate contract is handled: the cached result renders first,
 the network refresh replaces it, and a failed refresh keeps the records —
