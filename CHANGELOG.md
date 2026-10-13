@@ -1,3 +1,8 @@
+## 12.19.0
+
+- **Horizontal lists: `KoolbaseCollectionList(scrollDirection: Axis.horizontal)`.** Rows sit side by side at their own width, each as tall as the tallest, so the list needs no height, even inside a scrolling page. It scrolls sideways; the next page loads as the end comes near, and Load more stays as the last item. The default separator is a `VerticalDivider`, between rows only. `scrollsWithPage` and pull-to-refresh are vertical and do not apply. Rows must be able to say their height (a card, a column, a sized image; not a scrollable). Vertical stays the default.
+- **Tested**: side by side and stretched to the tallest, inside a scrolling page with no height, separators between rows only with their indexes, Load more last, the next page on scrolling near the end, the empty slot, and vertical unchanged.
+
 ## 12.18.0
 
 Offline observability: what an app needs to show offline state honestly. Same contract as `@koolbase/*` 12.14.0.

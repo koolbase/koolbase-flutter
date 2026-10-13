@@ -325,6 +325,7 @@ class KoolbaseCollectionList extends StatefulWidget {
     this.visible,
     this.scrollsWithPage = false,
     this.live = false,
+    this.scrollDirection = Axis.vertical,
   });
 
   /// The collection to list.
@@ -377,6 +378,16 @@ class KoolbaseCollectionList extends StatefulWidget {
   /// a signed-in user. See [KoolbaseCollectionController.live].
   final bool live;
 
+  /// Which way the rows run. [Axis.horizontal]: side by side at their own
+  /// width, each as tall as the tallest -- the list is as tall as its tallest
+  /// row, so it needs no height, even in a scrolling page -- scrolling
+  /// sideways. The next page loads as the end comes near, and Load more
+  /// stays as the last item. The default separator is a [VerticalDivider];
+  /// [scrollsWithPage] and pull-to-refresh are vertical ideas and do not
+  /// apply. Rows must be able to say their height (as a card, a column or a
+  /// sized image can; a scrollable cannot).
+  final Axis scrollDirection;
+
   @override
   State<KoolbaseCollectionList> createState() => _KoolbaseCollectionListState();
 }
@@ -385,9 +396,18 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
   late final KoolbaseCollectionController _controller;
   late final bool _ownsController;
 
+  /// The horizontal list's scroll position: near the end, the next page.
+  final ScrollController _sideways = ScrollController();
+
+  void _nearEnd() {
+    if (!_sideways.hasClients) return;
+    if (_sideways.position.extentAfter < 240) _controller.loadMore();
+  }
+
   @override
   void initState() {
     super.initState();
+    _sideways.addListener(_nearEnd);
     _ownsController = widget.controller == null;
     // The data SOURCE, and only that: under KoolbaseTestData (widget tests),
     // the base query answers from its records; everything after is the
@@ -414,6 +434,9 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
   void dispose() {
     _controller.removeListener(_onChanged);
     if (_ownsController) _controller.dispose();
+    _sideways
+      ..removeListener(_nearEnd)
+      ..dispose();
     super.dispose();
   }
 
@@ -432,6 +455,11 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
       case KoolbaseListStatus.loaded:
         final loaded = _controller.records;
         final records = widget.visible?.call(loaded) ?? loaded;
+        if (widget.scrollDirection == Axis.horizontal) {
+          return records.isEmpty
+              ? widget.empty?.call(context) ?? const _DefaultEmpty()
+              : _horizontal(context, records);
+        }
         if (records.isEmpty) {
           // In page mode the page scrolls and refreshes: the empty widget
           // alone, with no scroll view of its own.
@@ -492,17 +520,54 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
         return RefreshIndicator(onRefresh: _controller.refresh, child: list);
     }
   }
+
+  /// [Axis.horizontal]: the rows side by side, each as tall as the tallest
+  /// (IntrinsicHeight, so the list needs no height of its own), separators
+  /// between rows only, Load more last while there are more.
+  Widget _horizontal(BuildContext context, List<KoolbaseRecord> records) {
+    final separator =
+        widget.separatorBuilder ?? (_, __) => const VerticalDivider(width: 1);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      controller: _sideways,
+      padding: widget.padding,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < records.length; i++) ...[
+              if (i > 0) separator(context, i - 1),
+              widget.itemBuilder(context, records[i]),
+            ],
+            if (_controller.hasMore)
+              _LoadMore(
+                loading: _controller.loadingMore,
+                onTap: _controller.loadMore,
+                axis: Axis.horizontal,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// The row past the last loaded record, while there are more.
 class _LoadMore extends StatelessWidget {
   final bool loading;
   final VoidCallback onTap;
-  const _LoadMore({required this.loading, required this.onTap});
+  final Axis axis;
+  const _LoadMore({
+    required this.loading,
+    required this.onTap,
+    this.axis = Axis.vertical,
+  });
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: axis == Axis.vertical
+            ? const EdgeInsets.symmetric(vertical: 12)
+            : const EdgeInsets.symmetric(horizontal: 12),
         child: Center(
           child: loading
               ? const SizedBox(
