@@ -1,3 +1,10 @@
+## 12.20.0
+
+- **Sections: `KoolbaseCollectionList(groupBy: ...)`.** Give each record a section key, such as its day or its status, and the list puts a header above each run of records with the same key. While the list scrolls by itself the current header stays pinned at the top until the next one pushes it away; with `scrollsWithPage` the headers sit inline. Records from Load more join the last section when they share its key. Separators are drawn between rows of a section, never around a header. Sort the query by the same field: an unsorted list repeats a header wherever its key comes back. Vertical lists only.
+- **`sectionHeaderBuilder`** builds a header from its key; the default is the new **`KoolbaseSectionHeader`**: small muted text on an opaque background, announced as a heading.
+- **Needs Flutter 3.24 or later** (was 3.10), for pinned headers.
+- **Tested**: a header above each run, a returning key starting a new section, Load more rows joining the last section, separators within sections only with their indexes, the header pinned while its section scrolls and pushed away by the next, inline headers in a scrolling page, the header builder, padding, and lists without `groupBy` unchanged.
+
 ## 12.19.0
 
 - **Horizontal lists: `KoolbaseCollectionList(scrollDirection: Axis.horizontal)`.** Rows sit side by side at their own width, each as tall as the tallest, so the list needs no height, even inside a scrolling page. It scrolls sideways; the next page loads as the end comes near, and Load more stays as the last item. The default separator is a `VerticalDivider`, between rows only. `scrollsWithPage` and pull-to-refresh are vertical and do not apply. Rows must be able to say their height (a card, a column, a sized image; not a scrollable). Vertical stays the default.

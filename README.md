@@ -24,7 +24,7 @@ For browser apps, use the Koolbase JS SDK instead.
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^12.19.0
+     koolbase_flutter: ^12.20.0
 ```
 
 4. Initialize before `runApp()`:
@@ -1057,6 +1057,22 @@ The `query` callback runs for **every** fetch with a fresh query instance and
 must be deterministic — never retain or reuse a query (builders mutate). For
 scoped collections, filter on the rule's owner field; the server enforces the
 rule either way, but the filter is what returns the caller's records.
+
+**Sections** (12.20.0). Pass `groupBy` to put a header above each run of records
+with the same key, such as a day or a status. Sort the query by the same field.
+The current header stays pinned while the list scrolls; in a scrolling page
+(`scrollsWithPage`) headers sit inline. Records from Load more join the last
+section when they share its key. `sectionHeaderBuilder` builds your own header;
+the default is `KoolbaseSectionHeader`. Needs Flutter 3.24 or later.
+
+```dart
+KoolbaseCollectionList(
+  collection: 'tasks',
+  query: (q) => q.orderBy('status'),
+  groupBy: (record) => record.data['status'] as String? ?? 'Other',
+  itemBuilder: (context, record) => TaskTile(record),
+)
+```
 
 ### Collection grid
 

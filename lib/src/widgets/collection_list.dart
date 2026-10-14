@@ -326,6 +326,8 @@ class KoolbaseCollectionList extends StatefulWidget {
     this.scrollsWithPage = false,
     this.live = false,
     this.scrollDirection = Axis.vertical,
+    this.groupBy,
+    this.sectionHeaderBuilder,
   });
 
   /// The collection to list.
@@ -387,6 +389,23 @@ class KoolbaseCollectionList extends StatefulWidget {
   /// apply. Rows must be able to say their height (as a card, a column or a
   /// sized image can; a scrollable cannot).
   final Axis scrollDirection;
+
+  /// Sections: the key of the section a record belongs to, such as its day
+  /// or its status. Each run of records with the same key gets one header
+  /// above it, so sort the query by the same field: an unsorted list repeats
+  /// a header wherever its key comes back. Records from Load more join the
+  /// last section when they share its key. While the list scrolls by itself
+  /// the current header stays pinned at the top until the next one pushes
+  /// it away; with [scrollsWithPage] headers sit inline. Separators are
+  /// drawn between rows of a section, never around a header. Vertical lists
+  /// only.
+  final String Function(KoolbaseRecord record)? groupBy;
+
+  /// Builds a section's header from its key. Defaults to a
+  /// [KoolbaseSectionHeader] showing the key. A pinned header must be
+  /// opaque, or rows show through it.
+  final Widget Function(BuildContext context, String section)?
+      sectionHeaderBuilder;
 
   @override
   State<KoolbaseCollectionList> createState() => _KoolbaseCollectionListState();
@@ -492,6 +511,7 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
             ),
           );
         }
+        if (widget.groupBy != null) return _grouped(context, records);
         final list = ListView.separated(
           shrinkWrap: widget.scrollsWithPage,
           physics: widget.scrollsWithPage
@@ -521,6 +541,83 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
     }
   }
 
+  /// [KoolbaseCollectionList.groupBy]: a header above each section; pinned
+  /// while the list scrolls by itself, inline in a scrolling page.
+  Widget _grouped(BuildContext context, List<KoolbaseRecord> records) {
+    final sections = _sectionsOf(records, widget.groupBy!);
+    final separator =
+        widget.separatorBuilder ?? (_, __) => const Divider(height: 1);
+    final padding =
+        (widget.padding ?? EdgeInsets.zero).resolve(Directionality.of(context));
+    final sides = EdgeInsets.only(left: padding.left, right: padding.right);
+    Widget header(String key) =>
+        widget.sectionHeaderBuilder?.call(context, key) ??
+        KoolbaseSectionHeader(label: key);
+    final more = _controller.hasMore
+        ? _LoadMore(
+            loading: _controller.loadingMore,
+            onTap: _controller.loadMore,
+          )
+        : null;
+
+    if (widget.scrollsWithPage) {
+      // The page scrolls and refreshes: headers inline, nothing pinned.
+      return Padding(
+        padding: padding,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final s in sections) ...[
+              header(s.key),
+              for (var i = s.start; i < s.end; i++) ...[
+                if (i > s.start) separator(context, i - 1),
+                widget.itemBuilder(context, records[i]),
+              ],
+            ],
+            if (more != null) more,
+          ],
+        ),
+      );
+    }
+
+    // Each section is a group: its header pins to the top while the group
+    // is on screen and leaves with the group's last row.
+    return RefreshIndicator(
+      onRefresh: _controller.refresh,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (padding.top > 0)
+            SliverToBoxAdapter(child: SizedBox(height: padding.top)),
+          for (final s in sections)
+            SliverMainAxisGroup(
+              slivers: [
+                PinnedHeaderSliver(
+                  child: Padding(padding: sides, child: header(s.key)),
+                ),
+                SliverList.separated(
+                  itemCount: s.end - s.start,
+                  separatorBuilder: (context, i) => Padding(
+                    padding: sides,
+                    child: separator(context, s.start + i),
+                  ),
+                  itemBuilder: (context, i) => Padding(
+                    padding: sides,
+                    child: widget.itemBuilder(context, records[s.start + i]),
+                  ),
+                ),
+              ],
+            ),
+          if (more != null)
+            SliverToBoxAdapter(child: Padding(padding: sides, child: more)),
+          if (padding.bottom > 0)
+            SliverToBoxAdapter(child: SizedBox(height: padding.bottom)),
+        ],
+      ),
+    );
+  }
+
   /// [Axis.horizontal]: the rows side by side, each as tall as the tallest
   /// (IntrinsicHeight, so the list needs no height of its own), separators
   /// between rows only, Load more last while there are more.
@@ -546,6 +643,73 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
                 axis: Axis.horizontal,
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One run of records with the same section key: rows [start, end).
+class _Section {
+  _Section(this.key, this.start);
+  final String key;
+  final int start;
+  int end = 0;
+}
+
+/// Consecutive runs, in order: a key that comes back later starts a new
+/// section rather than moving its records.
+List<_Section> _sectionsOf(
+  List<KoolbaseRecord> records,
+  String Function(KoolbaseRecord record) groupBy,
+) {
+  final sections = <_Section>[];
+  for (var i = 0; i < records.length; i++) {
+    final key = groupBy(records[i]);
+    if (sections.isEmpty || sections.last.key != key) {
+      if (sections.isNotEmpty) sections.last.end = i;
+      sections.add(_Section(key, i));
+    }
+  }
+  if (sections.isNotEmpty) sections.last.end = records.length;
+  return sections;
+}
+
+/// The default section header of [KoolbaseCollectionList.groupBy]: the
+/// label in small, muted text on an opaque background (so it can pin over
+/// rows), announced as a heading.
+class KoolbaseSectionHeader extends StatelessWidget {
+  const KoolbaseSectionHeader({
+    super.key,
+    required this.label,
+    this.backgroundColor,
+    this.padding = const EdgeInsets.fromLTRB(16, 16, 16, 8),
+  });
+
+  /// The text shown.
+  final String label;
+
+  /// Defaults to the theme's scaffold background, so a pinned header covers
+  /// the rows scrolling beneath it.
+  final Color? backgroundColor;
+
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      header: true,
+      child: ColoredBox(
+        color: backgroundColor ?? theme.scaffoldBackgroundColor,
+        child: Padding(
+          padding: padding,
+          child: Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
       ),
     );
