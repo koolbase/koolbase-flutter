@@ -51,7 +51,8 @@ class KoolbaseStorageClient {
     http.Response res, {
     String fallbackMessage = 'Storage request failed',
   }) async {
-    final err = koolbaseStorageErrorFromResponse(res, fallbackMessage: fallbackMessage);
+    final err =
+        koolbaseStorageErrorFromResponse(res, fallbackMessage: fallbackMessage);
     if (err is KoolbaseUnauthenticatedException) {
       await _onSessionExpired?.call();
     }
@@ -100,9 +101,30 @@ class KoolbaseStorageClient {
     String? contentType,
     Map<String, String>? metadata,
     bool overwrite = false,
+  }) async =>
+      uploadBytes(
+        bucket: bucket,
+        path: path,
+        bytes: await file.readAsBytes(),
+        contentType: contentType,
+        metadata: metadata,
+        overwrite: overwrite,
+      );
+
+  /// Upload a file's contents to a bucket: [upload] for a file with no
+  /// path on disk -- what the web has, where a picked file is bytes. The
+  /// same steps, rules and result as [upload]; the content type is
+  /// inferred from [path] unless given.
+  Future<UploadResult> uploadBytes({
+    required String bucket,
+    required String path,
+    required List<int> bytes,
+    String? contentType,
+    Map<String, String>? metadata,
+    bool overwrite = false,
   }) async {
     final mimeType = contentType ?? _inferContentType(path);
-    final fileBytes = await file.readAsBytes();
+    final fileBytes = bytes;
     final fileSize = fileBytes.length;
 
     // Step 1: Get presigned upload URL
@@ -120,8 +142,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (urlRes.statusCode != 200) {
-      throw await _error(urlRes,
-          fallbackMessage: 'Failed to get upload URL');
+      throw await _error(urlRes, fallbackMessage: 'Failed to get upload URL');
     }
 
     final urlData = jsonDecode(urlRes.body) as Map<String, dynamic>;
@@ -182,7 +203,8 @@ class KoolbaseStorageClient {
     // Step 4: Get download URL
     final downloadUrl = await getDownloadUrl(bucket: bucket, path: path);
 
-    return UploadResult(object: object, downloadUrl: downloadUrl, bucket: bucket);
+    return UploadResult(
+        object: object, downloadUrl: downloadUrl, bucket: bucket);
   }
 
   /// Apply a partial metadata update to an existing object. Returns the
@@ -234,8 +256,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw await _error(res,
-          fallbackMessage: 'Failed to update metadata');
+      throw await _error(res, fallbackMessage: 'Failed to update metadata');
     }
 
     return KoolbaseObject.fromJson(
@@ -267,8 +288,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw await _error(res,
-          fallbackMessage: 'Failed to get download URL');
+      throw await _error(res, fallbackMessage: 'Failed to get download URL');
     }
 
     final data = jsonDecode(res.body) as Map<String, dynamic>;
@@ -384,8 +404,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      throw await _error(res,
-          fallbackMessage: 'Failed to delete file');
+      throw await _error(res, fallbackMessage: 'Failed to delete file');
     }
   }
 
@@ -427,8 +446,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw await _error(res,
-          fallbackMessage: 'Failed to list versions');
+      throw await _error(res, fallbackMessage: 'Failed to list versions');
     }
     final json = jsonDecode(res.body) as Map<String, dynamic>;
     final list = (json['versions'] as List? ?? const [])
@@ -455,8 +473,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw await _error(res,
-          fallbackMessage: 'Failed to fetch version');
+      throw await _error(res, fallbackMessage: 'Failed to fetch version');
     }
     return KoolbaseObjectVersion.fromJson(
         jsonDecode(res.body) as Map<String, dynamic>);
@@ -484,8 +501,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw await _error(res,
-          fallbackMessage: 'Failed to restore version');
+      throw await _error(res, fallbackMessage: 'Failed to restore version');
     }
     return KoolbaseObject.fromJson(
         jsonDecode(res.body) as Map<String, dynamic>);
@@ -509,8 +525,7 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      throw await _error(res,
-          fallbackMessage: 'Failed to purge version');
+      throw await _error(res, fallbackMessage: 'Failed to purge version');
     }
   }
 }

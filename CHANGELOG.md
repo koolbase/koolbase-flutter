@@ -1,3 +1,8 @@
+## 12.24.0
+
+- **`storage.uploadBytes`: upload a file's contents (#107B).** For a file with no path on disk -- the web, where a picked file is bytes -- `uploadBytes(bucket:, path:, bytes:)` does what `upload` does, with the same rules (no overwrite unless asked, metadata, the content type from the path) and the same `UploadResult`. `upload(file:)` now reads the file and calls it.
+- **Tested**: the bytes sent to the upload address with their content type, the confirmation and the result, and a refused upload throwing as `upload` does.
+
 ## 12.23.0
 
 - **A refused write says which fields (#107B).** A write that does not fit its collection's declared fields throws `KoolbaseValidationException` with `fields`: a `KoolbaseFieldProblem` per field, with the field, a stable `code` (`required`, `not_declared`, or what the field expects: `text`, `number`, `whole_number`, `boolean`, `date`, `datetime`, `choice`, `file`) and the English `problem` for developers. A form can now show each under its own input, in its own words. `KoolbaseError.from` carries them as `details['fields']` (field and code only). Needs the Koolbase API from October 2026; from an older server `fields` is empty, as before.
