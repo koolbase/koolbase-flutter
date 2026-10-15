@@ -1,3 +1,8 @@
+## 12.22.0
+
+- **A record a list showed opens at once, on the web too (#103).** `getSaved()` -- what `KoolbaseRecordView` shows while it asks the server -- now also answers from the records this app has read while it runs, kept in memory, when there is no offline copy. The web build has no offline storage, so a detail screen opened from a list started on a loader every time. Kept per user and cleared on sign-out; at most 500; an older copy never replaces a newer one; never used as an offline edit's baseline.
+- **Tested**: a listed record there at once without a request, another person on the same device never seeing it, a record read by id kept too and never replaced by an older copy, sign-out clearing it, and the oldest going first when full.
+
 ## 12.21.0
 
 Sessions that last, and end cleanly (#96, #104).

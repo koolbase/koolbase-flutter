@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
+import 'seen_records.dart';
 import 'package:koolbase_flutter/koolbase_flutter.dart';
 import 'offline/cache_store.dart';
 import 'offline/write_queue.dart';
@@ -322,6 +323,12 @@ class KoolbaseQuery {
         .map((e) => KoolbaseRecord.fromJson(e as Map<String, dynamic>))
         .toList();
 
+    // Kept in memory too (#103): a detail screen opened from this list shows
+    // the record at once, even where there is no offline storage (web).
+    for (final r in records) {
+      SeenRecords.remember(_userId, r);
+    }
+
     // Save to cache
     if (_cacheStore != null) {
       final asJson = records.map((r) => r.toJson()).toList();
@@ -542,7 +549,9 @@ class KoolbaseDocRef {
   /// timestamps: createdAt and updatedAt are the epoch here.
   Future<KoolbaseRecord?> getSaved() async {
     final resolved = await _resolveBaseline();
-    if (resolved == null) return null;
+    // No offline copy (none kept, or the web build): what this app read
+    // in memory, if it read it (#103).
+    if (resolved == null) return SeenRecords.recall(_userId, recordId);
     final epoch = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     return KoolbaseRecord(
       id: recordId,
@@ -569,6 +578,7 @@ class KoolbaseDocRef {
     }
     final record =
         KoolbaseRecord.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    SeenRecords.remember(_userId, record);
 
     // Cached individually, with its revision, so a record the user has opened
     // can be edited offline. Reading one record then editing it is the ordinary

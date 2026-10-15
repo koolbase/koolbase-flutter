@@ -31,6 +31,7 @@ import 'database/offline/write_queue.dart';
 import 'database/sync_engine.dart';
 import 'realtime/realtime_client.dart';
 import 'network/session_client.dart';
+import 'database/seen_records.dart';
 export 'realtime/realtime_models.dart';
 export 'database/database_models.dart';
 export 'database/database_query.dart' show KoolbaseQuery;
@@ -310,6 +311,8 @@ class Koolbase {
     // remember. A missed setUserId would queue writes with no owner, and those
     // are never replayed.
     _auth?.authStateChanges.listen((user) {
+      // Records read in memory go with the person who read them (#103).
+      if (user == null) SeenRecords.clear();
       _database?.setUserId(user?.id);
       // Pending writes are per-user: watchers read again for the new user.
       _database?.sessionChanged();
