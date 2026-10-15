@@ -8,6 +8,7 @@ import 'database_exceptions.dart';
 import 'offline/cache_store.dart';
 import 'offline/local_database.dart';
 import 'offline/write_queue.dart';
+import '../network/session_client.dart';
 
 /// Raised when a queued write cannot be replayed no matter how many times it is
 /// tried — an update or delete with no record id, or an operation the SDK does
@@ -221,7 +222,7 @@ class SyncEngine {
 
     switch (write.operation) {
       case 'insert':
-        final res = await http
+        final res = await koolbaseHttp
             .post(
               Uri.parse('$baseUrl/v1/sdk/db/insert'),
               headers: headers,
@@ -244,7 +245,7 @@ class SyncEngine {
         if (write.recordId == null) {
           throw const _MalformedWrite('update has no record id');
         }
-        final res = await http
+        final res = await koolbaseHttp
             .patch(
               Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),
               headers: headers,
@@ -269,7 +270,7 @@ class SyncEngine {
         if (write.recordId == null) {
           throw const _MalformedWrite('delete has no record id');
         }
-        final res = await http
+        final res = await koolbaseHttp
             .delete(
               Uri.parse(
                   '$baseUrl/v1/sdk/db/records/${write.recordId}${write.baseRevision != null ? '?expected_revision=${write.baseRevision}' : ''}'),

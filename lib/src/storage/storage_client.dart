@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../koolbase_exception.dart';
 import 'storage_exceptions.dart';
 import 'storage_models.dart';
+import '../network/session_client.dart';
 
 class KoolbaseStorageClient {
   final String baseUrl;
@@ -105,7 +106,7 @@ class KoolbaseStorageClient {
     final fileSize = fileBytes.length;
 
     // Step 1: Get presigned upload URL
-    final urlRes = await http
+    final urlRes = await koolbaseHttp
         .post(
           Uri.parse('$baseUrl/v1/sdk/storage/upload-url'),
           headers: await _headers(),
@@ -127,7 +128,7 @@ class KoolbaseStorageClient {
     final uploadUrl = urlData['upload_url'] as String;
 
     // Step 2: Upload directly to R2
-    final uploadRes = await http
+    final uploadRes = await koolbaseHttp
         .put(
           Uri.parse(uploadUrl),
           headers: {'Content-Type': mimeType},
@@ -162,7 +163,7 @@ class KoolbaseStorageClient {
       confirmBody['metadata'] = metadata;
     }
 
-    final confirmRes = await http
+    final confirmRes = await koolbaseHttp
         .post(
           Uri.parse('$baseUrl/v1/sdk/storage/confirm'),
           headers: await _headers(),
@@ -220,7 +221,7 @@ class KoolbaseStorageClient {
     required String path,
     required Map<String, String?> metadata,
   }) async {
-    final res = await http
+    final res = await koolbaseHttp
         .patch(
           Uri.parse('$baseUrl/v1/sdk/storage/objects/metadata'),
           headers: await _headers(),
@@ -257,7 +258,7 @@ class KoolbaseStorageClient {
     if (versionId != null) {
       queryParts.add('version_id=$versionId');
     }
-    final res = await http
+    final res = await koolbaseHttp
         .get(
           Uri.parse(
               '$baseUrl/v1/sdk/storage/download-url?${queryParts.join('&')}'),
@@ -374,7 +375,7 @@ class KoolbaseStorageClient {
     final url = forcePurge
         ? '$baseUrl/v1/sdk/storage/object?force_purge=true'
         : '$baseUrl/v1/sdk/storage/object';
-    final res = await http
+    final res = await koolbaseHttp
         .delete(
           Uri.parse(url),
           headers: await _headers(),
@@ -417,7 +418,7 @@ class KoolbaseStorageClient {
     required String bucket,
     required String path,
   }) async {
-    final res = await http
+    final res = await koolbaseHttp
         .get(
           Uri.parse(
               '$baseUrl/v1/sdk/storage/object-versions?bucket=$bucket&path=$path'),
@@ -445,7 +446,7 @@ class KoolbaseStorageClient {
     required String path,
     required String versionId,
   }) async {
-    final res = await http
+    final res = await koolbaseHttp
         .get(
           Uri.parse(
               '$baseUrl/v1/sdk/storage/object-versions/$versionId?bucket=$bucket&path=$path'),
@@ -474,7 +475,7 @@ class KoolbaseStorageClient {
     required String path,
     required String versionId,
   }) async {
-    final res = await http
+    final res = await koolbaseHttp
         .post(
           Uri.parse(
               '$baseUrl/v1/sdk/storage/object-versions/$versionId/restore?bucket=$bucket&path=$path'),
@@ -499,7 +500,7 @@ class KoolbaseStorageClient {
     required String path,
     required String versionId,
   }) async {
-    final res = await http
+    final res = await koolbaseHttp
         .delete(
           Uri.parse(
               '$baseUrl/v1/sdk/storage/object-versions/$versionId?bucket=$bucket&path=$path'),

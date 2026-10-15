@@ -38,12 +38,17 @@ class _FakeStorage implements KoolbaseAuthStorage {
   Future<void> clear() async => session = null;
 }
 
-/// AuthApi whose refresh outcome is scripted per test.
+/// AuthApi whose refresh and /me outcomes are scripted per test. Unscripted,
+/// /me has no network: a restore keeps the stored session optimistically.
 class _FakeApi extends AuthApi {
   _FakeApi({this.onRefresh})
       : super(baseUrl: 'https://api.test', publicKey: 'pk_test');
 
   final Future<AuthSession> Function()? onRefresh;
+
+  @override
+  Future<KoolbaseUser> getMe(String accessToken) =>
+      Future<KoolbaseUser>.error(TimeoutException('no network'));
 
   @override
   Future<AuthSession> refresh(String refreshToken) {
@@ -121,13 +126,17 @@ void main() {
       (tester) async {
     final auth = KoolbaseAuthClient(
       api: _FakeApi(
-          onRefresh: () =>
-              throw const KoolbaseAuthException('refresh token revoked')),
+          // What the server sends for a refused refresh token
+          // (invalid_refresh_token); a bare KoolbaseAuthException is a
+          // server error now, which keeps the session (#96).
+          onRefresh: () => throw const SessionExpiredException()),
       storage: _FakeStorage(_session(expired: true)),
     );
 
     await tester.pumpWidget(_gate(auth));
-    await tester.pump();
+    // A refused renewal first waits briefly for another copy of the app
+    // (a second tab) that may be saving the session it just renewed (#96).
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump();
     expect(find.text('OUT'), findsOneWidget);
   });

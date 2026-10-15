@@ -15,6 +15,7 @@ import 'sync_engine.dart';
 import 'offline/write_queue.dart';
 import 'database_exceptions.dart';
 import '../koolbase_exception.dart';
+import '../network/session_client.dart';
 
 class KoolbaseDatabaseClient {
   final String baseUrl;
@@ -49,7 +50,7 @@ class KoolbaseDatabaseClient {
     Future<void> Function()? onSessionExpired,
     CacheStore? cacheStore,
     WriteQueue? writeQueue,
-  })  : _http = httpClient ?? http.Client(),
+  })  : _http = httpClient ?? koolbaseHttp,
         _accessTokenProvider = accessTokenProvider,
         _onSessionExpired = onSessionExpired,
         _cacheStore = cacheStore,

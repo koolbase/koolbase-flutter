@@ -32,9 +32,28 @@ enum RestoreResult {
   offline,
 }
 
+/// Why the last session ended (#104): the person signed out, or the session
+/// ended on its own -- revoked, past renewal, signed out on another device.
+/// An app tells them apart to say "You were signed out" only when the person
+/// did not ask to be.
+enum KoolbaseSignOutReason {
+  /// [KoolbaseAuthClient.logout] or [KoolbaseAuthClient.deleteAccount].
+  signedOut,
+
+  /// The server refused the session and renewing it failed too.
+  sessionEnded,
+}
+
 class KoolbaseAuthClient {
   final AuthApi _api;
   final KoolbaseAuthStorage _storage;
+
+  /// Why the last session ended; null while signed in (#104).
+  KoolbaseSignOutReason? _signOutReason;
+
+  /// The last renewal failed for want of a connection, not because the
+  /// server refused it (#96). A session is never ended on that.
+  bool _renewalUnavailable = false;
 
   KoolbaseUser? _currentUser;
   String? _accessToken;
@@ -62,6 +81,12 @@ class KoolbaseAuthClient {
   bool get isAuthenticated => _currentUser != null && _accessToken != null;
   Stream<KoolbaseUser?> get authStateChanges => _authStateController.stream;
 
+  /// Why the last session ended (#104): [KoolbaseSignOutReason.signedOut]
+  /// when the person signed out, [KoolbaseSignOutReason.sessionEnded] when it
+  /// ended on its own. Null while signed in. Read it when [authStateChanges]
+  /// emits null.
+  KoolbaseSignOutReason? get lastSignOutReason => _signOutReason;
+
   /// Returns a currently-valid access token for data-plane requests, refreshing
   /// (single-flight) if the cached one is at/near expiry. Returns null when no
   /// user is authenticated or a refresh fails — callers then send the request
@@ -73,9 +98,39 @@ class KoolbaseAuthClient {
     if (!isAuthenticated) return null;
     try {
       return await _ensureValidToken();
+    } catch (e) {
+      // Refused: the session has ended (and been cleared); go api-key-only.
+      if (_isRejection(e)) return null;
+      // No answer: the session may be fine, so the request must not go out
+      // as a signed-out visitor, whose refusal would end it. It fails as the
+      // network failure it is, and the caller retries (#96).
+      rethrow;
+    }
+  }
+
+  /// A data request carrying [refused] came back unauthenticated. Renews the
+  /// session and returns the token to send again with, or null when there is
+  /// none: nobody is signed in, or the server refused the renewal too, which
+  /// ends the session (#96).
+  Future<String?> renewRejected(String refused) async {
+    if (!isAuthenticated) return null;
+    // Another request renewed it while this one was out.
+    if (_accessToken != null && _accessToken != refused) return _accessToken;
+    try {
+      return (await _refreshSingleFlight()).accessToken;
     } catch (_) {
       return null;
     }
+  }
+
+  /// A data request was refused as unauthenticated and renewing could not
+  /// help: the session is over, so it ends here and [authStateChanges] emits
+  /// null. Unless the renewal failed only for want of a connection: then the
+  /// session may well be good, and signing someone out for a dropped network
+  /// would be wrong (#96).
+  Future<void> sessionRejected() async {
+    if (!isAuthenticated || _renewalUnavailable) return;
+    await _clearSession(KoolbaseSignOutReason.sessionEnded);
   }
 
   /// Restore a previously saved session on app launch.
@@ -103,26 +158,29 @@ class KoolbaseAuthClient {
     _currentUser = persisted.user;
     _authStateController.add(persisted.user);
 
-    // If the access token is still valid, we're done — no network needed.
+    // Valid by the clock is not valid: the session may have been signed out
+    // on another device, revoked, or the account disabled since. Ask the
+    // server before saying it is restored (#104). No answer -- offline, a
+    // timeout, a server error -- keeps the optimistic session: offline.
     if (!persisted.isAccessTokenExpired) {
-      return RestoreResult.restored;
+      try {
+        final user = await _api.getMe(persisted.accessToken);
+        await _updateUserAndPersist(user);
+        return RestoreResult.restored;
+      } catch (e) {
+        if (!_refusesAccessToken(e)) return RestoreResult.offline;
+        // Refused: the access token is done. The refresh token decides.
+      }
     }
 
-    // Access token expired — attempt to refresh.
     try {
-      final session = await _api.refresh(persisted.refreshToken);
-      await _setSession(session);
+      await _refreshSingleFlight(refreshToken: persisted.refreshToken);
       return RestoreResult.restored;
-    } on KoolbaseAuthException {
-      // Server rejected the refresh token — clear and require fresh login.
-      await _clearSession();
-      return RestoreResult.expired;
-    } catch (_) {
-      // Network error (timeout, DNS, connection refused). Keep the optimistic
-      // state — the app UI stays authenticated, API calls will fail until
-      // network returns. App can call [refreshSession] when connectivity is
-      // restored.
-      return RestoreResult.offline;
+    } catch (e) {
+      // Refused: _refreshSingleFlight has cleared it. Anything else keeps the
+      // optimistic state: the app stays signed in, API calls fail until the
+      // network returns, and [refreshSession] can be called then.
+      return _isRejection(e) ? RestoreResult.expired : RestoreResult.offline;
     }
   }
 
@@ -359,7 +417,7 @@ class KoolbaseAuthClient {
     } catch (_) {
       serverLogoutSucceeded = false;
     } finally {
-      await _clearSession();
+      await _clearSession(KoolbaseSignOutReason.signedOut);
     }
     return serverLogoutSucceeded;
   }
@@ -418,7 +476,7 @@ class KoolbaseAuthClient {
   Future<void> deleteAccount() async {
     final token = await _ensureValidToken();
     await _api.deleteMe(token);
-    await _clearSession();
+    await _clearSession(KoolbaseSignOutReason.signedOut);
   }
 
   Future<KoolbaseUser> getCurrentUser() async {
@@ -540,12 +598,15 @@ class KoolbaseAuthClient {
       return _accessToken!;
     }
 
-    // Slow path: refresh (deduplicated across concurrent callers).
+    // Slow path: refresh (deduplicated across concurrent callers). A
+    // refusal is an ended session; no answer stays the network failure it
+    // is rather than being reported as one (#96).
     try {
       final session = await _refreshSingleFlight();
       return session.accessToken;
-    } catch (_) {
-      throw const SessionExpiredException();
+    } catch (e) {
+      if (_isRejection(e)) throw const SessionExpiredException();
+      rethrow;
     }
   }
 
@@ -556,7 +617,7 @@ class KoolbaseAuthClient {
   ///
   /// On failure, [_clearSession] is called once and the error is propagated
   /// to all waiters.
-  Future<AuthSession> _refreshSingleFlight() async {
+  Future<AuthSession> _refreshSingleFlight({String? refreshToken}) async {
     final inFlight = _ongoingRefresh;
     if (inFlight != null) {
       return inFlight;
@@ -566,26 +627,104 @@ class KoolbaseAuthClient {
     // and this assignment, so this is atomic relative to other Dart code.
     final completer = Completer<AuthSession>();
     _ongoingRefresh = completer.future;
+    // Waiters are optional; an error nobody else awaited is still handled.
+    completer.future.ignore();
 
     try {
-      final persisted = await _storage.readSession();
-      if (persisted == null) {
+      // The newest refresh token is the stored one: another tab of the same
+      // web app may have renewed the session already.
+      final token =
+          refreshToken ?? (await _storage.readSession())?.refreshToken;
+      if (token == null) {
+        // Nothing stored: signed out in another tab. The session is over.
+        await _clearSession(KoolbaseSignOutReason.sessionEnded);
         throw const SessionExpiredException();
       }
-      final session = await _api.refresh(persisted.refreshToken);
+      AuthSession session;
+      try {
+        session = await _api.refresh(token);
+      } catch (e) {
+        if (!_isRejection(e)) {
+          // No answer, or a server error: the session may be fine. Keep it.
+          _renewalUnavailable = true;
+          rethrow;
+        }
+        _renewalUnavailable = false;
+        // Two tabs renewing at the same moment send the same token; the
+        // server renews one and refuses the other. The winner's session is
+        // in storage: take it rather than signing out (#96).
+        final adopted = await _adoptNewer(token);
+        if (adopted == null) {
+          await _clearSession(KoolbaseSignOutReason.sessionEnded);
+          rethrow;
+        }
+        session = adopted;
+      }
+      _renewalUnavailable = false;
       await _setSession(session);
       completer.complete(session);
       return session;
     } catch (e, st) {
       if (!completer.isCompleted) completer.completeError(e, st);
-      await _clearSession();
       rethrow;
     } finally {
       _ongoingRefresh = null;
     }
   }
 
+  /// A newer session another tab or instance stored after renewing [spent],
+  /// or null if there is none. Looked for twice: the winner may still be
+  /// writing it.
+  Future<AuthSession?> _adoptNewer(String spent) async {
+    for (final wait in const [0, 400]) {
+      if (wait > 0) await Future<void>.delayed(Duration(milliseconds: wait));
+      final stored = await _storage.readSession();
+      if (stored == null || stored.refreshToken == spent) continue;
+      if (DateTime.now()
+          .isBefore(stored.expiresAt.subtract(const Duration(minutes: 1)))) {
+        return AuthSession(
+          accessToken: stored.accessToken,
+          refreshToken: stored.refreshToken,
+          expiresAt: stored.expiresAt,
+          user: stored.user,
+        );
+      }
+      try {
+        return await _api.refresh(stored.refreshToken);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /// Whether [e] is the server refusing the session -- it has ended --
+  /// rather than no answer (#96). Only a refusal signs anyone out.
+  static bool _isRejection(Object e) {
+    if (e is SessionExpiredException ||
+        e is TokenRevokedException ||
+        e is UserDisabledException) {
+      return true;
+    }
+    if (e is KoolbaseAuthException) {
+      return const {
+        'invalid_refresh_token',
+        'token_revoked',
+        'account_disabled',
+        'mfa_session_insufficient',
+        'unauthenticated',
+      }.contains(e.code);
+    }
+    return false;
+  }
+
+  /// Whether the server refused an access token on /me: the session's
+  /// access token is done, and the refresh token decides.
+  static bool _refusesAccessToken(Object e) =>
+      e is InvalidCredentialsException || _isRejection(e);
+
   Future<void> _setSession(AuthSession session) async {
+    _signOutReason = null;
     _accessToken = session.accessToken;
     _accessTokenExpiresAt = session.expiresAt;
     _currentUser = session.user;
@@ -618,7 +757,10 @@ class KoolbaseAuthClient {
     }
   }
 
-  Future<void> _clearSession() async {
+  Future<void> _clearSession([
+    KoolbaseSignOutReason reason = KoolbaseSignOutReason.sessionEnded,
+  ]) async {
+    if (_currentUser != null || _accessToken != null) _signOutReason = reason;
     _accessToken = null;
     _accessTokenExpiresAt = null;
     _currentUser = null;

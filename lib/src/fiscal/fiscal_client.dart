@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../koolbase_exception.dart';
 import 'fiscal_models.dart';
+import '../network/session_client.dart';
 
 export 'fiscal_models.dart';
 
@@ -78,7 +79,7 @@ class KoolbaseFiscalClient {
     final uri = Uri.parse('$baseUrl/v1/sdk/fiscal/submit');
     final http.Response resp;
     try {
-      resp = await http
+      resp = await koolbaseHttp
           .post(uri,
               headers: await _sdkHeaders(),
               body: jsonEncode({
@@ -109,7 +110,7 @@ class KoolbaseFiscalClient {
         queryParameters: {'device_id': deviceId, 'client_ref': clientRef});
     final http.Response resp;
     try {
-      resp = await http.get(uri, headers: await _sdkHeaders()).timeout(timeout);
+      resp = await koolbaseHttp.get(uri, headers: await _sdkHeaders()).timeout(timeout);
     } on TimeoutException {
       throw const FiscalException('fiscal status timed out');
     }

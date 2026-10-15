@@ -1,3 +1,14 @@
+## 12.21.0
+
+Sessions that last, and end cleanly (#96, #104).
+
+- **A restart asks the server.** `restoreSession()` checks a saved session whose token has not expired yet, instead of trusting it. A session ended on the server (signed out elsewhere, revoked) restores as `RestoreResult.expired` and the saved copy is removed, so the app opens signed out. No network restores as `offline` and keeps the session.
+- **A refused request renews the session and goes again.** Database, storage, functions, sync and fiscal requests that the server refuses as unauthenticated renew the session once and are sent again with the new token; the caller never sees it. Hours-old sessions no longer leave every list failing until the person signs out and in.
+- **Only a refused renewal ends a session.** No network, or a server error, keeps it: the request fails and the session is renewed when the network returns.
+- **`lastSignOutReason`**: `KoolbaseSignOutReason.signedOut` when the person signed out (or deleted the account), `sessionEnded` when the session ended on its own. An app says "Your session ended" only for the second.
+- **Two copies of an app renewing at once** (two tabs, an app and its preview) share the winner's session instead of being signed out. Needs the Koolbase API from October 2026.
+- **Tested**: restart after signing out, a revoked session, a good session, offline, a server error, an expired token renewed, a refused request renewed and sent again, a refused renewal signing out, no network keeping the session, and two tabs.
+
 ## 12.20.0
 
 - **Sections: `KoolbaseCollectionList(groupBy: ...)`.** Give each record a section key, such as its day or its status, and the list puts a header above each run of records with the same key. While the list scrolls by itself the current header stays pinned at the top until the next one pushes it away; with `scrollsWithPage` the headers sit inline. Records from Load more join the last section when they share its key. Separators are drawn between rows of a section, never around a header. Sort the query by the same field: an unsorted list repeats a header wherever its key comes back. Vertical lists only.

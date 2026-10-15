@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:koolbase_flutter/koolbase_flutter.dart';
 import 'offline/cache_store.dart';
 import 'offline/write_queue.dart';
+import '../network/session_client.dart';
 
 /// Broadcast stream controllers for background refresh notifications.
 /// Keyed by QUERY identity (collection + filters + user — see streamKey),
@@ -127,7 +128,7 @@ class KoolbaseQuery {
         _accessTokenProvider = accessTokenProvider,
         _onSessionExpired = onSessionExpired,
         _cacheStore = cacheStore,
-        _client = client ?? http.Client();
+        _client = client ?? koolbaseHttp;
 
   Future<Map<String, String>> _headers() async {
     final headers = <String, String>{
@@ -515,7 +516,7 @@ class KoolbaseDocRef {
         _cacheStore = cacheStore,
         _userId = userId,
         _writeQueue = writeQueue,
-        _client = client ?? http.Client();
+        _client = client ?? koolbaseHttp;
 
   /// See KoolbaseQuery._client.
   final http.Client _client;

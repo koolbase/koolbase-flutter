@@ -1,7 +1,8 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+
 import '../koolbase_exception.dart';
 import 'functions_models.dart';
+import '../network/session_client.dart';
 export 'functions_models.dart';
 
 /// Supported function runtimes.
@@ -61,7 +62,7 @@ class KoolbaseFunctionsClient {
   }) async {
     final uri = Uri.parse('$baseUrl/v1/sdk/functions/$name');
     try {
-      final response = await http
+      final response = await koolbaseHttp
           .post(
             uri,
             headers: await _sdkHeaders(),
@@ -150,7 +151,7 @@ class KoolbaseFunctionsClient {
 
     final uri = Uri.parse('$baseUrl/v1/projects/$projectId/functions');
     try {
-      final response = await http
+      final response = await koolbaseHttp
           .post(
             uri,
             headers: headers,

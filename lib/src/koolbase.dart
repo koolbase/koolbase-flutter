@@ -30,6 +30,7 @@ import 'database/offline/cache_store.dart';
 import 'database/offline/write_queue.dart';
 import 'database/sync_engine.dart';
 import 'realtime/realtime_client.dart';
+import 'network/session_client.dart';
 export 'realtime/realtime_models.dart';
 export 'database/database_models.dart';
 export 'database/database_query.dart' show KoolbaseQuery;
@@ -189,6 +190,7 @@ class Koolbase {
   /// Reset after a test so the next one starts clean.
   @visibleForTesting
   static void resetForTesting() {
+    KoolbaseSessionClient.renew = null;
     _instance = null;
     _database = null;
     _auth = null;
@@ -232,6 +234,10 @@ class Koolbase {
     _auth = KoolbaseAuthClient(
       api: authApi,
     );
+    // A data request refused with the signed-in person's token renews the
+    // session once and goes again (#96); only a refused renewal ends it.
+    KoolbaseSessionClient.renew = (refused) =>
+        _auth?.renewRejected(refused) ?? Future<String?>.value(null);
 
     // Restore auth session from secure storage
     await _auth!.restoreSession();
@@ -274,7 +280,7 @@ class Koolbase {
       // A session the server refuses is not a session. Clearing it here means
       // an app that catches KoolbaseSessionExpiredException is already signed
       // out and can route to login, rather than looping on a dead token.
-      onSessionExpired: () async => _auth?.clearStoredSession(),
+      onSessionExpired: () async => _auth?.sessionRejected(),
       cacheStore: cacheStore,
       writeQueue: writeQueue,
     );
@@ -290,7 +296,7 @@ class Koolbase {
         accessTokenProvider: () =>
             _auth?.validAccessToken() ?? Future<String?>.value(null),
         currentUserId: () => _auth?.currentUser?.id,
-        onSessionExpired: () async => _auth?.clearStoredSession(),
+        onSessionExpired: () async => _auth?.sessionRejected(),
       );
       _syncEngine!.start();
 
@@ -318,7 +324,7 @@ class Koolbase {
           _auth?.validAccessToken() ?? Future<String?>.value(null),
       // A rejected credential met during an upload is the same rejection as one
       // met during a query: the session is gone for every surface at once.
-      onSessionExpired: () async => _auth?.clearStoredSession(),
+      onSessionExpired: () async => _auth?.sessionRejected(),
       // Identity arrives with the bootstrap payload; empty until then.
       projectIdProvider: () => _client._payload.projectId,
       // A missing-identity throw nudges a refresh so the session heals
@@ -334,7 +340,7 @@ class Koolbase {
       publicKey: config.publicKey,
       userAccessTokenProvider: () =>
           _auth?.validAccessToken() ?? Future<String?>.value(null),
-      onSessionExpired: () async => _auth?.clearStoredSession(),
+      onSessionExpired: () async => _auth?.sessionRejected(),
     );
 
     // Initialize fiscal client
@@ -343,7 +349,7 @@ class Koolbase {
       publicKey: config.publicKey,
       userAccessTokenProvider: () =>
           _auth?.validAccessToken() ?? Future<String?>.value(null),
-      onSessionExpired: () async => _auth?.clearStoredSession(),
+      onSessionExpired: () async => _auth?.sessionRejected(),
     );
 
     // Code push: not on web. There is no binary to patch and no
