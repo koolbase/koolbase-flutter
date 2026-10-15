@@ -6,6 +6,7 @@ import '../testing/test_data.dart';
 
 import '../database/database_exceptions.dart';
 import '../koolbase.dart';
+import 'load_error.dart';
 
 /// The phases a one-record load moves through.
 enum KoolbaseRecordStatus {
@@ -374,7 +375,8 @@ class _KoolbaseRecordViewState extends State<KoolbaseRecordView> {
       case KoolbaseRecordStatus.error:
         final err = _controller.error!;
         return widget.error?.call(context, err, _controller.refresh) ??
-            _DefaultError(onRetry: _controller.refresh);
+            KbLoadError(
+                title: "Couldn't load this.", onRetry: _controller.refresh);
       case KoolbaseRecordStatus.loaded:
         return widget.builder(context, _controller.record!);
     }
@@ -392,35 +394,6 @@ class _DefaultNotFound extends StatelessWidget {
         child: Text(
           'Not available.',
           style: Theme.of(context).textTheme.bodyMedium,
-        ),
-      ),
-    );
-  }
-}
-
-class _DefaultError extends StatelessWidget {
-  const _DefaultError({required this.onRetry});
-
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              "Couldn't load this.",
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: onRetry,
-              child: const Text('Retry'),
-            ),
-          ],
         ),
       ),
     );

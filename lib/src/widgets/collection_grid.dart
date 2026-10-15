@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../testing/test_data.dart';
 import 'package:koolbase_flutter/koolbase_flutter.dart';
+import 'load_error.dart';
 
 /// A collection rendered as a grid rather than a list.
 ///
@@ -96,7 +97,8 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
           // tests) the base query answers from its records, as the list's does.
           baseQuery: KoolbaseTestData.maybeOf(context) == null
               ? null
-              : () => KoolbaseTestData.maybeOf(context)!.queryFor(widget.collection),
+              : () => KoolbaseTestData.maybeOf(context)!
+                  .queryFor(widget.collection),
         );
     _controller.addListener(_onChanged);
     _controller.load();
@@ -122,7 +124,9 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
       case KoolbaseListStatus.error:
         final err = _controller.error!;
         return widget.error?.call(context, err, _controller.refresh) ??
-            Center(child: Text('$err'));
+            KbLoadError(
+                title: "Couldn't load this list.",
+                onRetry: _controller.refresh);
       case KoolbaseListStatus.loaded:
         final records = _controller.records;
         if (records.isEmpty) {
@@ -212,18 +216,18 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
   /// The control below the cells while there are more: a button, or a small
   /// spinner while the next page loads.
   Widget _loadMore() => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Center(
-      child: _controller.loadingMore
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : TextButton(
-              onPressed: _controller.loadMore,
-              child: const Text('Load more'),
-            ),
-    ),
-  );
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: _controller.loadingMore
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : TextButton(
+                  onPressed: _controller.loadMore,
+                  child: const Text('Load more'),
+                ),
+        ),
+      );
 }

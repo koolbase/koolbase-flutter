@@ -1,3 +1,8 @@
+## 12.25.0
+
+- **Retry shows that it is working (#97).** When a list, grid or record view's first load fails, its default view's Retry now turns into a spinner and "Retrying…" while it runs (for at least 0.6 s, so a retry that fails at once is still seen), and can't be tapped twice. One that fails again says "Still couldn't load. Check your connection, then try again." A retry that works shows the records at once. `KoolbaseCollectionGrid` showed the raw error text there; it now shows the same view. A failed retry keeps its newest error on the controller.
+- **Tested**: the spinner while a retry runs, the second tap ignored, the message after a failed retry, a list that fails twice then loads, and the grid's view.
+
 ## 12.24.0
 
 - **`storage.uploadBytes`: upload a file's contents (#107B).** For a file with no path on disk -- the web, where a picked file is bytes -- `uploadBytes(bucket:, path:, bytes:)` does what `upload` does, with the same rules (no overwrite unless asked, metadata, the content type from the path) and the same `UploadResult`. `upload(file:)` now reads the file and calls it.

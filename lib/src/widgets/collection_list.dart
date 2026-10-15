@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../testing/test_data.dart';
 
 import '../koolbase.dart';
+import 'load_error.dart';
 
 /// Configures a fresh base query for one fetch. Called every time the
 /// component fetches or refreshes — never with a reused instance.
@@ -153,9 +154,11 @@ class KoolbaseCollectionController extends ChangeNotifier {
       _isFromCache = result.isFromCache;
       _error = null;
       _hasMore = _records.length < result.total;
-    } catch (_) {
+    } catch (e) {
       // Keep what we have. The pull gesture failing silently into the same
-      // list is the behavior every mature app converges on.
+      // list is the behavior every mature app converges on. With nothing to
+      // show, the error on screen is the newest one (#97).
+      if (_status == KoolbaseListStatus.error) _error = e;
     } finally {
       if (!_disposed) {
         _refreshing = false;
@@ -469,7 +472,9 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
       case KoolbaseListStatus.error:
         final err = _controller.error!;
         return widget.error?.call(context, err, _controller.refresh) ??
-            _DefaultError(error: err, onRetry: _controller.refresh);
+            KbLoadError(
+                title: "Couldn't load this list.",
+                onRetry: _controller.refresh);
 
       case KoolbaseListStatus.loaded:
         final loaded = _controller.records;
@@ -755,36 +760,6 @@ class _DefaultEmpty extends StatelessWidget {
         child: Text(
           'Nothing here yet.',
           style: Theme.of(context).textTheme.bodyMedium,
-        ),
-      ),
-    );
-  }
-}
-
-class _DefaultError extends StatelessWidget {
-  const _DefaultError({required this.error, required this.onRetry});
-
-  final Object error;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              "Couldn't load this list.",
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: onRetry,
-              child: const Text('Retry'),
-            ),
-          ],
         ),
       ),
     );
