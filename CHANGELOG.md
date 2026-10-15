@@ -1,3 +1,8 @@
+## 12.23.0
+
+- **A refused write says which fields (#107B).** A write that does not fit its collection's declared fields throws `KoolbaseValidationException` with `fields`: a `KoolbaseFieldProblem` per field, with the field, a stable `code` (`required`, `not_declared`, or what the field expects: `text`, `number`, `whole_number`, `boolean`, `date`, `datetime`, `choice`, `file`) and the English `problem` for developers. A form can now show each under its own input, in its own words. `KoolbaseError.from` carries them as `details['fields']` (field and code only). Needs the Koolbase API from October 2026; from an older server `fields` is empty, as before.
+- **Tested**: the fields read from a refusal, an older refusal without codes, malformed entries skipped, a refusal with no fields unchanged, and `KoolbaseError` details.
+
 ## 12.22.0
 
 - **A record a list showed opens at once, on the web too (#103).** `getSaved()` -- what `KoolbaseRecordView` shows while it asks the server -- now also answers from the records this app has read while it runs, kept in memory, when there is no offline copy. The web build has no offline storage, so a detail screen opened from a list started on a loader every time. Kept per user and cleared on sign-out; at most 500; an older copy never replaces a newer one; never used as an offline edit's baseline.

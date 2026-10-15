@@ -394,6 +394,21 @@ class KoolbaseError {
           rawCode: raw,
         );
       }
+      if (e is KoolbaseValidationException && e.fields.isNotEmpty) {
+        // Which fields, and what each expects (#107B): the field and its
+        // code, never the English problem.
+        return KoolbaseError(
+          code: KoolbaseErrorCode.validation,
+          message: e.message,
+          rawCode: raw,
+          details: {
+            'field': e.fields.first.field,
+            'fields': [
+              for (final f in e.fields) {'field': f.field, 'code': f.code},
+            ],
+          },
+        );
+      }
       if (e is KoolbaseValidationException ||
           e is KoolbaseVectorDimensionMismatchException) {
         return KoolbaseError(

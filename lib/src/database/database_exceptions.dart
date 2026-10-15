@@ -126,19 +126,90 @@ class KoolbaseNotFoundException extends KoolbaseDataException {
   String toString() => 'KoolbaseNotFoundException: $message';
 }
 
+/// One field a refused write got wrong: a field its collection declares
+/// (#107B), as the server reported it.
+class KoolbaseFieldProblem {
+  /// The field's name, as written.
+  final String field;
+
+  /// What was wrong, stable, for an app to put in its own words:
+  /// `required`, `not_declared`, or what the field expects -- `text`,
+  /// `number`, `whole_number`, `boolean`, `date`, `datetime`, `choice`,
+  /// `file`. Empty from a server that does not send one yet.
+  final String code;
+
+  /// The same, in English, for developers. Never show it to people.
+  final String problem;
+
+  const KoolbaseFieldProblem({
+    required this.field,
+    required this.code,
+    required this.problem,
+  });
+
+  /// The problems in a `validation_error`'s details (`details.fields`);
+  /// empty when it has none. Entries that are not a field problem are
+  /// skipped, never guessed at.
+  static List<KoolbaseFieldProblem> listFrom(Object? fields) {
+    if (fields is! List) return const [];
+    return [
+      for (final f in fields)
+        if (f is Map &&
+            f['field'] is String &&
+            (f['field'] as String).isNotEmpty)
+          KoolbaseFieldProblem(
+            field: f['field'] as String,
+            code: f['code'] is String ? f['code'] as String : '',
+            problem: f['problem'] is String ? f['problem'] as String : '',
+          ),
+    ];
+  }
+
+  @override
+  String toString() => '$field: $problem';
+}
+
 /// Thrown when the request is rejected as invalid — the server responds with
 /// 400 and code `validation_error` (e.g. a malformed body or a bad field).
+///
+/// A write that does not fit its collection's declared fields says which
+/// in [fields] -- one [KoolbaseFieldProblem] per field -- so a form can
+/// show each under its own input (#107B).
 class KoolbaseValidationException extends KoolbaseDataException {
+  /// The fields the write got wrong; empty when the failure was not about
+  /// particular fields.
+  final List<KoolbaseFieldProblem> fields;
+
   /// [code] is carried for the same reason as [KoolbaseNotFoundException]:
   /// an unsupported dimension and a vector pointed at the wrong collection
   /// are both validation failures, and an app should be able to tell which.
   const KoolbaseValidationException([
     super.message = 'The request was invalid',
     String code = 'validation_error',
-  ]) : super(code: code);
+  ])  : fields = const [],
+        super(code: code);
+
+  /// A refusal that names its fields.
+  const KoolbaseValidationException.withFields(
+    super.message,
+    this.fields, {
+    String code = 'validation_error',
+  }) : super(code: code);
 
   @override
   String toString() => 'KoolbaseValidationException: $message';
+}
+
+/// A validation refusal, naming its fields when the server did (#107B).
+KoolbaseValidationException _validationError(
+  String message,
+  String code,
+  Map<String, dynamic>? details,
+) {
+  final fields = KoolbaseFieldProblem.listFrom(details?['fields']);
+  return fields.isEmpty
+      ? KoolbaseValidationException(message, code)
+      : KoolbaseValidationException.withFields(message, fields, code: code);
 }
 
 /// Thrown when the caller is authenticated but not allowed to perform the
@@ -217,7 +288,8 @@ class KoolbaseVectorDimensionMismatchException extends KoolbaseDataException {
 /// Deliberate rather than lenient: queueing these unconditionally would mean most
 /// offline updates are conflict-safe and some quietly are not, which is a worse
 /// guarantee than a clear refusal.
-class KoolbaseOfflineBaselineUnavailableException extends KoolbaseDataException {
+class KoolbaseOfflineBaselineUnavailableException
+    extends KoolbaseDataException {
   const KoolbaseOfflineBaselineUnavailableException(super.message)
       : super(code: 'offline_baseline_unavailable');
 }
@@ -385,8 +457,7 @@ class KoolbaseNoChangesException extends KoolbaseDataException {
 /// dashboard and CLI operations, and a caller handles them the same way —
 /// show the reason and let a human decide.
 class KoolbaseSeedException extends KoolbaseDataException {
-  const KoolbaseSeedException(super.message, String code)
-      : super(code: code);
+  const KoolbaseSeedException(super.message, String code) : super(code: code);
 }
 
 class KoolbaseRevisionMismatchException extends KoolbaseDataException {
@@ -444,7 +515,8 @@ KoolbaseException koolbaseDataError(
         [
           for (final d in (details?['dangling'] as List<dynamic>? ?? []))
             (
-              recordId: (d as Map<String, dynamic>)['record_id'] as String? ?? '',
+              recordId:
+                  (d as Map<String, dynamic>)['record_id'] as String? ?? '',
               value: d['value'] as String? ?? '',
             ),
         ],
@@ -539,7 +611,7 @@ KoolbaseException koolbaseDataError(
     case 'validation_error':
     case 'vector_collection_mismatch':
     case 'unsupported_dimension':
-      return KoolbaseValidationException(message, code!);
+      return _validationError(message, code!, details);
     case 'vector_dimension_mismatch':
       return KoolbaseVectorDimensionMismatchException(message);
   }
@@ -597,7 +669,8 @@ Future<KoolbaseException> koolbaseDataErrorNotifying(
   String fallbackMessage = 'Request failed',
   Future<void> Function()? onSessionExpired,
 }) async {
-  final err = koolbaseDataErrorFromResponse(res, fallbackMessage: fallbackMessage);
+  final err =
+      koolbaseDataErrorFromResponse(res, fallbackMessage: fallbackMessage);
   if (err is KoolbaseUnauthenticatedException) {
     await onSessionExpired?.call();
   }
