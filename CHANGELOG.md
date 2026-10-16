@@ -1,3 +1,13 @@
+## 12.26.0
+
+Uploads you can follow and cancel, and a bucket's files (storage S1).
+
+- **`storage.startUpload`** returns a `KoolbaseUploadTask`: `progress` (a stream of `KoolbaseUploadProgress`: `pending`, `uploading` with `bytesSent` of `bytesTotal`, `verifying`, then `completed`, `failed` or `cancelled`), `cancel()` until the server begins checking the bytes, and `result`. Only `completed` means the file can be referenced from a record. On iOS and Android the bytes are reported a chunk at a time; on the web the browser sends them in one piece, so progress moves from 0 to the total there.
+- **`upload` and `uploadBytes` take `onProgress`.** The confirm now names its upload (`upload_id`), so it takes exactly the bytes this upload sent.
+- **`storage.listFiles`**: a page of a bucket's files you may view -- the bucket's view rule is checked on every file -- with `prefix`, `limit`, `sort` (`KoolbaseFileSort`) and `descending`; pass `nextCursor` back for the next page. **`storage.getFileInfo`**: one file's details, with its permanent link while the bucket is public.
+- **Typed errors**: `KoolbaseUploadCancelledException`, `KoolbaseStorageNetworkException`, `KoolbaseUploadNotFoundException`, `KoolbaseStorageBusyException` (retry shortly), `KoolbaseStorageInvalidCursorException`, `KoolbaseStorageSignInRequiredException` (nobody signed in; not a session that ended). Needs the Koolbase API from October 2026.
+- **Tested**: progress through every state with the bytes rising to the total, a cancel mid-transfer confirming nothing, a listing's query and page, and each new error.
+
 ## 12.25.0
 
 - **Retry shows that it is working (#97).** When a list, grid or record view's first load fails, its default view's Retry now turns into a spinner and "Retrying…" while it runs (for at least 0.6 s, so a retry that fails at once is still seen), and can't be tapped twice. One that fails again says "Still couldn't load. Check your connection, then try again." A retry that works shows the records at once. `KoolbaseCollectionGrid` showed the raw error text there; it now shows the same view. A failed retry keeps its newest error on the controller.

@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import '../koolbase_exception.dart';
 import 'storage_exceptions.dart';
 import 'storage_models.dart';
+import 'storage_transfer.dart';
+import 'storage_files.dart';
 import '../network/session_client.dart';
 
 class KoolbaseStorageClient {
@@ -78,22 +80,13 @@ class KoolbaseStorageClient {
   /// Catch it to prompt the user, then retry with `overwrite: true` to
   /// replace the existing object — or with a different `path`.
   ///
-  /// Set `overwrite: true` for true upsert semantics — silently replace
-  /// any existing object at this path.
+  /// Pass [metadata] to attach key/value pairs (see [KoolbaseObject.metadata]);
+  /// on the overwrite path it REPLACES any prior metadata. Use
+  /// [updateMetadata] for post-upload merge changes.
   ///
-  /// Pass [metadata] to attach arbitrary user-defined key/value pairs to
-  /// the object at confirm time. Subject to the limits documented on
-  /// [KoolbaseObject.metadata]; violations throw
-  /// [KoolbaseStorageMetadataInvalidException]. On the overwrite path the
-  /// metadata REPLACES any prior metadata at this path (matches GCS
-  /// semantics — a new upload at a path produces a new object, not a
-  /// patch of the old). Use [updateMetadata] for post-upload merge
-  /// changes.
-  ///
-  /// **Breaking change in v7.0.0**: the default flipped from silent
-  /// overwrite (legacy behavior in v6.x and earlier) to safe-by-default
-  /// (reject on conflict). If you previously relied on uploads overwriting
-  /// silently, pass `overwrite: true` explicitly.
+  /// Pass [onProgress] to follow it: pending, uploading (bytes sent of
+  /// total), verifying, then completed. To cancel an upload, use
+  /// [startUpload], which returns a [KoolbaseUploadTask].
   Future<UploadResult> upload({
     required String bucket,
     required String path,
@@ -101,14 +94,15 @@ class KoolbaseStorageClient {
     String? contentType,
     Map<String, String>? metadata,
     bool overwrite = false,
-  }) async =>
-      uploadBytes(
+    void Function(KoolbaseUploadProgress progress)? onProgress,
+  }) async => uploadBytes(
         bucket: bucket,
         path: path,
         bytes: await file.readAsBytes(),
         contentType: contentType,
         metadata: metadata,
         overwrite: overwrite,
+        onProgress: onProgress,
       );
 
   /// Upload a file's contents to a bucket: [upload] for a file with no
@@ -122,89 +116,161 @@ class KoolbaseStorageClient {
     String? contentType,
     Map<String, String>? metadata,
     bool overwrite = false,
-  }) async {
+    void Function(KoolbaseUploadProgress progress)? onProgress,
+  }) {
+    final task = startUpload(
+      bucket: bucket,
+      path: path,
+      bytes: bytes,
+      contentType: contentType,
+      metadata: metadata,
+      overwrite: overwrite,
+    );
+    if (onProgress != null) task.progress.listen(onProgress);
+    return task.result;
+  }
+
+  /// Start an upload you can follow and cancel (S1).
+  ///
+  /// ```dart
+  /// final task = Koolbase.storage.startUpload(bucket: 'posters', path: 'gig.png', bytes: bytes);
+  /// task.progress.listen((p) => setState(() => percent = p.fraction));
+  /// // ...
+  /// task.cancel(); // before the server starts checking it
+  /// final result = await task.result;
+  /// ```
+  ///
+  /// The bytes go to a holding place and become the file only once the
+  /// server has checked them (verifying): a refused upload -- too large,
+  /// over the bucket's cap, refused by its rules -- never touches the file
+  /// already at [path].
+  KoolbaseUploadTask startUpload({
+    required String bucket,
+    required String path,
+    required List<int> bytes,
+    String? contentType,
+    Map<String, String>? metadata,
+    bool overwrite = false,
+  }) {
     final mimeType = contentType ?? _inferContentType(path);
-    final fileBytes = bytes;
-    final fileSize = fileBytes.length;
+    return runUploadTask(bytes.length, (step) async {
+      // 1. An upload link, for this upload alone.
+      final urlRes = await koolbaseHttp
+          .post(
+            Uri.parse('$baseUrl/v1/sdk/storage/upload-url'),
+            headers: await _headers(),
+            body: jsonEncode({
+              'bucket': bucket,
+              'path': path,
+              'content_type': mimeType,
+              'overwrite': overwrite,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (urlRes.statusCode != 200) {
+        throw await _error(urlRes, fallbackMessage: 'Failed to get upload URL');
+      }
+      final urlData = jsonDecode(urlRes.body) as Map<String, dynamic>;
+      final uploadUrl = urlData['upload_url'] as String;
+      final uploadId = urlData['upload_id'] as String?;
 
-    // Step 1: Get presigned upload URL
-    final urlRes = await koolbaseHttp
-        .post(
-          Uri.parse('$baseUrl/v1/sdk/storage/upload-url'),
-          headers: await _headers(),
-          body: jsonEncode({
-            'bucket': bucket,
-            'path': path,
-            'content_type': mimeType,
-            'overwrite': overwrite,
-          }),
-        )
-        .timeout(const Duration(seconds: 10));
+      // 2. The bytes, straight to storage, a chunk at a time.
+      final putRes = await step.put(Uri.parse(uploadUrl), bytes, mimeType,
+          timeout: Duration(seconds: 60 + bytes.length ~/ (32 * 1024)));
+      if (putRes.statusCode != 200) {
+        // R2 PUT errors don't follow the Koolbase error shape.
+        throw KoolbaseStorageException(
+          'Upload to storage failed: ${putRes.statusCode} ${String.fromCharCodes(putRes.bodyBytes.take(200))}',
+          code: 'upload_failed',
+        );
+      }
+      final etag = putRes.headers['etag'] ?? '';
 
-    if (urlRes.statusCode != 200) {
-      throw await _error(urlRes, fallbackMessage: 'Failed to get upload URL');
+      // 3. Verifying: the server checks the bytes and puts the file in
+      // place. Past this point the upload is not cancelled.
+      step.verifying();
+      final confirmBody = <String, dynamic>{
+        'bucket': bucket,
+        'path': path,
+        'size': bytes.length,
+        'content_type': mimeType,
+        'etag': etag,
+        'overwrite': overwrite,
+        if (uploadId != null) 'upload_id': uploadId,
+        if (metadata != null) 'metadata': metadata,
+      };
+      final confirmRes = await koolbaseHttp
+          .post(
+            Uri.parse('$baseUrl/v1/sdk/storage/confirm'),
+            headers: await _headers(),
+            body: jsonEncode(confirmBody),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (confirmRes.statusCode != 201) {
+        throw await _error(confirmRes, fallbackMessage: 'Failed to confirm upload');
+      }
+      final object = KoolbaseObject.fromJson(jsonDecode(confirmRes.body) as Map<String, dynamic>);
+
+      // 4. A link to read it now.
+      final downloadUrl = await getDownloadUrl(bucket: bucket, path: path);
+      return UploadResult(object: object, downloadUrl: downloadUrl, bucket: bucket);
+    });
+  }
+
+  /// A page of the bucket's files you may view (S1).
+  ///
+  /// [prefix] keeps paths that start with it (a folder: `'events/'`).
+  /// [limit] is at most 100 (default 50). Pass a page's
+  /// [KoolbaseFilePage.nextCursor] as [cursor] for the next one, with the
+  /// same [sort] and [descending]. Every file is checked against the
+  /// bucket's view rule on the server: you get only what you may view.
+  ///
+  /// ```dart
+  /// var page = await Koolbase.storage.listFiles(bucket: 'posters', sort: KoolbaseFileSort.createdAt, descending: true);
+  /// while (page.hasMore) {
+  ///   page = await Koolbase.storage.listFiles(bucket: 'posters', sort: KoolbaseFileSort.createdAt, descending: true, cursor: page.nextCursor);
+  /// }
+  /// ```
+  Future<KoolbaseFilePage> listFiles({
+    required String bucket,
+    String? prefix,
+    int? limit,
+    String? cursor,
+    KoolbaseFileSort sort = KoolbaseFileSort.path,
+    bool descending = false,
+  }) async {
+    final uri = Uri.parse('$baseUrl/v1/sdk/storage/files').replace(
+      queryParameters: koolbaseListQuery(
+        bucket: bucket,
+        prefix: prefix,
+        limit: limit,
+        cursor: cursor,
+        sort: sort,
+        descending: descending,
+      ),
+    );
+    final res = await koolbaseHttp.get(uri, headers: await _headers()).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) {
+      throw await _error(res, fallbackMessage: 'Failed to list files');
     }
+    return KoolbaseFilePage.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
 
-    final urlData = jsonDecode(urlRes.body) as Map<String, dynamic>;
-    final uploadUrl = urlData['upload_url'] as String;
-
-    // Step 2: Upload directly to R2
-    final uploadRes = await koolbaseHttp
-        .put(
-          Uri.parse(uploadUrl),
-          headers: {'Content-Type': mimeType},
-          body: fileBytes,
-        )
-        .timeout(const Duration(seconds: 60));
-
-    if (uploadRes.statusCode != 200) {
-      // R2 PUT errors don't follow the Koolbase error shape — surface
-      // as a generic storage error rather than trying to decode a
-      // Koolbase-shaped body that isn't there.
-      throw KoolbaseStorageException(
-        'Upload to storage failed: ${uploadRes.statusCode}',
-      );
+  /// One file's details, without downloading it (S1). Throws
+  /// [KoolbaseStorageNotFoundException] when there is no such file or you
+  /// may not view it -- the two are not told apart.
+  Future<KoolbaseFileInfo> getFileInfo({
+    required String bucket,
+    required String path,
+  }) async {
+    final uri = Uri.parse('$baseUrl/v1/sdk/storage/file').replace(
+      queryParameters: {'bucket': bucket, 'path': path},
+    );
+    final res = await koolbaseHttp.get(uri, headers: await _headers()).timeout(const Duration(seconds: 10));
+    if (res.statusCode != 200) {
+      throw await _error(res, fallbackMessage: 'Failed to get file info');
     }
-
-    final etag = uploadRes.headers['etag'] ?? '';
-
-    // Step 3: Confirm upload. Build the body conditionally so the
-    // `metadata` field is only sent when the caller passed it — keeps
-    // the wire shape clean for callers that don't care, and lets the
-    // server's omitempty path treat absent as "no metadata."
-    final confirmBody = <String, dynamic>{
-      'bucket': bucket,
-      'path': path,
-      'size': fileSize,
-      'content_type': mimeType,
-      'etag': etag,
-      'overwrite': overwrite,
-    };
-    if (metadata != null) {
-      confirmBody['metadata'] = metadata;
-    }
-
-    final confirmRes = await koolbaseHttp
-        .post(
-          Uri.parse('$baseUrl/v1/sdk/storage/confirm'),
-          headers: await _headers(),
-          body: jsonEncode(confirmBody),
-        )
-        .timeout(const Duration(seconds: 10));
-
-    if (confirmRes.statusCode != 201) {
-      throw await _error(confirmRes,
-          fallbackMessage: 'Failed to confirm upload');
-    }
-
-    final object = KoolbaseObject.fromJson(
-        jsonDecode(confirmRes.body) as Map<String, dynamic>);
-
-    // Step 4: Get download URL
-    final downloadUrl = await getDownloadUrl(bucket: bucket, path: path);
-
-    return UploadResult(
-        object: object, downloadUrl: downloadUrl, bucket: bucket);
+    return KoolbaseFileInfo.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   /// Apply a partial metadata update to an existing object. Returns the

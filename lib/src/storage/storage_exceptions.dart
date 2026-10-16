@@ -242,6 +242,53 @@ class KoolbaseStorageMetadataInvalidException extends KoolbaseStorageException {
       'KoolbaseStorageMetadataInvalidException${detail != null ? '($detail)' : ''}: $message';
 }
 
+/// The upload was cancelled before the server began checking it (S1).
+/// Nothing was stored.
+class KoolbaseUploadCancelledException extends KoolbaseStorageException {
+  const KoolbaseUploadCancelledException([
+    super.message = 'The upload was cancelled',
+  ]) : super(code: 'upload_cancelled');
+}
+
+/// The upload could not reach the server or storage: no connection, or it
+/// dropped. A retry with the same bytes may work.
+class KoolbaseStorageNetworkException extends KoolbaseStorageException {
+  const KoolbaseStorageNetworkException([
+    super.message = 'Could not reach storage',
+  ]) : super(code: 'network_error');
+}
+
+/// The confirm found no upload of yours with these bytes: they never
+/// arrived, or the link was someone else's (S0). Upload again.
+class KoolbaseUploadNotFoundException extends KoolbaseStorageException {
+  const KoolbaseUploadNotFoundException([
+    super.message = 'Upload not found: upload the file again',
+  ]) : super(code: 'upload_not_found');
+}
+
+/// Too many changes to the bucket at once (S0). Safe to retry in a moment.
+class KoolbaseStorageBusyException extends KoolbaseStorageException {
+  const KoolbaseStorageBusyException([
+    super.message = 'The bucket is busy; try again',
+  ]) : super(code: 'bucket_busy');
+}
+
+/// A listing cursor from another listing, or from another sort (S1). Start
+/// the listing again.
+class KoolbaseStorageInvalidCursorException extends KoolbaseStorageException {
+  const KoolbaseStorageInvalidCursorException([
+    super.message = 'Invalid cursor: start the listing again',
+  ]) : super(code: 'invalid_cursor');
+}
+
+/// The bucket's rules need someone signed in for this (S1). Not a session
+/// that ended: nobody was signed in.
+class KoolbaseStorageSignInRequiredException extends KoolbaseStorageException {
+  const KoolbaseStorageSignInRequiredException([
+    super.message = "Sign in to do this: this bucket's rules need someone signed in",
+  ]) : super(code: 'sign_in_required');
+}
+
 /// Maps a non-2xx storage-layer response to a typed
 /// [KoolbaseStorageException], preferring the server's stable `code` and
 /// falling back to the HTTP status for older or uncoded responses. The
@@ -296,6 +343,16 @@ KoolbaseException koolbaseStorageError(
         message,
         body['detail'] as String?,
       );
+    case 'upload_not_found':
+      return KoolbaseUploadNotFoundException(message);
+    case 'bucket_busy':
+      return KoolbaseStorageBusyException(message);
+    case 'invalid_cursor':
+      return KoolbaseStorageInvalidCursorException(message);
+    case 'sign_in_required':
+      return KoolbaseStorageSignInRequiredException(message);
+    case 'not_allowed':
+      return KoolbaseStoragePermissionException(message);
   }
 
   // ---- status fallback (pre-code servers or uncoded paths) ----
