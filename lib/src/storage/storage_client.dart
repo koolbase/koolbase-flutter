@@ -548,7 +548,11 @@ class KoolbaseStorageClient {
     return updated;
   }
 
-  /// Get a signed download URL for a file
+  /// [route] with [query] encoded: a path is a person's file name, and an
+  /// "&", "#", "+" or "%" in it must reach the server as itself (12.29.1).
+  Uri _query(String route, Map<String, String> query) =>
+      Uri.parse('$baseUrl$route').replace(queryParameters: query);
+
   /// Get a signed download URL for a file. Pass [versionId] to fetch a
   /// specific historical version's bytes; without it, returns a URL to
   /// the current version (existing behavior). On a public bucket the
@@ -560,14 +564,13 @@ class KoolbaseStorageClient {
     required String path,
     String? versionId,
   }) async {
-    final queryParts = <String>['bucket=$bucket', 'path=$path'];
-    if (versionId != null) {
-      queryParts.add('version_id=$versionId');
-    }
     final res = await koolbaseHttp
         .get(
-          Uri.parse(
-              '$baseUrl/v1/sdk/storage/download-url?${queryParts.join('&')}'),
+          _query('/v1/sdk/storage/download-url', {
+            'bucket': bucket,
+            'path': path,
+            if (versionId != null) 'version_id': versionId,
+          }),
           headers: await _headers(),
         )
         .timeout(const Duration(seconds: 10));
@@ -726,8 +729,8 @@ class KoolbaseStorageClient {
   }) async {
     final res = await koolbaseHttp
         .get(
-          Uri.parse(
-              '$baseUrl/v1/sdk/storage/object-versions?bucket=$bucket&path=$path'),
+          _query('/v1/sdk/storage/object-versions',
+              {'bucket': bucket, 'path': path}),
           headers: await _headers(),
         )
         .timeout(const Duration(seconds: 10));
@@ -753,8 +756,8 @@ class KoolbaseStorageClient {
   }) async {
     final res = await koolbaseHttp
         .get(
-          Uri.parse(
-              '$baseUrl/v1/sdk/storage/object-versions/$versionId?bucket=$bucket&path=$path'),
+          _query('/v1/sdk/storage/object-versions/${Uri.encodeComponent(versionId)}',
+              {'bucket': bucket, 'path': path}),
           headers: await _headers(),
         )
         .timeout(const Duration(seconds: 10));
@@ -781,8 +784,8 @@ class KoolbaseStorageClient {
   }) async {
     final res = await koolbaseHttp
         .post(
-          Uri.parse(
-              '$baseUrl/v1/sdk/storage/object-versions/$versionId/restore?bucket=$bucket&path=$path'),
+          _query('/v1/sdk/storage/object-versions/${Uri.encodeComponent(versionId)}/restore',
+              {'bucket': bucket, 'path': path}),
           headers: await _headers(),
         )
         .timeout(const Duration(seconds: 10));
@@ -808,8 +811,8 @@ class KoolbaseStorageClient {
   }) async {
     final res = await koolbaseHttp
         .delete(
-          Uri.parse(
-              '$baseUrl/v1/sdk/storage/object-versions/$versionId?bucket=$bucket&path=$path'),
+          _query('/v1/sdk/storage/object-versions/${Uri.encodeComponent(versionId)}',
+              {'bucket': bucket, 'path': path}),
           headers: await _headers(),
         )
         .timeout(const Duration(seconds: 10));
