@@ -1,3 +1,13 @@
+## 12.29.0
+
+A bucket's files as a list (storage S4).
+
+- **`KoolbaseFileList(bucket:, itemBuilder:)`**: the files the signed-in person may view, a page at a time, with pull to refresh and Load more; `prefix`, `sort`, `descending` and `limit` choose which and in what order; `loading`, `empty` and `error` (with a retry) are slotted, as on `KoolbaseCollectionList`. `scrollsWithPage` for a list inside a scrolling page. Its data half is **`KoolbaseFilesController`**.
+- **Lists reload by themselves** after an upload, delete, move, copy, metadata change or restore made through the SDK in their bucket.
+- Stale beats blank: a failed refresh or Load more keeps what is shown; a file is never shown twice.
+- **`KoolbaseFileInfo.toMap()`**: a file's fields by name.
+- **Tested**: page one and the next by cursor, a file the next page repeats shown once, a failed first load and a failed refresh, an answer a later load superseded dropped, reloads after a delete, a move between buckets and a copy (and none after dispose), and the widget's loading, rows, Load more, empty and error with its retry.
+
 ## 12.28.0
 
 Large uploads in parts, resumable; downloads you can follow (storage S3).

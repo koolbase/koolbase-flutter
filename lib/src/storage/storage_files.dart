@@ -96,6 +96,22 @@ class KoolbaseFileInfo {
 
   /// The file's name: the last part of its path.
   String get name => path.split('/').last;
+
+  /// The file as a map of its fields -- id (its path), path, name, size,
+  /// contentType, createdAt, updatedAt, uploadedBy, publicUrl, metadata --
+  /// for code that reads fields by name (a Designer screen's rows).
+  Map<String, dynamic> toMap() => {
+        'id': path,
+        'path': path,
+        'name': name,
+        'size': size,
+        'contentType': contentType,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
+        'uploadedBy': uploadedBy,
+        'publicUrl': publicUrl,
+        'metadata': metadata,
+      };
 }
 
 /// One page of a listing.

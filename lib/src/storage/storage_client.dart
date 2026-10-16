@@ -7,6 +7,7 @@ import 'storage_models.dart';
 import 'storage_transfer.dart';
 import 'storage_files.dart';
 import 'storage_multipart.dart';
+import 'files_controller.dart' show koolbaseFilesChanged;
 import 'dart:typed_data';
 import '../network/session_client.dart';
 
@@ -155,7 +156,7 @@ class KoolbaseStorageClient {
     bool overwrite = false,
   }) {
     final mimeType = contentType ?? _inferContentType(path);
-    return runUploadTask(bytes.length, (step) async {
+    return _listsReload(bucket, runUploadTask(bytes.length, (step) async {
       // Large files go in parts: resumable, each part retried (S3).
       if (bytes.length > multipartThreshold) {
         return _runInParts(step, bucket,
@@ -221,7 +222,7 @@ class KoolbaseStorageClient {
       // 4. A link to read it now.
       final downloadUrl = await getDownloadUrl(bucket: bucket, path: path);
       return UploadResult(object: object, downloadUrl: downloadUrl, bucket: bucket);
-    });
+    }));
   }
 
   /// Files larger than this go up in parts (S3): each part retried on its
@@ -246,8 +247,14 @@ class KoolbaseStorageClient {
     Map<String, String>? metadata,
     bool overwrite = false,
   }) =>
-      runUploadTask(bytes.length, (step) => _runInParts(step, bucket,
-          bytes: bytes, metadata: metadata, overwrite: overwrite, resumeId: uploadId));
+      _listsReload(bucket, runUploadTask(bytes.length, (step) => _runInParts(step, bucket,
+          bytes: bytes, metadata: metadata, overwrite: overwrite, resumeId: uploadId)));
+
+  /// [task], whose success reloads [bucket]'s file lists (S4).
+  static KoolbaseUploadTask _listsReload(String bucket, KoolbaseUploadTask task) {
+    task.result.then((_) => koolbaseFilesChanged([bucket]), onError: (Object _) {});
+    return task;
+  }
 
   Future<UploadResult> _runInParts(
     KoolbaseUploadTaskControl step,
@@ -477,7 +484,9 @@ class KoolbaseStorageClient {
     if (res.statusCode != 201) {
       throw await _error(res, fallbackMessage: op == 'move' ? 'Failed to move the file' : 'Failed to copy the file');
     }
-    return KoolbaseObject.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    final moved = KoolbaseObject.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    koolbaseFilesChanged({bucket, toBucket ?? bucket});
+    return moved;
   }
 
   /// Apply a partial metadata update to an existing object. Returns the
@@ -529,11 +538,14 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw await _error(res, fallbackMessage: 'Failed to update metadata');
+      throw await _error(res,
+          fallbackMessage: 'Failed to update metadata');
     }
 
-    return KoolbaseObject.fromJson(
+    final updated = KoolbaseObject.fromJson(
         jsonDecode(res.body) as Map<String, dynamic>);
+    koolbaseFilesChanged([bucket]);
+    return updated;
   }
 
   /// Get a signed download URL for a file
@@ -677,8 +689,10 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 204) {
-      throw await _error(res, fallbackMessage: 'Failed to delete file');
+      throw await _error(res,
+          fallbackMessage: 'Failed to delete file');
     }
+    koolbaseFilesChanged([bucket]);
   }
 
   String _inferContentType(String path) {
@@ -774,10 +788,13 @@ class KoolbaseStorageClient {
         .timeout(const Duration(seconds: 10));
 
     if (res.statusCode != 200) {
-      throw await _error(res, fallbackMessage: 'Failed to restore version');
+      throw await _error(res,
+          fallbackMessage: 'Failed to restore version');
     }
-    return KoolbaseObject.fromJson(
+    final restored = KoolbaseObject.fromJson(
         jsonDecode(res.body) as Map<String, dynamic>);
+    koolbaseFilesChanged([bucket]);
+    return restored;
   }
 
   /// Hard-remove a single history version — both the metadata row and
