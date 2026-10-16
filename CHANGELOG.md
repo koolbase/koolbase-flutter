@@ -1,3 +1,11 @@
+## 12.27.0
+
+Move and copy a file (storage S1b).
+
+- **`storage.move(bucket:, from:, to:, toBucket:)`** and **`storage.copy(...)`**: within a bucket or into another, without uploading again. The bucket's rules decide (a copy needs view on the file, a move needs delete on it; both need upload at the destination, whose limits apply as to an upload). The destination must be free. Within one bucket a move keeps the file's kept versions. A copy is the caller's file; a moved file keeps its owner.
+- **`KoolbaseStorageFileInUseException`** (`field`, `records`): a move refused while records point at the file; change them first, or copy it. **`KoolbaseStorageNameHasHistoryException`**: a move to a name a deleted file's kept versions still use. Needs the Koolbase API from October 2026.
+- **Tested**: each request, the file that comes back, and the refusals.
+
 ## 12.26.0
 
 Uploads you can follow and cancel, and a bucket's files (storage S1).

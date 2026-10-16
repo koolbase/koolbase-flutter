@@ -273,6 +273,52 @@ class KoolbaseStorageClient {
     return KoolbaseFileInfo.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Move a file to [to], in its bucket or into [toBucket] (S1b). Nothing
+  /// is uploaded again. The bucket's rules decide: delete on the file, and
+  /// upload at the destination, whose limits apply as to an upload. The
+  /// destination must be free.
+  ///
+  /// Within one bucket the file keeps its kept versions. Refused with
+  /// [KoolbaseStorageFileInUseException] while records point at the file:
+  /// change them first, or [copy] it.
+  Future<KoolbaseObject> move({
+    required String bucket,
+    required String from,
+    required String to,
+    String? toBucket,
+  }) =>
+      _transfer('move', bucket, from, to, toBucket);
+
+  /// Copy a file to [to], in its bucket or into [toBucket] (S1b): a new
+  /// file, the caller's, with the same bytes. The bucket's rules decide:
+  /// view on the file, and upload at the destination.
+  Future<KoolbaseObject> copy({
+    required String bucket,
+    required String from,
+    required String to,
+    String? toBucket,
+  }) =>
+      _transfer('copy', bucket, from, to, toBucket);
+
+  Future<KoolbaseObject> _transfer(String op, String bucket, String from, String to, String? toBucket) async {
+    final res = await koolbaseHttp
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/storage/$op'),
+          headers: await _headers(),
+          body: jsonEncode({
+            'bucket': bucket,
+            'from': from,
+            'to': to,
+            if (toBucket != null && toBucket != bucket) 'to_bucket': toBucket,
+          }),
+        )
+        .timeout(const Duration(seconds: 60));
+    if (res.statusCode != 201) {
+      throw await _error(res, fallbackMessage: op == 'move' ? 'Failed to move the file' : 'Failed to copy the file');
+    }
+    return KoolbaseObject.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   /// Apply a partial metadata update to an existing object. Returns the
   /// post-update [KoolbaseObject] with the merged metadata.
   ///

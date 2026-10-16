@@ -289,6 +289,30 @@ class KoolbaseStorageSignInRequiredException extends KoolbaseStorageException {
   ]) : super(code: 'sign_in_required');
 }
 
+/// A move refused while records point at the file (S1b): [field] holds its
+/// path in [records] records. Change those first, or copy the file.
+class KoolbaseStorageFileInUseException extends KoolbaseStorageException {
+  /// The declared file field that holds the path, e.g. `events.poster`.
+  final String? field;
+
+  /// How many records hold it.
+  final int records;
+
+  const KoolbaseStorageFileInUseException([
+    super.message = 'Records still point at this file',
+    this.field,
+    this.records = 0,
+  ]) : super(code: 'file_in_use');
+}
+
+/// A move, within a bucket, to a name a deleted file's kept versions still
+/// use (S1b): the two histories would become one. Choose another name.
+class KoolbaseStorageNameHasHistoryException extends KoolbaseStorageException {
+  const KoolbaseStorageNameHasHistoryException([
+    super.message = 'A deleted file by that name still has kept versions; choose another name',
+  ]) : super(code: 'name_has_history');
+}
+
 /// Maps a non-2xx storage-layer response to a typed
 /// [KoolbaseStorageException], preferring the server's stable `code` and
 /// falling back to the HTTP status for older or uncoded responses. The
@@ -353,6 +377,15 @@ KoolbaseException koolbaseStorageError(
       return KoolbaseStorageSignInRequiredException(message);
     case 'not_allowed':
       return KoolbaseStoragePermissionException(message);
+    case 'file_in_use':
+      final inUse = body['details'] as Map<String, dynamic>?;
+      return KoolbaseStorageFileInUseException(
+        message,
+        inUse?['field'] as String?,
+        (inUse?['records'] as num?)?.toInt() ?? 0,
+      );
+    case 'name_has_history':
+      return KoolbaseStorageNameHasHistoryException(message);
   }
 
   // ---- status fallback (pre-code servers or uncoded paths) ----

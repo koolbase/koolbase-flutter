@@ -50,7 +50,7 @@ const apiCodes = <String>{
   'vector_not_found', 'weak_password',
   // Storage, S0/S1.
   'upload_not_found', 'bucket_busy', 'invalid_cursor', 'sign_in_required',
-  'not_allowed',
+  'not_allowed', 'file_in_use', 'name_has_history',
 };
 
 // Codes with no server counterpart, each for a checked reason.
@@ -180,6 +180,9 @@ final exceptions = <KoolbaseException>[
   const KoolbaseStorageBusyException(),
   const KoolbaseStorageInvalidCursorException(),
   const KoolbaseStorageSignInRequiredException(),
+  // Storage, S1b.
+  const KoolbaseStorageFileInUseException(),
+  const KoolbaseStorageNameHasHistoryException(),
 ];
 
 void main() {
