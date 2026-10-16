@@ -6,6 +6,8 @@ import 'storage_exceptions.dart';
 import 'storage_models.dart';
 import 'storage_transfer.dart';
 import 'storage_files.dart';
+import 'storage_multipart.dart';
+import 'dart:typed_data';
 import '../network/session_client.dart';
 
 class KoolbaseStorageClient {
@@ -154,6 +156,11 @@ class KoolbaseStorageClient {
   }) {
     final mimeType = contentType ?? _inferContentType(path);
     return runUploadTask(bytes.length, (step) async {
+      // Large files go in parts: resumable, each part retried (S3).
+      if (bytes.length > multipartThreshold) {
+        return _runInParts(step, bucket,
+            path: path, bytes: bytes, contentType: mimeType, metadata: metadata, overwrite: overwrite);
+      }
       // 1. An upload link, for this upload alone.
       final urlRes = await koolbaseHttp
           .post(
@@ -215,6 +222,160 @@ class KoolbaseStorageClient {
       final downloadUrl = await getDownloadUrl(bucket: bucket, path: path);
       return UploadResult(object: object, downloadUrl: downloadUrl, bucket: bucket);
     });
+  }
+
+  /// Files larger than this go up in parts (S3): each part retried on its
+  /// own, the upload resumable for a day with [resumeUpload]. 16 MiB.
+  static int multipartThreshold = 16 * 1024 * 1024;
+
+  /// Resume a large file's upload that failed or was interrupted -- the
+  /// network dropped, the app was closed -- sending only the parts that did
+  /// not arrive (S3). [uploadId] is the failed task's
+  /// [KoolbaseUploadTask.uploadId]; [bytes] must be the same file. Within a
+  /// day of the upload beginning.
+  ///
+  /// ```dart
+  /// final task = Koolbase.storage.startUpload(bucket: 'video', path: 'talk.mp4', bytes: bytes);
+  /// // keep task.uploadId once it is set; after a restart:
+  /// await Koolbase.storage.resumeUpload(bucket: 'video', uploadId: id, bytes: bytes).result;
+  /// ```
+  KoolbaseUploadTask resumeUpload({
+    required String bucket,
+    required String uploadId,
+    required List<int> bytes,
+    Map<String, String>? metadata,
+    bool overwrite = false,
+  }) =>
+      runUploadTask(bytes.length, (step) => _runInParts(step, bucket,
+          bytes: bytes, metadata: metadata, overwrite: overwrite, resumeId: uploadId));
+
+  Future<UploadResult> _runInParts(
+    KoolbaseUploadTaskControl step,
+    String bucket, {
+    String? path,
+    required List<int> bytes,
+    String? contentType,
+    Map<String, String>? metadata,
+    required bool overwrite,
+    String? resumeId,
+  }) async {
+    final base = '$baseUrl/v1/sdk/storage/uploads';
+    final KoolbaseMultipartPlan plan;
+    if (resumeId != null) {
+      final res = await koolbaseHttp
+          .get(Uri.parse(base).replace(queryParameters: {'bucket': bucket, 'upload_id': resumeId}), headers: await _headers())
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) {
+        throw await _error(res, fallbackMessage: 'Failed to resume the upload');
+      }
+      plan = KoolbaseMultipartPlan.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+      if (plan.size != bytes.length) {
+        throw KoolbaseStorageValidationException(
+            'This is not the file the upload began with: it has ${bytes.length} bytes, the upload ${plan.size}');
+      }
+    } else {
+      final res = await koolbaseHttp
+          .post(Uri.parse(base),
+              headers: await _headers(),
+              body: jsonEncode({
+                'bucket': bucket,
+                'path': path,
+                'content_type': contentType,
+                'size': bytes.length,
+                'overwrite': overwrite,
+              }))
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode != 201) {
+        throw await _error(res, fallbackMessage: 'Failed to begin the upload');
+      }
+      plan = KoolbaseMultipartPlan.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    }
+    step.begun(plan.uploadId);
+    step.checkCancelled();
+
+    try {
+      await koolbaseSendParts(step, plan, bytes, (parts) async {
+        final res = await koolbaseHttp
+            .post(Uri.parse('$base/parts'),
+                headers: await _headers(),
+                body: jsonEncode({'bucket': bucket, 'upload_id': plan.uploadId, 'parts': parts}))
+            .timeout(const Duration(seconds: 15));
+        if (res.statusCode != 200) {
+          throw await _error(res, fallbackMessage: 'Failed to get upload links');
+        }
+        final links = (jsonDecode(res.body) as Map<String, dynamic>)['links'] as Map<String, dynamic>;
+        return {for (final e in links.entries) int.parse(e.key): e.value as String};
+      });
+    } catch (_) {
+      // A failure keeps the parts that arrived, for a resume; a cancel
+      // abandons the upload.
+      if (step.cancelled) {
+        try {
+          await koolbaseHttp
+              .delete(Uri.parse(base),
+                  headers: await _headers(), body: jsonEncode({'bucket': bucket, 'upload_id': plan.uploadId}))
+              .timeout(const Duration(seconds: 15));
+        } catch (_) {
+          // The reaper abandons it within a day.
+        }
+        throw const KoolbaseUploadCancelledException();
+      }
+      rethrow;
+    }
+
+    // The parts have arrived: the server joins and checks them. No longer
+    // cancellable.
+    step.verifying();
+    final done = await koolbaseHttp
+        .post(Uri.parse('$base/complete'),
+            headers: await _headers(),
+            body: jsonEncode({
+              'bucket': bucket,
+              'upload_id': plan.uploadId,
+              'overwrite': overwrite,
+              if (metadata != null) 'metadata': metadata,
+            }))
+        .timeout(const Duration(seconds: 120));
+    if (done.statusCode != 201) {
+      throw await _error(done, fallbackMessage: 'Failed to complete the upload');
+    }
+    final object = KoolbaseObject.fromJson(jsonDecode(done.body) as Map<String, dynamic>);
+    final downloadUrl = await getDownloadUrl(bucket: bucket, path: object.path);
+    return UploadResult(object: object, downloadUrl: downloadUrl, bucket: bucket);
+  }
+
+  /// Download a file's bytes, reporting them as they arrive (S3):
+  /// [onProgress] gets the bytes received and the total, null when the size
+  /// is not known.
+  Future<Uint8List> downloadBytes({
+    required String bucket,
+    required String path,
+    String? versionId,
+    void Function(int received, int? total)? onProgress,
+  }) async {
+    final url = await getDownloadUrl(bucket: bucket, path: path, versionId: versionId);
+    final client = http.Client();
+    try {
+      final res = await client.send(http.Request('GET', Uri.parse(url))).timeout(const Duration(seconds: 30));
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        await res.stream.drain<void>();
+        throw KoolbaseStorageException('Download failed: ${res.statusCode}', code: 'download_failed');
+      }
+      final total = res.contentLength;
+      final out = BytesBuilder(copy: false);
+      onProgress?.call(0, total);
+      await for (final chunk in res.stream) {
+        out.add(chunk);
+        onProgress?.call(out.length, total);
+      }
+      return out.takeBytes();
+    } on KoolbaseStorageException {
+      rethrow;
+    } catch (e) {
+      throw KoolbaseStorageNetworkException(e.toString());
+    } finally {
+      client.close();
+    }
   }
 
   /// A page of the bucket's files you may view (S1).

@@ -87,12 +87,19 @@ class KoolbaseUploadTask {
   late KoolbaseUploadProgress _current;
   bool _cancelRequested = false;
   http.Client? _transfer;
+  String? _uploadId;
 
   /// Every change of state and every chunk sent, as it happens.
   Stream<KoolbaseUploadProgress> get progress => _controller.stream;
 
   /// Where the upload is now.
   KoolbaseUploadProgress get current => _current;
+
+  /// A large file's upload goes in parts and can be resumed for a day (S3):
+  /// keep this id, and pass it to [KoolbaseStorageClient.resumeUpload] with
+  /// the same bytes after the app restarts or the upload fails. Null for a
+  /// file sent in one piece, and until the upload has begun.
+  String? get uploadId => _uploadId;
 
   /// The uploaded file. Throws [KoolbaseUploadCancelledException] if it was
   /// cancelled, or the error that made it fail.
@@ -169,6 +176,42 @@ class KoolbaseUploadTaskControl {
   }
 
   void uploading(int sent) => _task._emit(KoolbaseUploadState.uploading, sent: sent);
+
+  /// Whether the upload was cancelled.
+  bool get cancelled => _task._cancelled;
+
+  /// Records the id a resume needs.
+  void begun(String uploadId) => _task._uploadId = uploadId;
+
+  /// A client for several transfers at once: a cancel closes it, stopping
+  /// every one. Close it when they are done.
+  http.Client openClient() {
+    checkCancelled();
+    final client = http.Client();
+    _task._transfer = client;
+    return client;
+  }
+
+  /// Lets go of a client from [openClient].
+  void closeClient(http.Client client) {
+    if (identical(_task._transfer, client)) _task._transfer = null;
+    client.close();
+  }
+
+  /// PUTs [bytes] to [url] on [client], reporting each chunk as it is taken;
+  /// returns the status. No content type: a part has none of its own.
+  Future<int> putPart(http.Client client, Uri url, List<int> bytes, void Function(int sent) onSent,
+      {required Duration timeout}) async {
+    checkCancelled();
+    final req = _ProgressRequest(url, bytes, (sent) {
+      if (!_task._cancelled) onSent(sent);
+    }, () => _task._cancelled);
+    final res = await client.send(req).timeout(timeout,
+        onTimeout: () => throw const KoolbaseStorageNetworkException('A part took too long and was stopped'));
+    await res.stream.drain<void>();
+    checkCancelled();
+    return res.statusCode;
+  }
 
   /// Marks the bytes sent: from here the upload cannot be cancelled.
   void verifying() {

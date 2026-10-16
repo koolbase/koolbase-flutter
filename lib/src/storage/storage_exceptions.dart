@@ -313,6 +313,17 @@ class KoolbaseStorageNameHasHistoryException extends KoolbaseStorageException {
   ]) : super(code: 'name_has_history');
 }
 
+/// Completing an upload in parts with parts missing or the wrong size (S3):
+/// resume it, which sends [missing].
+class KoolbaseUploadIncompleteException extends KoolbaseStorageException {
+  final List<int> missing;
+
+  const KoolbaseUploadIncompleteException([
+    super.message = 'The upload is missing parts; resume it',
+    this.missing = const [],
+  ]) : super(code: 'upload_incomplete');
+}
+
 /// Maps a non-2xx storage-layer response to a typed
 /// [KoolbaseStorageException], preferring the server's stable `code` and
 /// falling back to the HTTP status for older or uncoded responses. The
@@ -386,6 +397,12 @@ KoolbaseException koolbaseStorageError(
       );
     case 'name_has_history':
       return KoolbaseStorageNameHasHistoryException(message);
+    case 'upload_incomplete':
+      final parts = (body['details'] as Map<String, dynamic>?)?['missing'] as List?;
+      return KoolbaseUploadIncompleteException(
+        message,
+        [for (final n in parts ?? const []) (n as num).toInt()],
+      );
   }
 
   // ---- status fallback (pre-code servers or uncoded paths) ----

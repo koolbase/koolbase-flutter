@@ -1,3 +1,13 @@
+## 12.28.0
+
+Large uploads in parts, resumable; downloads you can follow (storage S3).
+
+- **A file over 16 MiB goes up in parts** (`KoolbaseStorageClient.multipartThreshold`): three at a time, each to its own link. A part that fails for a passing reason is sent again, up to four times; an expired link is renewed. `upload`, `uploadBytes` and `startUpload` choose this themselves; progress is the bytes of the whole file.
+- **Resume**: a failed upload keeps the parts that arrived. `task.uploadId` (set once it begins) resumes it with `storage.resumeUpload(bucket:, uploadId:, bytes:)`, for a day, sending only what is missing -- after the network returns or the app restarts. Cancelling abandons it.
+- **`storage.downloadBytes(bucket:, path:, onProgress:)`**: a file's bytes, reported as they arrive.
+- **`KoolbaseUploadIncompleteException`** (`missing`). Needs the Koolbase API from October 2026.
+- **Tested**: parts a few at a time, a dropped part retried, an expired link renewed, a failing part failing the upload with its id kept, the resume sending only what is missing, another file refused, a cancel abandoning it, and a download's progress.
+
 ## 12.27.0
 
 Move and copy a file (storage S1b).

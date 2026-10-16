@@ -50,7 +50,7 @@ const apiCodes = <String>{
   'vector_not_found', 'weak_password',
   // Storage, S0/S1.
   'upload_not_found', 'bucket_busy', 'invalid_cursor', 'sign_in_required',
-  'not_allowed', 'file_in_use', 'name_has_history',
+  'not_allowed', 'file_in_use', 'name_has_history', 'upload_incomplete',
 };
 
 // Codes with no server counterpart, each for a checked reason.
@@ -59,6 +59,8 @@ const clientOnly = <String>{
   // problem.
   'network_error', // the request never reached a server
   'upload_cancelled', // the app cancelled its own upload
+  'upload_failed', // storage refused a part; not a server code
+  'download_failed', // storage refused a download; not a server code
   'conflict_not_found', // the local write queue has no such conflict
   'project_identity_unavailable', // bootstrap has not completed
   'offline_baseline_unavailable',
@@ -183,6 +185,8 @@ final exceptions = <KoolbaseException>[
   // Storage, S1b.
   const KoolbaseStorageFileInUseException(),
   const KoolbaseStorageNameHasHistoryException(),
+  // Storage, S3.
+  const KoolbaseUploadIncompleteException(),
 ];
 
 void main() {
