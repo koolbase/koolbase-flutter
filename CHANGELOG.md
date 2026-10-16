@@ -1,3 +1,13 @@
+## 12.31.0
+
+Several uploads in a queue (storage S4).
+
+- **`KoolbaseUploadQueue`**: `add([KoolbaseQueueFile(bucket:, path:, bytes:)])` returns ids; `items` (each with its own `status`, `progress` and `error`), `progress`, `running`, `done`, `failed`; `cancel(id)`, `cancelAll()`, `retry(id)`, `clearFinished()`, `whenIdle()`. A `ChangeNotifier`, for an upload list with a row per file.
+- Three at a time unless set, in the order added; each file is its own upload task, so a large one still goes in parts.
+- A queued file cancelled never starts; one uploading stops; once verifying it lands or fails on its own. A failed or cancelled file can be tried again, from the start. A failure never stops the others.
+- `progress` is the files' average, a cancelled one left out.
+- **Tested**: order and three at a time, each state, a failure and its retry, the three cancels, the average, `cancelAll`, `whenIdle`, `clearFinished`, nothing after dispose.
+
 ## 12.30.0
 
 One file's details (storage S4).

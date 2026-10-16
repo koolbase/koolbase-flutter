@@ -26,6 +26,7 @@ export 'src/storage/storage_transfer.dart'
     show KoolbaseUploadState, KoolbaseUploadProgress, KoolbaseUploadTask;
 export 'src/storage/storage_multipart.dart' show KoolbaseMultipartPlan, koolbasePartRetryDelay;
 export 'src/storage/storage_files.dart' show KoolbaseFileSort, KoolbaseFileInfo, KoolbaseFilePage;
+export 'src/storage/upload_queue.dart';
 export 'src/code_push/code_push_client.dart' show KoolbaseCodePushClient;
 export 'src/code_push/patch_client.dart' show KoolbaseVmPatchClient;
 export 'src/widgets/auth_gate.dart';
