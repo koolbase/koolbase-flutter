@@ -16,7 +16,9 @@ import 'package:flutter/foundation.dart';
 
 import '../koolbase.dart';
 import '../widgets/collection_list.dart' show KoolbaseListStatus;
+import '../widgets/record_view.dart' show KoolbaseRecordStatus;
 import 'storage_client.dart';
+import 'storage_exceptions.dart';
 import 'storage_files.dart';
 
 final _refreshers = <int, ({String bucket, Future<void> Function() reload})>{};
@@ -198,6 +200,121 @@ class KoolbaseFilesController extends ChangeNotifier {
     _disposed = true;
     final id = _refresher;
     if (id != null) _refreshers.remove(id);
+    super.dispose();
+  }
+}
+
+/// The data half of [KoolbaseFileView]: one file's details, by path
+/// (storage S4). The one-file twin of [KoolbaseFilesController], with the
+/// record view's rules:
+///
+///  * an empty path is notFound, with no request
+///  * not found is not an error: the API answers a file you may not view
+///    as not found too, so a detail screen says "not available"
+///  * stale beats blank: a failed refresh keeps the file shown
+///  * a change made through this SDK in the bucket -- an upload, a delete,
+///    a move, a metadata change, a restore -- reads it again silently: a
+///    deleted or moved file is notFound, a replaced one shows its new size
+///  * an answer a later load superseded, or one landing after dispose, is
+///    dropped
+class KoolbaseFileController extends ChangeNotifier {
+  KoolbaseFileController({
+    required this.bucket,
+    required this.path,
+    KoolbaseStorageClient? storage,
+  }) : _storage = storage;
+
+  /// The bucket the file is in.
+  final String bucket;
+
+  /// The file's path in [bucket]. Empty means none was given.
+  final String path;
+
+  final KoolbaseStorageClient? _storage;
+
+  KoolbaseRecordStatus _status = KoolbaseRecordStatus.loading;
+  KoolbaseFileInfo? _file;
+  Object? _error;
+  bool _refreshing = false;
+  int _generation = 0;
+  int? _refresher;
+  bool _disposed = false;
+
+  KoolbaseRecordStatus get status => _status;
+
+  /// The file's details, while [status] is loaded.
+  KoolbaseFileInfo? get file => _file;
+
+  /// Why the first load failed, while [status] is error.
+  Object? get error => _error;
+
+  /// True while [refresh] runs.
+  bool get refreshing => _refreshing;
+
+  KoolbaseStorageClient get _client => _storage ?? Koolbase.storage;
+
+  /// The first load. Call once; [refresh] for later loads.
+  Future<void> load() async {
+    if (_disposed) return;
+    if (path.isNotEmpty) {
+      final id = _refresher ??= _nextRefresher++;
+      _refreshers[id] = (bucket: bucket, reload: _run);
+    }
+    await _run();
+  }
+
+  /// Read it again. The file stays shown while it runs, and stays if it
+  /// fails.
+  Future<void> refresh() async {
+    if (_disposed) return;
+    _refreshing = true;
+    notifyListeners();
+    await _run();
+  }
+
+  Future<void> _run() async {
+    if (_disposed) return;
+    final gen = ++_generation;
+    if (path.isEmpty) {
+      _show(KoolbaseRecordStatus.notFound, null, null);
+      return;
+    }
+    try {
+      final file = await _client.getFileInfo(bucket: bucket, path: path);
+      if (_stale(gen)) return;
+      _show(KoolbaseRecordStatus.loaded, file, null);
+    } on KoolbaseStorageNotFoundException {
+      if (_stale(gen)) return;
+      _show(KoolbaseRecordStatus.notFound, null, null);
+    } catch (e) {
+      if (_stale(gen)) return;
+      // Only a first load with nothing to show is the error state.
+      if (_file == null) {
+        _show(KoolbaseRecordStatus.error, null, e);
+      } else {
+        _refreshing = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void _show(KoolbaseRecordStatus status, KoolbaseFileInfo? file, Object? error) {
+    if (_disposed) return;
+    _status = status;
+    _file = file;
+    _error = error;
+    _refreshing = false;
+    notifyListeners();
+  }
+
+  bool _stale(int gen) => _disposed || gen != _generation;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    final id = _refresher;
+    if (id != null) _refreshers.remove(id);
+    _refresher = null;
     super.dispose();
   }
 }

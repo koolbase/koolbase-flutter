@@ -33,5 +33,6 @@ export 'src/widgets/collection_list.dart';
 export 'src/widgets/record_view.dart';
 export 'src/widgets/collection_grid.dart';
 export 'src/widgets/file_list.dart';
-export 'src/storage/files_controller.dart' show KoolbaseFilesController;
+export 'src/widgets/file_view.dart';
+export 'src/storage/files_controller.dart' show KoolbaseFilesController, KoolbaseFileController;
 export 'src/koolbase_error.dart';

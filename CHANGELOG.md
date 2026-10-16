@@ -1,3 +1,13 @@
+## 12.30.0
+
+One file's details (storage S4).
+
+- **`KoolbaseFileView(bucket:, path:, builder:)`**: one file's details -- name, size, type, dates, who uploaded it, its permanent link while the bucket is public -- for a file detail screen. `loading`, `notFound` and `error` (with a retry) are slotted, as on `KoolbaseRecordView`. Its data half is **`KoolbaseFileController`**.
+- An empty path is not found, with no request. Not found is not an error: a file you may not view is answered as not found too.
+- **Shows changes by itself**: after an upload, delete, move, metadata change or restore made through the SDK in its bucket, the file is read again -- deleted or moved away, it is not found; replaced, it shows its new size.
+- Stale beats blank: a failed refresh keeps the file shown; an answer a later load superseded is dropped.
+- **Tested**: the request, not found, a failed first load and a failed refresh, a late answer, the reloads (and none after dispose), and the widget's loading, file, not found and error with its retry.
+
 ## 12.29.1
 
 - **A file's path is encoded** in the address of `getDownloadUrl`, `listVersions`, `getVersion`, `restoreVersion` and `purgeVersion`. A name with "&", "#", "+" or "%" in it -- "Q&A.pdf", "C#.txt", "1+1.png" -- asked for a different file or none.
