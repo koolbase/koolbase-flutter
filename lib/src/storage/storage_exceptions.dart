@@ -313,6 +313,30 @@ class KoolbaseStorageNameHasHistoryException extends KoolbaseStorageException {
   ]) : super(code: 'name_has_history');
 }
 
+/// An upload refused because malware was found in it (storage S6). Nothing
+/// of it was kept; [message] names what was found. Tell the person the file
+/// cannot be uploaded; trying again with the same file will be refused
+/// again.
+class KoolbaseStorageMalwareException extends KoolbaseStorageException {
+  const KoolbaseStorageMalwareException([
+    super.message = 'This file contains malware and was not uploaded',
+  ]) : super(code: 'malware_found');
+
+  @override
+  String toString() => 'KoolbaseStorageMalwareException: $message';
+}
+
+/// A file found to contain malware after it was stored (storage S6): it is
+/// quarantined, and no link to it is given. The server answers 423.
+class KoolbaseStorageQuarantinedException extends KoolbaseStorageException {
+  const KoolbaseStorageQuarantinedException([
+    super.message = 'This file is quarantined: malware was found in it',
+  ]) : super(code: 'quarantined');
+
+  @override
+  String toString() => 'KoolbaseStorageQuarantinedException: $message';
+}
+
 /// Completing an upload in parts with parts missing or the wrong size (S3):
 /// resume it, which sends [missing].
 class KoolbaseUploadIncompleteException extends KoolbaseStorageException {
@@ -397,6 +421,10 @@ KoolbaseException koolbaseStorageError(
       );
     case 'name_has_history':
       return KoolbaseStorageNameHasHistoryException(message);
+    case 'malware_found':
+      return KoolbaseStorageMalwareException(message);
+    case 'quarantined':
+      return KoolbaseStorageQuarantinedException(message);
     case 'upload_incomplete':
       final parts = (body['details'] as Map<String, dynamic>?)?['missing'] as List?;
       return KoolbaseUploadIncompleteException(
@@ -413,6 +441,8 @@ KoolbaseException koolbaseStorageError(
       return KoolbaseStorageFileTooLargeException(message);
     case 415:
       return KoolbaseStorageMimeTypeException(message);
+    case 423:
+      return KoolbaseStorageQuarantinedException(message);
     case 404:
       return KoolbaseStorageNotFoundException(message);
     case 401:

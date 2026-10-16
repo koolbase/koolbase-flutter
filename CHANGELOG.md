@@ -1,3 +1,12 @@
+## 12.32.0
+
+Malware scanning (storage S6) and declared-field codes (#116, #117).
+
+- **`KoolbaseStorageMalwareException`** (`malware_found`): an upload refused because malware was found in it. Nothing of it was kept; the message names what was found.
+- **`KoolbaseStorageQuarantinedException`** (`quarantined`, 423): a file found to contain malware after it was stored. No link is given for it.
+- **`KoolbaseFieldProblem.code`** may also be `too_small` or `too_large` (a number outside its declared minimum or maximum) and `user` (a user field given something that is not a user's id).
+- **Tested**: both codes map to their exceptions, and 423 without a code to quarantined.
+
 ## 12.31.0
 
 Several uploads in a queue (storage S4).

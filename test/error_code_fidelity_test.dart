@@ -51,6 +51,8 @@ const apiCodes = <String>{
   // Storage, S0/S1.
   'upload_not_found', 'bucket_busy', 'invalid_cursor', 'sign_in_required',
   'not_allowed', 'file_in_use', 'name_has_history', 'upload_incomplete',
+  // Storage, S6.
+  'malware_found', 'quarantined',
 };
 
 // Codes with no server counterpart, each for a checked reason.
@@ -187,6 +189,9 @@ final exceptions = <KoolbaseException>[
   const KoolbaseStorageNameHasHistoryException(),
   // Storage, S3.
   const KoolbaseUploadIncompleteException(),
+  // Storage, S6.
+  const KoolbaseStorageMalwareException(),
+  const KoolbaseStorageQuarantinedException(),
 ];
 
 void main() {

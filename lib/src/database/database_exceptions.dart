@@ -133,9 +133,10 @@ class KoolbaseFieldProblem {
   final String field;
 
   /// What was wrong, stable, for an app to put in its own words:
-  /// `required`, `not_declared`, or what the field expects -- `text`,
+  /// `required`, `not_declared`, `too_small` or `too_large` (a number
+  /// outside its minimum or maximum), or what the field expects -- `text`,
   /// `number`, `whole_number`, `boolean`, `date`, `datetime`, `choice`,
-  /// `file`. Empty from a server that does not send one yet.
+  /// `file`, `user`. Empty from a server that does not send one yet.
   final String code;
 
   /// The same, in English, for developers. Never show it to people.
