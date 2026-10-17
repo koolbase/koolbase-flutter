@@ -77,6 +77,24 @@ void main() {
       );
     });
 
+    test('a preset: the named-preset URL, the transform not used', () {
+      final c = client(pid: 'proj-123');
+      expect(
+        c.publicUrlFor(
+          bucket: 'posters',
+          path: 'neon night #1.png',
+          preset: 'card',
+          transform: const KoolbaseImageTransform(width: 100),
+        ),
+        'https://cdn.koolbase.com/p/proj-123/card/posters/neon%20night%20%231.png',
+      );
+      expect(
+        c.publicUrlFor(bucket: 'posters', path: 'a.png', preset: ''),
+        'https://cdn.koolbase.com/proj-123/posters/a.png',
+        reason: 'an empty preset is none',
+      );
+    });
+
     test('transform passes through to the URL', () {
       final c = client(pid: 'proj-123');
       final url = c.publicUrlFor(

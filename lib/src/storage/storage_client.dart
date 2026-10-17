@@ -594,15 +594,28 @@ class KoolbaseStorageClient {
   /// connectivity returns. This is a DIFFERENT state from a null public
   /// URL on [KoolbaseObject.publicUrl]: null means the project is known
   /// and the object simply has no public URL (private bucket).
+  ///
+  /// [preset] names one of the project's image presets (Storage → Presets):
+  /// the URL is then the named-preset form ([publicUrlWithPreset]), sized at
+  /// the edge as the preset says, and [transform] is not used.
   String publicUrlFor({
     required String bucket,
     required String path,
     KoolbaseImageTransform? transform,
+    String? preset,
   }) {
     final pid = _projectIdProvider?.call() ?? '';
     if (pid.isEmpty) {
       _nudgeBootstrap?.call();
       throw const KoolbaseStorageProjectIdentityException();
+    }
+    if (preset != null && preset.isNotEmpty) {
+      return publicUrlWithPreset(
+        projectId: pid,
+        presetName: preset,
+        bucket: bucket,
+        path: path,
+      );
     }
     return publicUrl(
       projectId: pid,

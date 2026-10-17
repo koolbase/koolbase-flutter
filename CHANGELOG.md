@@ -1,3 +1,10 @@
+## 12.33.0
+
+Image presets for stored files (#146).
+
+- **`publicUrlFor(..., preset:)`**: names one of the project's image presets (Storage → Presets). The URL is the named-preset form, `cdn.koolbase.com/p/{project}/{preset}/{bucket}/{path}`, sized at the edge as the preset says; a transform is not used with it. Public buckets only, as presets are.
+- **Tested**: the preset URL with an encoded path, and an empty preset as none.
+
 ## 12.32.0
 
 Malware scanning (storage S6) and declared-field codes (#116, #117).
