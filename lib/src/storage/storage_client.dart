@@ -559,10 +559,17 @@ class KoolbaseStorageClient {
   /// current-version URL is a CDN URL (long-lived, embeddable); history
   /// versions always return a presigned URL since the .versions/ prefix
   /// isn't routed through the CDN.
+  ///
+  /// [preset] names one of the project's image presets (Storage → Presets):
+  /// an image's current version is then given sized as the preset says --
+  /// a private bucket's as a signed, hour-long address -- after the same
+  /// rules decide whether this person may see it. Anything not an image is
+  /// given as it is.
   Future<String> getDownloadUrl({
     required String bucket,
     required String path,
     String? versionId,
+    String? preset,
   }) async {
     final res = await koolbaseHttp
         .get(
@@ -570,6 +577,7 @@ class KoolbaseStorageClient {
             'bucket': bucket,
             'path': path,
             if (versionId != null) 'version_id': versionId,
+            if (preset != null && preset.isNotEmpty) 'preset': preset,
           }),
           headers: await _headers(),
         )

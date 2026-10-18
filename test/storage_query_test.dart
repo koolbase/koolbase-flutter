@@ -41,6 +41,15 @@ void main() {
     expect(seen[1].url.queryParameters, {'bucket': 'docs', 'path': path, 'version_id': versionId});
   });
 
+  test('getDownloadUrl names a preset when given one, none when empty', () async {
+    final seen = await calls((s) async {
+      await s.getDownloadUrl(bucket: 'vault', path: path, preset: 'card');
+      await s.getDownloadUrl(bucket: 'vault', path: path, preset: '');
+    });
+    expect(seen[0].url.queryParameters, {'bucket': 'vault', 'path': path, 'preset': 'card'});
+    expect(seen[1].url.queryParameters, {'bucket': 'vault', 'path': path});
+  });
+
   test('the version requests send the path as it is, the version id as one segment', () async {
     final seen = await calls((s) async {
       await s.listVersions(bucket: 'docs', path: path);
