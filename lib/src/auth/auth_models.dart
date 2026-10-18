@@ -10,6 +10,13 @@ class KoolbaseUser {
   final bool disabled;
   final DateTime? lastLoginAt;
   final Map<String, dynamic>? metadata;
+
+  /// The trusted claims this user may read about themselves -- a role, an
+  /// organisation -- as the project's owner set them: only the keys whose
+  /// definition is readable by the user. Null when there are none. Set by
+  /// the server, never by the app; a changed role arrives on the next
+  /// refresh or [KoolbaseAuthClient.getCurrentUser].
+  final Map<String, dynamic>? claims;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -25,6 +32,7 @@ class KoolbaseUser {
     required this.disabled,
     this.lastLoginAt,
     this.metadata,
+    this.claims,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -46,6 +54,9 @@ class KoolbaseUser {
       metadata: json['metadata'] != null
           ? Map<String, dynamic>.from(json['metadata'] as Map)
           : null,
+      claims: json['claims'] is Map
+          ? Map<String, dynamic>.from(json['claims'] as Map)
+          : null,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -63,9 +74,13 @@ class KoolbaseUser {
         'disabled': disabled,
         'last_login_at': lastLoginAt?.toIso8601String(),
         'metadata': metadata,
+        if (claims != null) 'claims': claims,
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),
       };
+
+  /// One of [claims], or null: `user.claim('role') == 'organiser'`.
+  Object? claim(String key) => claims?[key];
 
   KoolbaseUser copyWith({
     String? fullName,
@@ -87,6 +102,7 @@ class KoolbaseUser {
       disabled: disabled,
       lastLoginAt: lastLoginAt,
       metadata: metadata ?? this.metadata,
+      claims: claims,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
     );

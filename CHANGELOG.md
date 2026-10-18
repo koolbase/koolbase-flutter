@@ -1,3 +1,10 @@
+## 12.35.0
+
+The signed-in user's claims (#155b).
+
+- **`KoolbaseUser.claims`** and **`claim(key)`**: the trusted claims this user may read about themselves -- a role, an organisation -- only the keys the project's owner made readable by the user (Auth -> Claims -> a definition's "Readable by the user"). Null when there are none. On every session and on `getCurrentUser()`; a changed role arrives on the next refresh. Kept with the persisted session.
+- **Tested**: read from the server's user, kept through `toJson`, absent when there are none.
+
 ## 12.34.0
 
 Presets for private buckets (#146).
