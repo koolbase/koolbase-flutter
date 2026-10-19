@@ -396,6 +396,44 @@ class KoolbaseInvalidEmbeddingConfigException extends KoolbaseDataException {
   ]) : super(code: 'invalid_embedding_config');
 }
 
+/// The vector field is filled by automatic embedding: Koolbase makes its
+/// vectors from the record's fields, so the app cannot write one, delete one,
+/// or send text for it (a 409, `auto_embedding_managed`). Write the record's
+/// fields instead; the vector follows.
+class KoolbaseAutoEmbeddingManagedException extends KoolbaseDataException {
+  const KoolbaseAutoEmbeddingManagedException([
+    super.message =
+        'This vector field is managed by automatic embedding and cannot be '
+            'written manually.',
+  ]) : super(code: 'auto_embedding_managed');
+}
+
+/// A change to a vector field's embedding would embed the collection again,
+/// and was not confirmed (a 409, `reembed_confirmation_required`). [estimate]
+/// says what it would cost -- records, records_to_embed,
+/// estimated_input_tokens, provider, model, dimensions, billed_by -- as the
+/// server sent it; send the change again with `confirm_reembed: true` to
+/// make it.
+class KoolbaseReembedConfirmationRequiredException
+    extends KoolbaseDataException {
+  const KoolbaseReembedConfirmationRequiredException([
+    super.message =
+        'This change embeds every record again; confirm it with confirm_reembed',
+    this.estimate,
+  ]) : super(code: 'reembed_confirmation_required');
+
+  final Map<String, dynamic>? estimate;
+}
+
+/// The embedding model is not one Koolbase offers, has been shut down by its
+/// provider, or cannot store vectors of that size (a 400,
+/// `embedding_model_unsupported`).
+class KoolbaseEmbeddingModelUnsupportedException extends KoolbaseDataException {
+  const KoolbaseEmbeddingModelUnsupportedException([
+    super.message = 'Embedding model not offered',
+  ]) : super(code: 'embedding_model_unsupported');
+}
+
 /// The project has no embedding provider configured.
 class KoolbaseProviderNotConfiguredException extends KoolbaseDataException {
   const KoolbaseProviderNotConfiguredException([
@@ -552,6 +590,14 @@ KoolbaseException koolbaseDataError(
       return KoolbaseFieldNotAutoEmbedException(message);
     case 'invalid_embedding_config':
       return KoolbaseInvalidEmbeddingConfigException(message);
+    case 'auto_embedding_managed':
+      return KoolbaseAutoEmbeddingManagedException(message);
+    case 'reembed_confirmation_required':
+      return KoolbaseReembedConfirmationRequiredException(message, details);
+    case 'embedding_model_unsupported':
+      return KoolbaseEmbeddingModelUnsupportedException(message);
+    case 'placement_unavailable':
+      return KoolbaseServiceUnavailableException(message);
     case 'provider_not_configured':
       return KoolbaseProviderNotConfiguredException(message);
     case 'provider_invalid':

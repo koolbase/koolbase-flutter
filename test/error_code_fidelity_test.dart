@@ -53,6 +53,9 @@ const apiCodes = <String>{
   'not_allowed', 'file_in_use', 'name_has_history', 'upload_incomplete',
   // Storage, S6.
   'malware_found', 'quarantined',
+  // #161, #162.
+  'placement_unavailable', 'auto_embedding_managed', 'reembed_confirmation_required',
+  'embedding_model_unsupported',
 };
 
 // Codes with no server counterpart, each for a checked reason.
@@ -192,6 +195,11 @@ final exceptions = <KoolbaseException>[
   // Storage, S6.
   const KoolbaseStorageMalwareException(),
   const KoolbaseStorageQuarantinedException(),
+  // #161, #162.
+  const KoolbaseServiceUnavailableException(),
+  const KoolbaseAutoEmbeddingManagedException(),
+  const KoolbaseReembedConfirmationRequiredException(),
+  const KoolbaseEmbeddingModelUnsupportedException(),
 ];
 
 void main() {

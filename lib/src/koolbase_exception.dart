@@ -55,6 +55,23 @@ class KoolbaseUnauthenticatedException extends KoolbaseException {
   });
 }
 
+/// The project's database could not be reached just now, or which database it
+/// is could not be established (a 503, `placement_unavailable`). Koolbase never
+/// answers from another database in its place, so nothing was read or
+/// written: try again shortly.
+///
+/// Shared: any request to the project -- a query, an upload, a sign-in -- can
+/// meet it.
+class KoolbaseServiceUnavailableException extends KoolbaseException {
+  const KoolbaseServiceUnavailableException([
+    super.message =
+        "This project's database is temporarily unavailable. Please try again.",
+  ]) : super(code: 'placement_unavailable');
+
+  /// Always: the same request may succeed in a moment.
+  bool get retryable => true;
+}
+
 /// The project's plan does not allow this — a 402 carrying which resource,
 /// the limit, and the plan.
 ///

@@ -1,3 +1,14 @@
+## 12.39.0
+
+Errors the API added in #161 and #162 arrive as their own exceptions, not generic ones. Same contract as @koolbase/* 12.29.0.
+
+- **`KoolbaseServiceUnavailableException`** (`placement_unavailable`, 503): the project's database could not be reached just now; nothing was read or written. `retryable` is true. Any request can meet it: a query, an upload, a sign-in.
+- **`KoolbaseAutoEmbeddingManagedException`** (`auto_embedding_managed`, 409): the vector field is filled by automatic embedding, so `setVector`, `deleteVector` and text sent for it are refused. Write the record's fields; the vector follows.
+- **`KoolbaseReembedConfirmationRequiredException`** (`reembed_confirmation_required`, 409): a change to a field's embedding would embed the collection again. `estimate` carries the records, estimated input tokens, provider, model and who is billed; send the change again with `confirm_reembed: true` to make it.
+- **`KoolbaseEmbeddingModelUnsupportedException`** (`embedding_model_unsupported`, 400): a model Koolbase does not offer, one shut down by its provider, or a size it cannot store.
+- **Behaviour change**: a `placement_unavailable` 503 used to arrive as a generic `KoolbaseDataException` or `KoolbaseStorageException`. It is now the shared `KoolbaseServiceUnavailableException` (like `KoolbasePlanLimitException`), so `on KoolbaseDataException` no longer catches it; catch `KoolbaseException` for every SDK failure.
+- **Tested**: each code maps to its exception and reports itself, in the database, storage and auth mappings; the estimate rides along.
+
 ## 12.38.0
 
 A search the server cannot run never replaces the list (#160).

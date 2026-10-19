@@ -146,4 +146,42 @@ void main() {
       }
     });
   });
+
+  // #161, #162: the codes the API added, each its own exception.
+  group('embedding and availability codes', () {
+    test('each maps to its exception and reports itself', () {
+      final cases = <String, Matcher>{
+        'auto_embedding_managed': isA<KoolbaseAutoEmbeddingManagedException>(),
+        'reembed_confirmation_required': isA<KoolbaseReembedConfirmationRequiredException>(),
+        'embedding_model_unsupported': isA<KoolbaseEmbeddingModelUnsupportedException>(),
+        'placement_unavailable': isA<KoolbaseServiceUnavailableException>(),
+      };
+      for (final MapEntry(key: code, value: matcher) in cases.entries) {
+        final err = koolbaseDataError(400, {'code': code, 'error': 'server message'});
+        expect(err, matcher, reason: code);
+        expect(err.code, code, reason: code);
+        expect(err.message, 'server message', reason: code);
+      }
+    });
+
+    test('a re-embed refusal carries its estimate', () {
+      final estimate = {
+        'records': 2400, 'records_to_embed': 2000, 'estimated_input_tokens': 51000,
+        'provider': 'openai', 'model': 'text-embedding-3-large', 'dimensions': 1536,
+        'billed_by': 'your_provider', 'estimate': true, 'cache_may_apply': false, 'sampled_records': 500,
+      };
+      final err = koolbaseDataError(409, {
+        'code': 'reembed_confirmation_required',
+        'error': 'confirm',
+        'details': estimate,
+      }) as KoolbaseReembedConfirmationRequiredException;
+      expect(err.estimate, estimate);
+    });
+
+    test('a database that cannot be reached is worth retrying, from storage too', () {
+      final err = koolbaseStorageError(503, {'code': 'placement_unavailable', 'error': 'try again'});
+      expect(err, isA<KoolbaseServiceUnavailableException>());
+      expect((err as KoolbaseServiceUnavailableException).retryable, isTrue);
+    });
+  });
 }

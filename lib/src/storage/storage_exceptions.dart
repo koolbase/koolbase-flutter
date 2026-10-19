@@ -379,6 +379,8 @@ KoolbaseException koolbaseStorageError(
       );
     case 'quota_exceeded':
       return KoolbaseStorageQuotaExceededException(message);
+    case 'placement_unavailable':
+      return KoolbaseServiceUnavailableException(message);
     case 'plan_limit_reached':
       final details = body['details'] as Map<String, dynamic>?;
       return KoolbasePlanLimitException(

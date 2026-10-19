@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'auth_models.dart';
 import 'auth_exceptions.dart';
+import '../koolbase_exception.dart' show KoolbaseServiceUnavailableException;
 import 'device_metadata.dart';
 
 class AuthApi {
@@ -536,6 +537,10 @@ class AuthApi {
         throw const WeakPasswordException();
       case 'email_in_use':
         throw const EmailAlreadyInUseException();
+      case 'placement_unavailable':
+        throw msg.isEmpty
+            ? const KoolbaseServiceUnavailableException()
+            : KoolbaseServiceUnavailableException(msg);
       case 'account_disabled':
         throw const UserDisabledException();
       case 'contact_not_verified':

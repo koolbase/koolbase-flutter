@@ -90,4 +90,15 @@ void main() {
       });
     }
   });
+
+  // #161: shared, not an auth failure -- so not in the table above, whose
+  // second test catches KoolbaseAuthException.
+  test('placement_unavailable at sign-in is the shared, retryable exception', () async {
+    final api = apiAnswering('placement_unavailable');
+    await expectLater(
+      api.login(email: 'a@b.test', password: 'password123'),
+      throwsA(isA<KoolbaseServiceUnavailableException>()
+          .having((e) => e.code, 'code', 'placement_unavailable')),
+    );
+  });
 }

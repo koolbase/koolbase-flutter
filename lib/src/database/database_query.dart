@@ -928,7 +928,9 @@ class KoolbaseDocRef {
   ///
   /// Throws [KoolbaseNotFoundException] if the record or vector field
   /// does not exist; throws [KoolbasePermissionException] if the caller
-  /// is not allowed to write this record per the collection's write rule.
+  /// is not allowed to write this record per the collection's write rule;
+  /// throws [KoolbaseAutoEmbeddingManagedException] if Koolbase embeds the
+  /// field itself -- write the record's fields instead.
   Future<void> setVector(String field, List<double> vector) async {
     final res = await _client
         .post(
