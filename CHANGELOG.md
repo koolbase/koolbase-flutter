@@ -1,3 +1,11 @@
+## 12.38.0
+
+A search the server cannot run never replaces the list (#160).
+
+- **`KoolbaseCollectionList(search:)`**: when the server cannot answer the search (offline, say), the list shows `visible`'s matches among the records loaded under a line saying so, with a retry -- no longer the error slot in place of the list. When it refuses the search (a `field_search` it will not take, as when the collection's fields changed since the app was built), or the search is wider than it takes (a Choice matching more than 100 values, text over 100 characters), the list is read unsearched and `visible` filters it, under a line saying so; the server is not asked again while the list lives.
+- **`KoolbaseCollectionController.searchLoadedOnly`**: true while the search is not run on the server, so `records` are the list unsearched for the app to filter.
+- **Tested**: refused -- the list unsearched and not asked again, on a search and a first load; too wide -- not sent, a narrower one is; the widget's line and retry, never the error slot.
+
 ## 12.37.0
 
 Search on the server (#160).

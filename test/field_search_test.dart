@@ -40,6 +40,8 @@ class _Server {
   final asked = <({String? text, int offset})>[];
   final hold = <String, Completer<void>>{};
   Object? failWith;
+  // Every read fails: offline.
+  Object? failAll;
 }
 
 class _Query extends KoolbaseQuery {
@@ -62,6 +64,7 @@ class _Query extends KoolbaseQuery {
     server.asked.add((text: s?.text, offset: _at));
     final held = s == null ? null : server.hold[s.text];
     if (held != null) await held.future;
+    if (server.failAll != null) throw server.failAll!;
     if (s != null && server.failWith != null) throw server.failWith!;
     final rows = s == null
         ? server.all
@@ -197,6 +200,98 @@ void main() {
       expect(c.searchError, isNotNull);
     });
 
+    test('refused by the server: the list unsearched for the app to filter; not asked again', () async {
+      await c.load();
+      server.failWith = const KoolbaseValidationException(
+        'field_search: choice "stage": listed must be its declared values, draft, in_progress, done',
+      );
+      c.setSearch(_food);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(c.searchLoadedOnly, isTrue);
+      expect(c.searchError, isNull);
+      expect(c.searching, isFalse);
+      expect(c.records.map((r) => r.id), ['1', '2'], reason: 'the list, unsearched');
+      final searched = server.asked.where((a) => a.text != null).length;
+      expect(searched, 1);
+      c.setSearch(const KoolbaseFieldSearch(text: 'night', fields: ['title']));
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(server.asked.where((a) => a.text != null).length, searched, reason: 'not asked again');
+      expect(c.searchLoadedOnly, isTrue);
+      c.setSearch(null);
+      expect(c.searchLoadedOnly, isFalse);
+    });
+
+    test('refused on the first load: read unsearched at once', () async {
+      server.failWith = const KoolbaseValidationException('field_search: field "venue" is not declared on this collection');
+      c = KoolbaseCollectionController(
+        collection: 'events',
+        baseQuery: () => _Query(server),
+        search: _food,
+        searchDelay: const Duration(milliseconds: 20),
+      );
+      await c.load();
+      expect(c.status, KoolbaseListStatus.loaded);
+      expect(c.searchLoadedOnly, isTrue);
+      expect(c.records.map((r) => r.id), ['1', '2']);
+    });
+
+    test('wider than the server takes -- a Choice matching over 100 values: not sent; a narrower one is', () async {
+      await c.load();
+      final listed = [for (var i = 0; i < 150; i++) 'v$i'];
+      final wide = KoolbaseFieldSearch(
+        text: 'v',
+        fields: const ['title'],
+        choices: [KoolbaseChoiceSearch(field: 'stage', values: listed.sublist(0, 101), listed: listed)],
+      );
+      c.setSearch(wide);
+      expect(c.searchLoadedOnly, isTrue);
+      expect(c.searching, isFalse);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(server.asked.where((a) => a.text != null), isEmpty);
+      c.setSearch(const KoolbaseFieldSearch(text: 'food', fields: ['title']));
+      expect(c.searchLoadedOnly, isFalse);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(c.records.map((r) => r.id), ['2', '4']);
+    });
+
+    test('cleared after a read that failed: the list read again, never a search\'s answer shown as the list', () async {
+      await c.load();
+      c.setSearch(const KoolbaseFieldSearch(text: 'food', fields: ['title']));
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(c.records.map((r) => r.id), ['2', '4']);
+      server.failAll = Exception('offline');
+      final listed = [for (var i = 0; i < 150; i++) 'v$i'];
+      c.setSearch(KoolbaseFieldSearch(
+        text: 'v',
+        fields: const ['title'],
+        choices: [KoolbaseChoiceSearch(field: 'stage', values: listed.sublist(0, 101), listed: listed)],
+      ));
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(c.searchError, isNotNull);
+      server.failAll = null;
+      c.setSearch(null);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(c.records.map((r) => r.id), ['1', '2']);
+      expect(c.searchError, isNull);
+    });
+
+    test('refused on Load more: the list unsearched', () async {
+      c = KoolbaseCollectionController(
+        collection: 'events',
+        baseQuery: () => _Query(server),
+        search: _food,
+        searchDelay: const Duration(milliseconds: 20),
+      );
+      await c.load();
+      expect(c.records.map((r) => r.id), ['2', '4']);
+      server.failWith = const KoolbaseValidationException('field_search: field "title" is not declared on this collection');
+      await c.loadMore();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(c.searchLoadedOnly, isTrue);
+      expect(c.loadingMore, isFalse);
+      expect(c.records.map((r) => r.id), ['1', '2']);
+    });
+
     test('cleared: the list unsearched again; the same search again does nothing', () async {
       c = KoolbaseCollectionController(
         collection: 'events',
@@ -261,6 +356,53 @@ void main() {
     await tester.pump();
     expect(find.text('No events'), findsOneWidget, reason: "the server's answer: none");
     expect(find.byType(LinearProgressIndicator), findsNothing);
+    controller.dispose();
+  });
+
+  testWidgets('a search the server could not answer, or refused: the matches among those loaded, said -- never the error slot', (tester) async {
+    final server = _Server([_rec('1', 'Book swap'), _rec('2', 'Food truck rally')]);
+    final controller = KoolbaseCollectionController(
+      collection: 'events',
+      baseQuery: () => _Query(server),
+      searchDelay: const Duration(milliseconds: 20),
+    );
+    Widget appWith(KoolbaseFieldSearch? s) => MaterialApp(
+          home: Scaffold(
+            body: KoolbaseCollectionList(
+              collection: 'events',
+              controller: controller,
+              search: s,
+              visible: (loaded) => s == null
+                  ? loaded
+                  : [
+                      for (final r in loaded)
+                        if ('${r.data['title']}'.toLowerCase().contains(s.text)) r,
+                    ],
+              error: (_, __, ___) => const Text('Error slot'),
+              itemBuilder: (_, r) => Text('${r.data['title']}'),
+            ),
+          ),
+        );
+    await tester.pumpWidget(appWith(null));
+    await tester.pump();
+    server.failWith = Exception('offline');
+    await tester.pumpWidget(appWith(const KoolbaseFieldSearch(text: 'food', fields: ['title'])));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump();
+    expect(find.text('Food truck rally'), findsOneWidget);
+    expect(find.textContaining("Couldn't search all records."), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Error slot'), findsNothing);
+    // Refused: the same, with nothing to retry.
+    server.failWith = const KoolbaseValidationException('field_search: field "title" is not declared on this collection');
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump();
+    expect(find.text('Food truck rally'), findsOneWidget);
+    expect(find.text('Showing matches among the records loaded.'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
     controller.dispose();
   });
 }
