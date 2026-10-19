@@ -1,3 +1,11 @@
+## 12.36.0
+
+The profile photo as a file.
+
+- **`KoolbaseUser.avatar`** (`KoolbaseAvatarFile`: `bucket`, `path`): where the photo is stored, when it is one of the user's files. Read it like any stored file -- in one of the project's image presets (`getDownloadUrl(..., preset:)`, `publicUrlFor(..., preset:)`), and signed when the bucket is private. Kept with the persisted session.
+- **`updateProfile(avatar:)`**: sets the photo to a file the user uploaded -- the bucket and the path the upload returned. A file someone else uploaded is refused. `avatarUrl` then follows it: a public bucket's permanent link, null for a private one. **`removeAvatar: true`** removes the photo. One of `avatar`, `avatarUrl` or `removeAvatar` at a time; setting `avatarUrl` stops the photo being a file.
+- **Tested**: read and kept, absent when there is none, what updateProfile sends.
+
 ## 12.35.0
 
 The signed-in user's claims (#155b).

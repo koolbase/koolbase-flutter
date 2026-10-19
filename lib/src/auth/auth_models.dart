@@ -1,3 +1,42 @@
+/// Where a user's profile photo is stored, when it is one of their files: a
+/// path in one of the project's buckets. Read it like any stored file -- in
+/// one of the project's image presets, and signed when the bucket is private:
+///
+/// ```dart
+/// final a = user.avatar;
+/// if (a != null) {
+///   final url = await Koolbase.storage.getDownloadUrl(
+///       bucket: a.bucket, path: a.path, preset: 'thumb');
+/// }
+/// ```
+class KoolbaseAvatarFile {
+  final String bucket;
+  final String path;
+  const KoolbaseAvatarFile({required this.bucket, required this.path});
+
+  /// From the server's `{"bucket": ..., "path": ...}`; null when it is not one.
+  static KoolbaseAvatarFile? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final bucket = json['bucket'], path = json['path'];
+    if (bucket is! String || path is! String || bucket.isEmpty || path.isEmpty) {
+      return null;
+    }
+    return KoolbaseAvatarFile(bucket: bucket, path: path);
+  }
+
+  Map<String, dynamic> toJson() => {'bucket': bucket, 'path': path};
+
+  @override
+  bool operator ==(Object other) =>
+      other is KoolbaseAvatarFile && other.bucket == bucket && other.path == path;
+
+  @override
+  int get hashCode => Object.hash(bucket, path);
+
+  @override
+  String toString() => 'KoolbaseAvatarFile($bucket/$path)';
+}
+
 class KoolbaseUser {
   final String id;
   final String projectId;
@@ -5,7 +44,14 @@ class KoolbaseUser {
   final String? phoneNumber;
   final bool phoneVerified;
   final String? fullName;
+  /// The photo's address. Set by [KoolbaseAuthClient.updateProfile]'s
+  /// `avatarUrl`, or following [avatar]: a public bucket's permanent link,
+  /// null for a private one.
   final String? avatarUrl;
+
+  /// Where the photo is stored, when it is one of the user's files (set by
+  /// `updateProfile(avatar: ...)` after an upload). Null otherwise.
+  final KoolbaseAvatarFile? avatar;
   final bool verified;
   final bool disabled;
   final DateTime? lastLoginAt;
@@ -28,6 +74,7 @@ class KoolbaseUser {
     this.phoneVerified = false,
     this.fullName,
     this.avatarUrl,
+    this.avatar,
     required this.verified,
     required this.disabled,
     this.lastLoginAt,
@@ -46,6 +93,7 @@ class KoolbaseUser {
       phoneVerified: json['phone_verified'] as bool? ?? false,
       fullName: json['full_name'] as String?,
       avatarUrl: json['avatar_url'] as String?,
+      avatar: KoolbaseAvatarFile.fromJson(json['avatar']),
       verified: json['verified'] as bool? ?? false,
       disabled: json['disabled'] as bool? ?? false,
       lastLoginAt: json['last_login_at'] != null
@@ -70,6 +118,7 @@ class KoolbaseUser {
         'phone_verified': phoneVerified,
         'full_name': fullName,
         'avatar_url': avatarUrl,
+        if (avatar != null) 'avatar': avatar!.toJson(),
         'verified': verified,
         'disabled': disabled,
         'last_login_at': lastLoginAt?.toIso8601String(),
@@ -98,6 +147,7 @@ class KoolbaseUser {
       phoneVerified: phoneVerified ?? this.phoneVerified,
       fullName: fullName ?? this.fullName,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      avatar: avatar,
       verified: verified ?? this.verified,
       disabled: disabled,
       lastLoginAt: lastLoginAt,

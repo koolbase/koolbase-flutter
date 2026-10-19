@@ -172,7 +172,12 @@ class AuthApi {
     required String accessToken,
     String? fullName,
     String? avatarUrl,
+    KoolbaseAvatarFile? avatar,
+    bool removeAvatar = false,
   }) async {
+    if ([avatarUrl != null, avatar != null, removeAvatar].where((x) => x).length > 1) {
+      throw ArgumentError('updateProfile: give one of avatarUrl, avatar or removeAvatar');
+    }
     final res = await _client
         .patch(
           Uri.parse('$baseUrl/v1/sdk/auth/me'),
@@ -180,6 +185,8 @@ class AuthApi {
           body: jsonEncode({
             if (fullName != null) 'full_name': fullName,
             if (avatarUrl != null) 'avatar_url': avatarUrl,
+            if (avatar != null) 'avatar': avatar.toJson(),
+            if (removeAvatar) 'avatar': <String, dynamic>{},
           }),
         )
         .timeout(timeout);

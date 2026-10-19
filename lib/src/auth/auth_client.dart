@@ -486,15 +486,25 @@ class KoolbaseAuthClient {
     return user;
   }
 
+  /// Updates the signed-in user's profile. Only what is given changes.
+  ///
+  /// The photo is one of three: [avatar], one of their own files -- the
+  /// path an upload returned, in a bucket of this project; read it in a
+  /// preset's size, and signed when the bucket is private -- [avatarUrl], an
+  /// address; or [removeAvatar]. A file someone else uploaded is refused.
   Future<KoolbaseUser> updateProfile({
     String? fullName,
     String? avatarUrl,
+    KoolbaseAvatarFile? avatar,
+    bool removeAvatar = false,
   }) async {
     final token = await _ensureValidToken();
     final user = await _api.updateProfile(
       accessToken: token,
       fullName: fullName,
       avatarUrl: avatarUrl,
+      avatar: avatar,
+      removeAvatar: removeAvatar,
     );
     await _updateUserAndPersist(user);
     return user;
