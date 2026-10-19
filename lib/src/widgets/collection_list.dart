@@ -54,8 +54,131 @@ class KoolbaseCollectionController extends ChangeNotifier {
     KoolbaseQuery Function()? baseQuery,
     this.live = false,
     @visibleForTesting Stream<Object?> Function(String collection)? liveEvents,
+    KoolbaseFieldSearch? search,
+    this.searchDelay = const Duration(milliseconds: 250),
   })  : _baseQuery = baseQuery,
-        _liveEvents = liveEvents;
+        _liveEvents = liveEvents,
+        _search = (search != null && search.isActive) ? search : null;
+
+  /// How long [setSearch] waits for the typing to pause.
+  final Duration searchDelay;
+
+  // The search now (#160), and its pending read.
+  KoolbaseFieldSearch? _search;
+  Timer? _searchTimer;
+  bool _searching = false;
+  Object? _searchError;
+
+  // Every fetch belongs to a generation: one a newer search or refresh
+  // superseded is dropped when it lands.
+  int _gen = 0;
+
+  /// The search the list shows the matches of, or null.
+  KoolbaseFieldSearch? get search => _search;
+
+  /// True from [setSearch] until the server answers it. The records shown
+  /// meanwhile are from before the search: what an app filters from them is
+  /// a preview, not the answer.
+  bool get searching => _searching;
+
+  /// Why the server could not answer the latest search, or null. The
+  /// records shown are then not its answer.
+  Object? get searchError => _searchError;
+
+  /// Searches on the server (#160) once the typing pauses ([searchDelay]):
+  /// page one of the matches replaces what is shown -- never merged with
+  /// it -- and [loadMore] pages inside the search. A newer search, or a
+  /// refresh, drops an older one's answer. Null or empty text: the list
+  /// unsearched again.
+  void setSearch(KoolbaseFieldSearch? search) {
+    if (_disposed) return;
+    final next = (search != null && search.isActive) ? search : null;
+    if (next == _search) return;
+    _search = next;
+    _supersede();
+    _searchTimer?.cancel();
+    _searching = true;
+    _searchError = null;
+    notifyListeners();
+    _searchTimer = Timer(searchDelay, () {
+      _searchTimer = null;
+      unawaited(_runSearch());
+    });
+  }
+
+  /// The latest search again, now: after [searchError].
+  Future<void> retrySearch() async {
+    if (_disposed) return;
+    _searchTimer?.cancel();
+    _searchTimer = null;
+    _searching = true;
+    _searchError = null;
+    notifyListeners();
+    await _runSearch();
+  }
+
+  Future<void> _runSearch() async {
+    if (_disposed) return;
+    final gen = _supersede();
+    _searchInFlight = true;
+    try {
+      final result = await _freshQuery().get(fresh: true);
+      if (_disposed || gen != _gen) return;
+      _status = KoolbaseListStatus.loaded;
+      _records = result.records;
+      _isFromCache = false;
+      _error = null;
+      _hasMore = _records.length < result.total;
+      _searching = false;
+      _searchError = null;
+    } catch (e) {
+      if (_disposed || gen != _gen) return;
+      _searching = false;
+      _searchError = e;
+      // Nothing loaded yet to show under the error: the list's own error.
+      if (_status != KoolbaseListStatus.loaded) {
+        _status = KoolbaseListStatus.error;
+        _error = e;
+      }
+    } finally {
+      if (gen == _gen) _searchInFlight = false;
+    }
+    notifyListeners();
+    // The list changed while it searched: once more, now.
+    if (_searchAgain && !_disposed && gen == _gen) {
+      _searchAgain = false;
+      unawaited(_runSearch());
+    }
+  }
+
+  // A search read in flight, and whether the list changed meanwhile.
+  bool _searchInFlight = false;
+  bool _searchAgain = false;
+
+  /// A new fetch supersedes every one in flight: their answers are dropped,
+  /// and a page still loading is no longer loading.
+  int _supersede() {
+    _loadingMore = false;
+    _searchInFlight = false;
+    _searchAgain = false;
+    return ++_gen;
+  }
+
+  /// A fetch that replaced page one has answered: a search it superseded is
+  /// answered too, unless a newer one is waiting to run.
+  void _searchAnswered() {
+    if (_searchTimer != null) return;
+    _searching = false;
+    _searchError = null;
+  }
+
+  /// A fetch that replaced a search in flight has failed: the search's
+  /// answer will not come, and that is said.
+  void _searchFailed(Object e) {
+    if (_searchTimer != null || !_searching) return;
+    _searching = false;
+    _searchError = e;
+  }
 
   /// The collection to list.
   final String collection;
@@ -109,26 +232,33 @@ class KoolbaseCollectionController extends ChangeNotifier {
   bool get refreshing => _refreshing;
 
   /// Builds THE fresh query for one fetch. Never cached, never reused.
-  KoolbaseQuery _freshQuery() {
+  /// With the search, when there is one.
+  KoolbaseQuery _freshQuery() => _unsearched().fieldSearch(_search);
+
+  /// The query without the search: the one the list's stream follows.
+  KoolbaseQuery _unsearched() {
     final base = _baseQuery?.call() ?? Koolbase.db.collection(collection);
     return queryBuilder?.call(base) ?? base;
   }
 
   /// First load. Safe to call once; [refresh] for subsequent loads.
   Future<void> load() async {
+    final gen = _supersede();
     final query = _freshQuery();
-    _resubscribe(query);
+    _resubscribe(_search == null ? query : _unsearched());
     _goLive();
     try {
       final result = await query.get();
-      if (_disposed) return;
+      if (_disposed || gen != _gen) return;
       _status = KoolbaseListStatus.loaded;
       _records = result.records;
       _isFromCache = result.isFromCache;
       _error = null;
       _hasMore = _records.length < result.total;
+      _searchAnswered();
     } catch (e) {
-      if (_disposed) return;
+      if (_disposed || gen != _gen) return;
+      _searchFailed(e);
       // Only a first load with nothing to show is an error STATE; a failed
       // refresh over existing records keeps the records (stale beats blank).
       if (_records.isEmpty) {
@@ -144,17 +274,20 @@ class KoolbaseCollectionController extends ChangeNotifier {
   Future<void> refresh() async {
     _refreshing = true;
     notifyListeners();
+    final gen = _supersede();
     try {
       final query = _freshQuery();
-      _resubscribe(query);
+      _resubscribe(_search == null ? query : _unsearched());
       final result = await query.get();
-      if (_disposed) return;
+      if (_disposed || gen != _gen) return;
       _status = KoolbaseListStatus.loaded;
       _records = result.records;
       _isFromCache = result.isFromCache;
       _error = null;
       _hasMore = _records.length < result.total;
+      _searchAnswered();
     } catch (e) {
+      if (!_disposed && gen == _gen) _searchFailed(e);
       // Keep what we have. The pull gesture failing silently into the same
       // list is the behavior every mature app converges on. With nothing to
       // show, the error on screen is the newest one (#97).
@@ -186,21 +319,27 @@ class KoolbaseCollectionController extends ChangeNotifier {
   /// [refresh] resets to one page. An honest compromise, stated.
   ///
   Future<void> loadMore() async {
-    if (_loadingMore || !_hasMore || _status != KoolbaseListStatus.loaded) {
+    // Not while a search is waiting for its answer (#160): the next page
+    // of the records shown is not the next page of the search.
+    if (_loadingMore ||
+        !_hasMore ||
+        _searching ||
+        _status != KoolbaseListStatus.loaded) {
       return;
     }
     _loadingMore = true;
     notifyListeners();
+    final gen = _gen;
     try {
       final result = await _freshQuery().offset(_records.length).get();
-      if (_disposed) return;
+      if (_disposed || gen != _gen) return;
       _records = [..._records, ...result.records];
       _hasMore = _records.length < result.total;
       _error = null;
     } catch (_) {
       // Keep what we have; the control stays and can be tried again.
     } finally {
-      if (!_disposed) {
+      if (!_disposed && gen == _gen) {
         _loadingMore = false;
         notifyListeners();
       }
@@ -243,17 +382,23 @@ class KoolbaseCollectionController extends ChangeNotifier {
   /// keeps what is shown (stale beats blank).
   Future<void> _liveRefresh() async {
     if (_disposed) return;
+    final gen = _supersede();
     try {
       final result = await _freshQuery().get(fresh: true);
-      if (_disposed) return;
+      if (_disposed || gen != _gen) return;
       _status = KoolbaseListStatus.loaded;
       _records = result.records;
       _isFromCache = false;
       _error = null;
       _hasMore = _records.length < result.total;
+      _searchAnswered();
       notifyListeners();
-    } catch (_) {
+    } catch (e) {
       // Keep what we have; the next change tries again.
+      if (!_disposed && gen == _gen) {
+        _searchFailed(e);
+        notifyListeners();
+      }
     }
   }
 
@@ -266,8 +411,26 @@ class KoolbaseCollectionController extends ChangeNotifier {
     if (key == _subscribedKey) return;
     _sub?.cancel();
     _subscribedKey = key;
+    var first = true;
     _sub = query.stream.listen((result) {
       if (_disposed) return;
+      final seed = first;
+      first = false;
+      // The unsearched list changed (a write, a background refresh): while
+      // searching, the search is read again instead of showing it (#160) --
+      // not for the stream's first arrival, which is only the list as it was
+      // loaded; and once, after a read already in flight.
+      if (_search != null) {
+        if (seed || _searchTimer != null || _status != KoolbaseListStatus.loaded) {
+          return;
+        }
+        if (_searchInFlight) {
+          _searchAgain = true;
+        } else {
+          unawaited(_runSearch());
+        }
+        return;
+      }
       // A later arrival: a background refresh landed -- from the server, or,
       // when it cannot be reached, the saved copy an offline change updated.
       _status = KoolbaseListStatus.loaded;
@@ -284,6 +447,7 @@ class KoolbaseCollectionController extends ChangeNotifier {
     _sub?.cancel();
     _liveSub?.cancel();
     _liveTimer?.cancel();
+    _searchTimer?.cancel();
     super.dispose();
   }
 }
@@ -331,7 +495,17 @@ class KoolbaseCollectionList extends StatefulWidget {
     this.scrollDirection = Axis.vertical,
     this.groupBy,
     this.sectionHeaderBuilder,
+    this.search,
   });
+
+  /// A search over the fields it names, on the server (#160): the list
+  /// shows its matches, page after page. Changing it keeps the list and
+  /// searches again once the typing pauses; meanwhile [visible] filters
+  /// what is loaded as a preview, under a thin progress bar, and an empty
+  /// preview shows [loading] rather than [empty] -- nothing loaded matching
+  /// is not "no results". If the server cannot answer, [error] shows, with
+  /// a retry. Null or empty text: unsearched.
+  final KoolbaseFieldSearch? search;
 
   /// The collection to list.
   final String collection;
@@ -443,9 +617,32 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
           baseQuery: testData == null
               ? null
               : () => testData.queryFor(widget.collection),
+          search: widget.search,
         );
+    // A controller given in: the search this list was built with, before
+    // its first load -- which then reads it, without waiting for a pause.
+    final search = widget.search;
+    if (widget.controller != null &&
+        search != null &&
+        search.isActive &&
+        search != _controller.search) {
+      _controller._search = search;
+    }
     _controller.addListener(_onChanged);
     _controller.load();
+  }
+
+  @override
+  void didUpdateWidget(covariant KoolbaseCollectionList old) {
+    super.didUpdateWidget(old);
+    // After this build: the controller tells its listeners at once, and one
+    // outside this subtree must not be asked to rebuild mid-build.
+    if (widget.search != old.search) {
+      final search = widget.search;
+      scheduleMicrotask(() {
+        if (mounted) _controller.setSearch(search);
+      });
+    }
   }
 
   void _onChanged() {
@@ -477,8 +674,44 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
                 onRetry: _controller.refresh);
 
       case KoolbaseListStatus.loaded:
+        // A search the server could not answer (#160): said, with a retry --
+        // never a preview passed off as the answer.
+        final searchError = _controller.searchError;
+        if (searchError != null) {
+          return widget.error?.call(context, searchError, _controller.retrySearch) ??
+              KbLoadError(
+                  title: "Couldn't search this list.",
+                  onRetry: _controller.retrySearch);
+        }
         final loaded = _controller.records;
         final records = widget.visible?.call(loaded) ?? loaded;
+        final searching = _controller.searching;
+        // An empty preview is not "no results": nothing loaded matches yet.
+        if (searching && records.isEmpty) {
+          return widget.loading?.call(context) ??
+              const Center(child: CircularProgressIndicator());
+        }
+        // Always in the same Stack, so the scroll position survives a search
+        // starting and being answered; the bar shows only while it waits.
+        return Stack(
+          // The rows get the constraints the list was given, as before.
+          fit: StackFit.passthrough,
+          children: [
+            _loadedView(context, records),
+            if (searching)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+          ],
+        );
+    }
+  }
+
+  /// The loaded records: the rows, or the empty slot.
+  Widget _loadedView(BuildContext context, List<KoolbaseRecord> records) {
         if (widget.scrollDirection == Axis.horizontal) {
           return records.isEmpty
               ? widget.empty?.call(context) ?? const _DefaultEmpty()
@@ -543,7 +776,6 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
         // its rows.
         if (widget.scrollsWithPage) return list;
         return RefreshIndicator(onRefresh: _controller.refresh, child: list);
-    }
   }
 
   /// [KoolbaseCollectionList.groupBy]: a header above each section; pinned

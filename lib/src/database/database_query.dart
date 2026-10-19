@@ -158,6 +158,20 @@ class KoolbaseQuery {
     return this;
   }
 
+  KoolbaseFieldSearch? _fieldSearch;
+
+  /// Searches the fields [search] names, on the server (#160). A searched
+  /// query always asks the server and is not kept in the offline cache: its
+  /// answer is the server's. Empty text: no search.
+  KoolbaseQuery fieldSearch(KoolbaseFieldSearch? search) {
+    _fieldSearch = (search != null && search.isActive) ? search : null;
+    return this;
+  }
+
+  /// The search this query runs, if any.
+  @protected
+  KoolbaseFieldSearch? get currentFieldSearch => _fieldSearch;
+
   KoolbaseQuery orderBy(String field, {bool descending = false}) {
     _orderBy = field;
     _orderDesc = descending;
@@ -224,8 +238,14 @@ class KoolbaseQuery {
   /// Public API: consumers that manage subscriptions across rebuilt query
   /// instances (e.g. KoolbaseCollectionController) compare identities with
   /// this rather than object identity.
-  String get streamKey =>
-      CacheStore.buildKey(collectionName, _filters, _userId);
+  ///
+  /// A searched query's identity includes its search (#160): its stream
+  /// never carries the matches to the unsearched list's listeners.
+  String get streamKey {
+    final key = CacheStore.buildKey(collectionName, _filters, _userId);
+    final s = _fieldSearch;
+    return s == null ? key : '$key|search:${jsonEncode(s.toJson())}';
+  }
 
   /// Fetch records — cache-first with background network refresh.
   ///
@@ -247,7 +267,8 @@ class KoolbaseQuery {
       _userId,
     );
 
-    if (fresh) {
+    // A search's answer is the server's (#160), never a cached one.
+    if (fresh || _fieldSearch != null) {
       return await _fetchFromNetwork(cacheKey);
     }
 
@@ -303,6 +324,7 @@ class KoolbaseQuery {
       if (_orderBy != null) 'order_by': _orderBy,
       'order_desc': _orderDesc,
       if (_populate.isNotEmpty) 'populate': _populate,
+      if (_fieldSearch != null) 'field_search': _fieldSearch!.toJson(),
     };
 
     final res = await _client
@@ -332,7 +354,12 @@ class KoolbaseQuery {
     // Save to cache
     if (_cacheStore != null) {
       final asJson = records.map((r) => r.toJson()).toList();
-      await _cacheStore!.saveQuery(cacheKey, collectionName, asJson);
+      // Not a search's answer as the query's (#160): the query cache is
+      // keyed without it, and would hand the matches back as the whole
+      // list. Its records are kept one by one below, as any are.
+      if (_fieldSearch == null) {
+        await _cacheStore!.saveQuery(cacheKey, collectionName, asJson);
+      }
       // Also individually, so a record the user has seen can be edited
       // offline. The query cache says what a query returned; the record cache
       // says what the SDK last saw of each record, and a mutation baseline

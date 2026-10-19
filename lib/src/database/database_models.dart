@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+
 class KoolbaseCollection {
   final String id;
   final String projectId;
@@ -220,6 +224,66 @@ class KoolbaseVector {
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
   }
+}
+
+/// A search over the fields it names, on the server (#160): records whose
+/// text fields contain [text], ignoring case, inside the read rule and the
+/// filters and before the page -- so the total and every page are of the
+/// matches. A Choice field is searched by its labels ([choices]); a stored
+/// value the field does not declare matches as itself. Empty [text] is no
+/// search.
+@immutable
+class KoolbaseFieldSearch {
+  final String text;
+
+  /// Declared Text or Long text fields (any field, on a collection that
+  /// declares none).
+  final List<String> fields;
+
+  /// Declared Choice fields, by their labels.
+  final List<KoolbaseChoiceSearch> choices;
+
+  const KoolbaseFieldSearch({
+    required this.text,
+    this.fields = const [],
+    this.choices = const [],
+  });
+
+  /// Whether there is text to search.
+  bool get isActive => text.trim().isNotEmpty;
+
+  Map<String, dynamic> toJson() => {
+        'text': text.trim(),
+        'fields': fields,
+        'choices': [for (final c in choices) c.toJson()],
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is KoolbaseFieldSearch &&
+      jsonEncode(other.toJson()) == jsonEncode(toJson());
+
+  @override
+  int get hashCode => jsonEncode(toJson()).hashCode;
+}
+
+/// One Choice field in a [KoolbaseFieldSearch]: the stored [values] whose
+/// label contains the search text, and every value the field declares
+/// ([listed]). The server checks both against the declaration.
+@immutable
+class KoolbaseChoiceSearch {
+  final String field;
+  final List<String> values;
+  final List<String> listed;
+
+  const KoolbaseChoiceSearch({
+    required this.field,
+    required this.values,
+    required this.listed,
+  });
+
+  Map<String, dynamic> toJson() =>
+      {'field': field, 'values': values, 'listed': listed};
 }
 
 /// Retrieval strategy for [KoolbaseCollectionQuery.searchSemantic].

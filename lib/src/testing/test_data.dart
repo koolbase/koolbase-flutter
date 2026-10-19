@@ -108,11 +108,31 @@ class _TestDataQuery extends KoolbaseQuery {
   }
 
   @override
-  Future<QueryResult> get({bool fresh = false}) async => QueryResult(
-    records: _all.skip(_from).take(_pageSize).toList(),
-    total: _all.length,
-    isFromCache: false,
-  );
+  Future<QueryResult> get({bool fresh = false}) async {
+    // A search (#160), as the server matches it.
+    final s = currentFieldSearch;
+    final all = s == null ? _all : [for (final r in _all) if (_matches(r, s)) r];
+    return QueryResult(
+      records: all.skip(_from).take(_pageSize).toList(),
+      total: all.length,
+      isFromCache: false,
+    );
+  }
+
+  static bool _matches(KoolbaseRecord r, KoolbaseFieldSearch s) {
+    final q = s.text.trim().toLowerCase();
+    bool holds(Object? v) => v is String && v.toLowerCase().contains(q);
+    for (final f in s.fields) {
+      if (holds(r.data[f])) return true;
+    }
+    for (final c in s.choices) {
+      final v = r.data[c.field];
+      if (v is! String) continue;
+      if (c.values.contains(v)) return true;
+      if (!c.listed.contains(v) && holds(v)) return true;
+    }
+    return false;
+  }
 
   @override
   Stream<QueryResult> get stream => const Stream<QueryResult>.empty();

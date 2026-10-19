@@ -1,3 +1,12 @@
+## 12.37.0
+
+Search on the server (#160).
+
+- **`KoolbaseQuery.fieldSearch(KoolbaseFieldSearch(text:, fields:, choices:))`**: records whose named text fields contain the text, ignoring case, inside the read rule and the filters and before the page -- so the total and every page are of the matches. A Choice field is searched by its labels (`KoolbaseChoiceSearch(field:, values:, listed:)`: the values whose label matches, and every value it declares). A searched query always asks the server and is not kept as the query's offline copy. Needs the API with `field_search`.
+- **`KoolbaseCollectionList(search:)`**: the list shows the search's matches, page after page. Changing it keeps the list and searches again once the typing pauses (250 ms); the newest search wins. Until the server answers, `visible` filters what is loaded as a preview under a thin progress bar, and an empty preview shows the loading slot, not the empty one. A search the server cannot answer shows the error slot, with a retry. `KoolbaseCollectionController.setSearch`, `searching`, `searchError`, `retrySearch`.
+- **`KoolbaseTestData`** answers a search as the server matches it.
+- **Tested**: the request, debounce, newest wins, replaced not merged, paging inside the search, the error and its retry, the widget's preview.
+
 ## 12.36.0
 
 The profile photo as a file.
