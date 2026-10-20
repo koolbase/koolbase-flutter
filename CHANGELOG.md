@@ -1,3 +1,15 @@
+## 12.42.0
+
+Typed queries (#165): filters with and/or groups, ranges and dates, and sorts by a field's declared type. Same contract as @koolbase/* 12.32.0.
+
+- **`filter(KbWhere)`**: a tree of conditions. `KbWhere.and` / `KbWhere.or` group them, up to 3 deep. `KbField(name)` gives the operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `startsWith`, `isIn`, `notIn`, `between`, `before`, `after`, `onOrBefore`, `onOrAfter`, `on`, `isEmpty`, `isNotEmpty`, `isTrue`, `isFalse`. The server checks each against the field's declared type and runs the filter after the collection's read rule, so a filter only narrows what the caller may read.
+- **Operands the server resolves**: `KbValue.now()`, `startOfToday()`, `startOfTomorrow()`, `startOfWeek()`, `startOfNextWeek()`, `startOfMonth()`, with an offset, and the signed-in caller, `KbValue.callerUserId()` / `KbValue.callerClaim(name)`, read from the session, never from the app.
+- **`sort([KbSort.desc('featured'), KbSort.asc('starts_at')])`**: up to 3 fields, typed by the declaration, empty values last both ways, ties broken by the record's id.
+- **Time zone**: relative times and `on` resolve in the device's IANA zone (`flutter_timezone`), or the one named with `timezone('Europe/London')`.
+- **One language per query**: combining `filter`/`sort` with `where(isEqualTo:)`/`orderBy` throws `ArgumentError` before anything is sent. Existing queries are sent exactly as before.
+- **Refusals** (`query_invalid`, `query_too_complex`, `query_operator_invalid`, `query_field_untyped`, `query_timezone_invalid`, `query_caller_path_invalid`, `query_sort_invalid`, `query_sort_untyped`) arrive as `KoolbaseValidationException` with the code.
+- **Caching**: a typed query is its own cache entry and its own stream.
+
 ## 12.41.0
 
 A failed Koolbase request leaves a trace in a debug build (#169). Same contract as @koolbase/* 12.31.0.
