@@ -105,9 +105,14 @@ class FunctionExecutionException extends FunctionInvokeException {
 /// arrived identically, and an application had to read the number to tell them
 /// apart. The distinction matters — one is a deployment problem, one is a
 /// permissions problem, and one is a bug in the Function.
-KoolbaseException functionInvokeError(int statusCode, String message) {
+KoolbaseException functionInvokeError(int statusCode, String message,
+    {String? code}) {
   switch (statusCode) {
     case 401:
+      // A refused app key is setup, not a session (#169): never signs out.
+      if (code == 'invalid_public_key' || message == kInvalidPublicKeyMessage) {
+        return KoolbaseInvalidPublicKeyException(message);
+      }
       // Not a Function failure. A rejected credential stops the whole SDK
       // working, so it raises the shared type.
       return KoolbaseUnauthenticatedException(message);

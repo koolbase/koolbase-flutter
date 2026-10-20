@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../koolbase_exception.dart';
+import '../network/invalid_public_key.dart';
 import 'fiscal_models.dart';
 import '../network/session_client.dart';
 
@@ -118,6 +119,9 @@ class KoolbaseFiscalClient {
   }
 
   Future<FiscalIntentResult> _decode(http.Response resp) async {
+    // A refused app key is setup, not a session (#169): never signs out.
+    final badKey = invalidPublicKeyIn(resp.body);
+    if (badKey != null) throw badKey;
     if (resp.statusCode == 401 || resp.statusCode == 403) {
       await _onSessionExpired?.call();
       throw KoolbaseUnauthenticatedException(

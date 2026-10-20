@@ -95,3 +95,18 @@ class KoolbasePlanLimitException extends KoolbaseException {
       'KoolbasePlanLimitException: $message'
       '${resource == null ? '' : ' (resource: $resource, limit: $limit, plan: $plan)'}';
 }
+
+/// The app's Koolbase key was refused (`invalid_public_key`, #169): unknown or
+/// revoked, or its project deleted or not ready. The developer's setup, not
+/// the user's session: it is deliberately NOT a
+/// [KoolbaseUnauthenticatedException], so it never signs anyone out. Raised by
+/// any surface, since every request carries the key.
+class KoolbaseInvalidPublicKeyException extends KoolbaseException {
+  const KoolbaseInvalidPublicKeyException([
+    super.message = kInvalidPublicKeyMessage,
+  ]) : super(code: 'invalid_public_key');
+}
+
+/// What the server says for a refused key, word for word.
+const kInvalidPublicKeyMessage =
+    "This app's Koolbase key isn't valid for this project.";

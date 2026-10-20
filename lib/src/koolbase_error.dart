@@ -216,6 +216,17 @@ class KoolbaseError {
     final raw = e.code;
 
     // --- cross-cutting: raised by any surface ---
+    // A refused app key (#169): the developer's setup, which the user cannot
+    // fix -- the server category, as other misconfigurations, the raw code
+    // saying which. Before the session check, and never unauthorized: that
+    // routes to sign-in.
+    if (e is KoolbaseInvalidPublicKeyException) {
+      return KoolbaseError(
+        code: KoolbaseErrorCode.server,
+        message: e.message,
+        rawCode: raw,
+      );
+    }
     // Before every family: a rejected credential is not a subsystem's problem.
     // The SDK has already cleared the session by this point, so the only
     // correct application response is to route to sign-in.

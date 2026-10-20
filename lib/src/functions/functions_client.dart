@@ -83,7 +83,8 @@ class KoolbaseFunctionsClient {
       if (!success) {
         final message =
             data?['error'] as String? ?? 'Function invocation failed';
-        final err = functionInvokeError(response.statusCode, message);
+        final err = functionInvokeError(response.statusCode, message,
+            code: data?['code'] as String?);
         // A rejected credential is not a Function failure. It stops the whole
         // SDK working, so the session is cleared before the exception reaches
         // the caller — otherwise an app whose calls are all Function invokes

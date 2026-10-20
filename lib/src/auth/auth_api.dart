@@ -2,7 +2,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'auth_models.dart';
 import 'auth_exceptions.dart';
-import '../koolbase_exception.dart' show KoolbaseServiceUnavailableException;
+import '../koolbase_exception.dart'
+    show
+        KoolbaseServiceUnavailableException,
+        KoolbaseInvalidPublicKeyException,
+        kInvalidPublicKeyMessage;
 import 'device_metadata.dart';
 
 class AuthApi {
@@ -529,6 +533,9 @@ class AuthApi {
         throw const MfaEnrollmentNotFoundException();
       case 'mfa_not_enabled':
         throw const MfaNotEnabledException();
+      case 'invalid_public_key':
+        throw KoolbaseInvalidPublicKeyException(
+            msg.isEmpty ? kInvalidPublicKeyMessage : msg);
       case 'invalid_credentials':
         throw const InvalidCredentialsException();
       case 'invalid_password':
@@ -611,9 +618,13 @@ class AuthApi {
       case 409:
         throw const EmailAlreadyInUseException();
       case 401:
-        throw isRefresh
-            ? const SessionExpiredException()
-            : const InvalidCredentialsException();
+        // Never a wrong password by guesswork (#168): the server says
+        // invalid_credentials when it means it, and an unrecognised 401 --
+        // a missing key, a request the app may not make -- is not one.
+        if (isRefresh) throw const SessionExpiredException();
+        throw KoolbaseAuthException(
+            msg.isEmpty ? 'The request was not authorised.' : msg,
+            code: code.isEmpty ? 'unauthenticated' : code);
       case 403:
         throw const UserDisabledException();
       case 429:
@@ -804,6 +815,9 @@ class AuthApi {
     switch (code) {
       case 'mfa_required':
         throw _mfaRequired(body);
+      case 'invalid_public_key':
+        throw KoolbaseInvalidPublicKeyException(
+            errorMessage.isEmpty ? kInvalidPublicKeyMessage : errorMessage);
       case 'oauth_not_configured':
         throw const AppleSignInNotConfiguredException();
       case 'invalid_oauth_token':
@@ -894,6 +908,9 @@ class AuthApi {
     switch (code) {
       case 'mfa_required':
         throw _mfaRequired(body);
+      case 'invalid_public_key':
+        throw KoolbaseInvalidPublicKeyException(
+            errorMessage.isEmpty ? kInvalidPublicKeyMessage : errorMessage);
       case 'oauth_not_configured':
         throw const GoogleSignInNotConfiguredException();
       case 'invalid_oauth_token':

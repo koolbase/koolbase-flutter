@@ -404,6 +404,9 @@ KoolbaseException koolbaseStorageError(
         message,
         body['detail'] as String?,
       );
+    // A setup problem, not a session one (#169): never signs anyone out.
+    case 'invalid_public_key':
+      return KoolbaseInvalidPublicKeyException(message);
     case 'upload_not_found':
       return KoolbaseUploadNotFoundException(message);
     case 'bucket_busy':

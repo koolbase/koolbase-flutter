@@ -646,6 +646,9 @@ KoolbaseException koolbaseDataError(
     // KoolbaseUnauthenticatedException.
     //
     // session_expired is gone. The API has never emitted it.
+    // A setup problem, not a session one (#169): never signs anyone out.
+    case 'invalid_public_key':
+      return KoolbaseInvalidPublicKeyException(message);
     case 'invalid_refresh_token':
       return KoolbaseSessionExpiredException(message);
     case 'invalid_token':
