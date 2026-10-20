@@ -1,3 +1,12 @@
+## 12.40.0
+
+A refused app key is reported as the setup problem it is, never as a wrong password and never by signing the user out (#168, #169). Same contract as @koolbase/* 12.30.0.
+
+- **`KoolbaseInvalidPublicKeyException`** (`invalid_public_key`, 401): the app's Koolbase key is unknown or revoked, or its project is deleted or not ready. The API answers this on any route since #169. It is deliberately not a `KoolbaseUnauthenticatedException`, so it never clears the session; `KoolbaseError` files it under `server`, as other misconfigurations, with `invalid_public_key` as the raw code.
+- **Behaviour change**: a sign-in call's 401 without a recognised code used to become `InvalidCredentialsException` ("Invalid email or password"), whatever the cause. It is now a generic `KoolbaseAuthException` carrying the server's reason. A refresh's 401 is still a session that expired. The API sends `invalid_credentials` whenever a password is wrong.
+- **Covered surfaces**: auth (with Apple and Google sign-in), data, storage, Functions and fiscal.
+- **Tested**: the code maps to its exception on each surface; a data 401 for the key does not sign anyone out, and any other data 401 still does.
+
 ## 12.39.0
 
 Errors the API added in #161 and #162 arrive as their own exceptions, not generic ones. Same contract as @koolbase/* 12.29.0.
