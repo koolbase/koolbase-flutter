@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import 'request_log.dart';
+
 class KoolbaseHttpClient {
   final String baseUrl;
   final String publicKey;
@@ -75,13 +77,19 @@ class KoolbaseHttpClient {
         res, () => patch(path, body: body, authenticated: authenticated));
   }
 
+  // A failure the caller receives, traced in a debug build (#169).
+  static http.Response _logged(http.Response res) {
+    koolbaseLogFailedRequest(res.request, res.statusCode, res.body);
+    return res;
+  }
+
   Future<http.Response> _handleUnauthorized(
     http.Response res,
     Future<http.Response> Function() retry,
   ) async {
-    if (res.statusCode != 401 || onUnauthorized == null) return res;
+    if (res.statusCode != 401 || onUnauthorized == null) return _logged(res);
     final refreshed = await onUnauthorized!();
-    if (!refreshed) return res;
+    if (!refreshed) return _logged(res);
     return retry();
   }
 }

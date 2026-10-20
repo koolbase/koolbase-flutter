@@ -1,5 +1,7 @@
 import 'package:http/http.dart' as http;
 
+import 'request_log.dart';
+
 /// The HTTP client every data request goes through (#96).
 ///
 /// A request refused as unauthenticated (401) while carrying the signed-in
@@ -38,13 +40,13 @@ class KoolbaseSessionClient extends http.BaseClient {
         ? _copy(request)
         : null;
     final res = await _send(request);
-    if (res.statusCode != 401 || again == null) return res;
+    if (res.statusCode != 401 || again == null) return koolbaseLogged(request, res);
     final fresh = await renewer!(auth!.substring('Bearer '.length));
-    if (fresh == null) return res;
+    if (fresh == null) return koolbaseLogged(request, res);
     // The refusal is answered; its body is not needed.
     await res.stream.drain<void>();
     again.headers['Authorization'] = 'Bearer $fresh';
-    return _send(again);
+    return koolbaseLogged(again, await _send(again));
   }
 
   Future<http.StreamedResponse> _send(http.BaseRequest request) async {

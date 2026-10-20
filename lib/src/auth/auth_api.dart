@@ -8,6 +8,7 @@ import '../koolbase_exception.dart'
         KoolbaseInvalidPublicKeyException,
         kInvalidPublicKeyMessage;
 import 'device_metadata.dart';
+import '../network/request_log.dart';
 
 class AuthApi {
   final String baseUrl;
@@ -46,7 +47,7 @@ class AuthApi {
     this.deviceMetadata,
     this.timeout = const Duration(seconds: 10),
     http.Client? client,
-  })  : _client = client ?? http.Client(),
+  })  : _client = KoolbaseLoggingClient(client ?? http.Client()),
         _ownsClient = client == null;
 
   /// Close the underlying HTTP client if this AuthApi owns it. Safe to

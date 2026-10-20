@@ -1,3 +1,12 @@
+## 12.41.0
+
+A failed Koolbase request leaves a trace in a debug build (#169). Same contract as @koolbase/* 12.31.0.
+
+- **Debug log of failed requests**: in a debug build (`kDebugMode`), every Koolbase request that fails as the caller receives it prints one line, `[Koolbase] POST /v1/sdk/auth/email/code -> 401 invalid_public_key: ...`: the method, the path, the status and the server's reason. Never the host, the query, a header, the key, a token or the request body. A 401 that renewing the session answers is not printed. Release builds print nothing.
+- **Covered**: data, Functions and fiscal (the shared session client), auth (its own client), and flags and config.
+- **README**: the install line names the current version again (12.40.0 shipped naming 12.39.0).
+- **Tested**: the line carries the method, path, status and reason and none of the key, token, query, host or body; a success prints nothing; the caller still reads the whole response.
+
 ## 12.40.0
 
 A refused app key is reported as the setup problem it is, never as a wrong password and never by signing the user out (#168, #169). Same contract as @koolbase/* 12.30.0.
