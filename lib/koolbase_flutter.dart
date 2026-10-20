@@ -8,6 +8,7 @@ export 'src/auth/auth_exceptions.dart';
 export 'src/auth/auth_client.dart';
 export 'src/auth/auth_storage.dart' show KoolbaseAuthStorage, InMemoryAuthStorage;
 export 'src/storage/storage_client.dart';
+export 'src/database/kb_where.dart' hide debugDeviceZone;
 export 'src/database/database_client.dart';
 export 'src/database/conflict.dart';
 export 'src/database/pending_write.dart';

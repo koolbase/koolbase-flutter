@@ -148,6 +148,39 @@ class KoolbaseQuery {
     return this;
   }
 
+  KbWhere? _tree;
+  List<KbSort> _sortBy = const [];
+  String? _zone;
+
+  /// A typed filter (#165): see [KbWhere]. Not combined with
+  /// [where] or [orderBy] on one query; use one or the other.
+  KoolbaseQuery filter(KbWhere tree) {
+    _tree = tree;
+    return this;
+  }
+
+  /// A typed sort (#165): up to 3 fields; the record's id breaks ties.
+  KoolbaseQuery sort(List<KbSort> fields) {
+    _sortBy = List.unmodifiable(fields);
+    return this;
+  }
+
+  /// The IANA zone relative times and `on` resolve in. By default the
+  /// device's own.
+  KoolbaseQuery timezone(String iana) {
+    _zone = iana;
+    return this;
+  }
+
+  bool get _typed => _tree != null || _sortBy.isNotEmpty || _zone != null;
+
+  /// The typed query's part of this query's identity: two queries on one
+  /// collection with different trees never share a cache entry or a
+  /// stream.
+  String get _typedKey => !_typed
+      ? ''
+      : '|q:${jsonEncode({'where': _tree?.toJson(), 'sort': [for (final s in _sortBy) s.toJson()], 'timezone': _zone})}';
+
   KoolbaseQuery limit(int value) {
     _limit = value;
     return this;
@@ -242,7 +275,7 @@ class KoolbaseQuery {
   /// A searched query's identity includes its search (#160): its stream
   /// never carries the matches to the unsearched list's listeners.
   String get streamKey {
-    final key = CacheStore.buildKey(collectionName, _filters, _userId);
+    final key = CacheStore.buildKey(collectionName, _filters, _userId) + _typedKey;
     final s = _fieldSearch;
     return s == null ? key : '$key|search:${jsonEncode(s.toJson())}';
   }
@@ -265,7 +298,7 @@ class KoolbaseQuery {
       collectionName,
       _filters,
       _userId,
-    );
+    ) + _typedKey;
 
     // A search's answer is the server's (#160), never a cached one.
     if (fresh || _fieldSearch != null) {
@@ -316,13 +349,23 @@ class KoolbaseQuery {
   }
 
   Future<QueryResult> _fetchFromNetwork(String cacheKey) async {
+    // One language per request (#165): the server refuses both.
+    final typed = _typed;
+    if (typed && (_filters.isNotEmpty || _orderBy != null)) {
+      throw ArgumentError(
+          'filter, sort and timezone are not combined with where(isEqualTo:) or orderBy: use one or the other');
+    }
+    final zone = typed ? (_zone ?? await koolbaseDeviceZone()) : null;
     final body = <String, dynamic>{
       'collection': collectionName,
-      'filters': _filters,
+      if (!typed) 'filters': _filters,
       'limit': _limit,
       'offset': _offset,
-      if (_orderBy != null) 'order_by': _orderBy,
-      'order_desc': _orderDesc,
+      if (!typed && _orderBy != null) 'order_by': _orderBy,
+      if (!typed) 'order_desc': _orderDesc,
+      if (_tree != null) 'where': _tree!.toJson(),
+      if (_sortBy.isNotEmpty) 'sort': [for (final s in _sortBy) s.toJson()],
+      if (zone != null) 'timezone': zone,
       if (_populate.isNotEmpty) 'populate': _populate,
       if (_fieldSearch != null) 'field_search': _fieldSearch!.toJson(),
     };

@@ -658,6 +658,15 @@ KoolbaseException koolbaseDataError(
       return KoolbasePermissionException(message);
     case 'rate_limit':
       return KoolbaseRateLimitException(message);
+    // A refused typed query (#165): the field, operator or value it names.
+    case 'query_invalid':
+    case 'query_too_complex':
+    case 'query_operator_invalid':
+    case 'query_field_untyped':
+    case 'query_timezone_invalid':
+    case 'query_caller_path_invalid':
+    case 'query_sort_invalid':
+    case 'query_sort_untyped':
     case 'validation_error':
     case 'vector_collection_mismatch':
     case 'unsupported_dimension':

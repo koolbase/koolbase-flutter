@@ -31,6 +31,7 @@ dependencies:
   drift_flutter: ^0.2.8
   connectivity_plus: ^7.1.0
   rfw: ^1.0.32
+  flutter_timezone: ^5.1.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
