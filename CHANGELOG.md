@@ -1,3 +1,12 @@
+## 12.43.0
+
+Search by meaning takes the typed filter (#173). Same contract as @koolbase/* 12.33.0.
+
+- **`searchSemantic(filter: KbWhere, timezone: ...)`**: the same tree `filter()` takes on a query (#165): and/or groups, ranges, dates, `KbValue.now()` and the other server-resolved operands, the caller. Semantic, lexical and hybrid all apply it inside the collection's read rule, so "chill events" can be searched within upcoming events only.
+- **Time zone**: the device's IANA zone unless one is named, as for queries.
+- **One language per search**: `filter` with `where` (the map of equals) throws `ArgumentError` before anything is sent. Existing searches are sent exactly as before.
+- **Refusals** arrive with the same codes as a query's (`query_invalid`, `query_field_untyped`, `query_timezone_invalid`, ...).
+
 ## 12.42.0
 
 Typed queries (#165): filters with and/or groups, ranges and dates, and sorts by a field's declared type. Same contract as @koolbase/* 12.32.0.

@@ -179,7 +179,11 @@ class KoolbaseQuery {
   /// stream.
   String get _typedKey => !_typed
       ? ''
-      : '|q:${jsonEncode({'where': _tree?.toJson(), 'sort': [for (final s in _sortBy) s.toJson()], 'timezone': _zone})}';
+      : '|q:${jsonEncode({
+              'where': _tree?.toJson(),
+              'sort': [for (final s in _sortBy) s.toJson()],
+              'timezone': _zone
+            })}';
 
   KoolbaseQuery limit(int value) {
     _limit = value;
@@ -275,7 +279,8 @@ class KoolbaseQuery {
   /// A searched query's identity includes its search (#160): its stream
   /// never carries the matches to the unsearched list's listeners.
   String get streamKey {
-    final key = CacheStore.buildKey(collectionName, _filters, _userId) + _typedKey;
+    final key =
+        CacheStore.buildKey(collectionName, _filters, _userId) + _typedKey;
     final s = _fieldSearch;
     return s == null ? key : '$key|search:${jsonEncode(s.toJson())}';
   }
@@ -295,10 +300,11 @@ class KoolbaseQuery {
   /// A fresh read still updates the cache, so SWR callers benefit from it.
   Future<QueryResult> get({bool fresh = false}) async {
     final cacheKey = CacheStore.buildKey(
-      collectionName,
-      _filters,
-      _userId,
-    ) + _typedKey;
+          collectionName,
+          _filters,
+          _userId,
+        ) +
+        _typedKey;
 
     // A search's answer is the server's (#160), never a cached one.
     if (fresh || _fieldSearch != null) {
@@ -464,7 +470,15 @@ class KoolbaseQuery {
     Map<String, dynamic>? where,
     KoolbaseSearchMode mode = KoolbaseSearchMode.semantic,
     double? minSimilarity,
+    KbWhere? filter,
+    String? timezone,
   }) async {
+    // searchSemantic filter (#173): the typed tree list queries take
+    // ([filter]), applied inside the collection's read rule in every mode.
+    // Not with [where], the older map of equals.
+    if (filter != null && where != null && where.isNotEmpty) {
+      throw ArgumentError('Provide filter or where, not both.');
+    }
     final hasVector = queryVector != null && queryVector.isNotEmpty;
     final hasText = queryText != null && queryText.trim().isNotEmpty;
     if (!hasVector && !hasText) {
@@ -484,6 +498,8 @@ class KoolbaseQuery {
       if (hasVector) 'query_vector': queryVector,
       if (hasText) 'query_text': queryText,
       if (where != null && where.isNotEmpty) 'where': where,
+      if (filter != null) 'filter': filter.toJson(),
+      if (filter != null) 'timezone': timezone ?? await koolbaseDeviceZone(),
       // Always send mode so the server uses the SDK's intent rather than
       // its own default. Omitting for `semantic` would also work (server
       // defaults to semantic) but explicit is safer if defaults ever shift.
