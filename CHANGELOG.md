@@ -1,3 +1,11 @@
+## 12.44.0
+
+A list follows its query (#194).
+
+- **`KoolbaseCollectionList` and `KoolbaseCollectionGrid` read again when their query's filters change**: a chip chosen, a dropdown, screen state. Before, the query was taken once and a rebuild with new filters was ignored. The same filters in a new closure (every rebuild, a relative `KbValue.now()`) read nothing.
+- **`KoolbaseCollectionController.setQuery(builder)`**: the same, for a controller you hold.
+- **Test data**: a `KoolbaseTestData` query is keyed by its filters, as a real one is.
+
 ## 12.43.0
 
 Search by meaning takes the typed filter (#173). Same contract as @koolbase/* 12.33.0.

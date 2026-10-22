@@ -109,6 +109,19 @@ class _KoolbaseCollectionGridState extends State<KoolbaseCollectionGrid> {
   }
 
   @override
+  void didUpdateWidget(covariant KoolbaseCollectionGrid old) {
+    super.didUpdateWidget(old);
+    // A new query (#194): the controller reads again only when its filters
+    // changed. After this build.
+    if (!identical(widget.query, old.query)) {
+      final query = widget.query;
+      Future.microtask(() {
+        if (mounted) _controller.setQuery(query);
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _controller.removeListener(_onChanged);
     if (_ownsController) _controller.dispose();

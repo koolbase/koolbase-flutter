@@ -52,13 +52,14 @@ enum KoolbaseListStatus {
 class KoolbaseCollectionController extends ChangeNotifier {
   KoolbaseCollectionController({
     required this.collection,
-    this.queryBuilder,
+    KoolbaseQueryBuilder? queryBuilder,
     KoolbaseQuery Function()? baseQuery,
     this.live = false,
     @visibleForTesting Stream<Object?> Function(String collection)? liveEvents,
     KoolbaseFieldSearch? search,
     this.searchDelay = const Duration(milliseconds: 250),
-  })  : _baseQuery = baseQuery,
+  })  : _queryBuilder = queryBuilder,
+        _baseQuery = baseQuery,
         _liveEvents = liveEvents,
         _search = (search != null && search.isActive) ? search : null;
 
@@ -252,7 +253,22 @@ class KoolbaseCollectionController extends ChangeNotifier {
   final String collection;
 
   /// Shapes each fresh query (filters, order, limit). Null lists unfiltered.
-  final KoolbaseQueryBuilder? queryBuilder;
+  /// Replaced through [setQuery].
+  KoolbaseQueryBuilder? get queryBuilder => _queryBuilder;
+  KoolbaseQueryBuilder? _queryBuilder;
+
+  /// A new query for the list (#194): a chip chosen, a dropdown, screen
+  /// state. When its identity -- the filters the stream is keyed by --
+  /// differs from the one shown, page one is read again (what is shown
+  /// stays until it answers); the same identity reads nothing, so a
+  /// rebuild, or a relative time such as "now", never reloads the list.
+  void setQuery(KoolbaseQueryBuilder? query) {
+    if (_disposed) return;
+    final before = _unsearched().streamKey;
+    _queryBuilder = query;
+    if (_unsearched().streamKey == before) return;
+    unawaited(load());
+  }
 
   /// The data source: how a fresh base query is constructed. Production
   /// leaves it null and uses `Koolbase.db.collection(collection)`;
@@ -306,7 +322,7 @@ class KoolbaseCollectionController extends ChangeNotifier {
   /// The query without the search: the one the list's stream follows.
   KoolbaseQuery _unsearched() {
     final base = _baseQuery?.call() ?? Koolbase.db.collection(collection);
-    return queryBuilder?.call(base) ?? base;
+    return _queryBuilder?.call(base) ?? base;
   }
 
   /// First load. Safe to call once; [refresh] for subsequent loads.
@@ -733,6 +749,14 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
   @override
   void didUpdateWidget(covariant KoolbaseCollectionList old) {
     super.didUpdateWidget(old);
+    // A new query (#194): the controller reads again only when its filters
+    // changed. After this build, as the search below.
+    if (!identical(widget.query, old.query)) {
+      final query = widget.query;
+      scheduleMicrotask(() {
+        if (mounted) _controller.setQuery(query);
+      });
+    }
     // After this build: the controller tells its listeners at once, and one
     // outside this subtree must not be asked to rebuild mid-build.
     if (widget.search != old.search) {

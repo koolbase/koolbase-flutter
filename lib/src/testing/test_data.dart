@@ -137,6 +137,8 @@ class _TestDataQuery extends KoolbaseQuery {
   @override
   Stream<QueryResult> get stream => const Stream<QueryResult>.empty();
 
+  // Keyed as a real query is (#194): by its collection and filters, so a
+  // list sees its query change under test data too.
   @override
-  String get streamKey => 'test:$_collection';
+  String get streamKey => 'test:${super.streamKey}';
 }
