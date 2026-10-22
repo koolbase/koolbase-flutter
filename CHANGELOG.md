@@ -1,3 +1,7 @@
+## 12.44.1
+
+- **A list reloads when a chip changes, for real (#194)**: a query that reads the screen's state when called (as a Koolbase Designer export's does) is now compared with the query page one was last read with. In 12.44.0 it was compared with the previous builder, which by then read the new value too, so nothing reloaded.
+
 ## 12.44.0
 
 A list follows its query (#194).

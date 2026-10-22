@@ -264,11 +264,14 @@ class KoolbaseCollectionController extends ChangeNotifier {
   /// rebuild, or a relative time such as "now", never reloads the list.
   void setQuery(KoolbaseQueryBuilder? query) {
     if (_disposed) return;
-    final before = _unsearched().streamKey;
     _queryBuilder = query;
-    if (_unsearched().streamKey == before) return;
+    // Compared with the query LOADED, not the old builder: a builder reads
+    // the screen's state when called, so after a tap the old one would read
+    // the new value too and look the same.
+    if (_unsearched().streamKey == _subscribedKey) return;
     unawaited(load());
   }
+
 
   /// The data source: how a fresh base query is constructed. Production
   /// leaves it null and uses `Koolbase.db.collection(collection)`;

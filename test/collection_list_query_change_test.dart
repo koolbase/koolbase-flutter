@@ -88,4 +88,59 @@ void main() {
       c.dispose();
     });
   }
+
+  // #194 reopened: the export's query reads the chip WHEN CALLED (screen
+  // state), not a value captured when it was built.
+  for (final grid in [false, true]) {
+    testWidgets(
+        '${grid ? 'a grid' : 'a list'} whose query reads the chip when called reloads',
+        (tester) async {
+      final c = controller();
+      var chip = '';
+      final tick = ValueNotifier<int>(0);
+      KoolbaseQuery live(KoolbaseQuery q) =>
+          chip.isEmpty ? q : q.where('category', isEqualTo: chip);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<int>(
+            valueListenable: tick,
+            builder: (context, _, __) => grid
+                ? KoolbaseCollectionGrid(
+                    collection: 'events',
+                    controller: c,
+                    query: (q) => live(q),
+                    itemBuilder: (context, r) => Text('${r.data['title']}'),
+                  )
+                : KoolbaseCollectionList(
+                    collection: 'events',
+                    controller: c,
+                    query: (q) => live(q),
+                    itemBuilder: (context, r) => Text('${r.data['title']}'),
+                  ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      var reads = 0;
+      c.addListener(() => reads++);
+
+      // A chip tapped: the state changes, then the screen rebuilds.
+      chip = 'Music';
+      tick.value++;
+      await tester.pumpAndSettle();
+      expect(reads, greaterThan(0), reason: 'the chip reached the list');
+
+      reads = 0;
+      tick.value++;
+      await tester.pumpAndSettle();
+      expect(reads, 0, reason: 'a rebuild with the same chip reads nothing');
+
+      chip = '';
+      tick.value++;
+      await tester.pumpAndSettle();
+      expect(reads, greaterThan(0), reason: 'All reads again');
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    });
+  }
 }
