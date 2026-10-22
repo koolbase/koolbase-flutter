@@ -23,12 +23,23 @@
 /// ```
 library;
 
+import 'kb_where.dart';
+
 /// One aggregation request.
 class KoolbaseAggregate {
   final String collection;
 
   /// AND-ed record filters on top of the read rule.
   final List<KoolbaseAggregateFilter> where;
+
+  /// The typed filter a list's query takes ([KoolbaseQuery.filter]): and/or
+  /// groups, ranges, dates, [KbValue.now] -- so "upcoming events" counts
+  /// what the list shows. Never with [where].
+  final KbWhere? filter;
+
+  /// The IANA zone [filter]'s relative times resolve in (start of today,
+  /// say). Absent: the server's default, as for a query without one.
+  final String? timezone;
 
   /// Absent means one group: the measures over everything.
   final KoolbaseGroupBy? groupBy;
@@ -39,16 +50,26 @@ class KoolbaseAggregate {
   const KoolbaseAggregate({
     required this.collection,
     this.where = const [],
+    this.filter,
+    this.timezone,
     this.groupBy,
     required this.measures,
   });
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson() {
+    if (filter != null && where.isNotEmpty) {
+      throw ArgumentError(
+          'KoolbaseAggregate: send filter or where, not both');
+    }
+    return {
         'collection': collection,
         if (where.isNotEmpty) 'where': [for (final f in where) f.toJson()],
+        if (filter != null) 'where': filter!.toJson(),
+        if (filter != null && timezone != null) 'timezone': timezone,
         if (groupBy != null) 'group_by': groupBy!.toJson(),
         'measures': [for (final m in measures) m.toJson()],
       };
+  }
 }
 
 class KoolbaseAggregateFilter {

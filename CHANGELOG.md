@@ -1,3 +1,10 @@
+## 12.45.0
+
+Totals take the typed filter. Same contract as @koolbase/* 12.34.0.
+
+- **`KoolbaseAggregate(filter: KbWhere, timezone: ...)`**: the same tree a list's query takes (#165): and/or groups, ranges, dates, `KbValue.now()`. "Upcoming events" now counts exactly what the list shows; the server applies it inside the read rule.
+- **One language per total**: `filter` with `where` (the list of filters) throws `ArgumentError` before anything is sent. Existing totals are sent exactly as before.
+
 ## 12.44.1
 
 - **A list reloads when a chip changes, for real (#194)**: a query that reads the screen's state when called (as a Koolbase Designer export's does) is now compared with the query page one was last read with. In 12.44.0 it was compared with the previous builder, which by then read the new value too, so nothing reloaded.
