@@ -608,7 +608,16 @@ class KoolbaseCollectionList extends StatefulWidget {
     this.groupBy,
     this.sectionHeaderBuilder,
     this.search,
+    this.onRows,
   });
+
+  /// How many rows the list shows (#224), for something else on the screen
+  /// to follow -- a heading that hides with an empty list. Null while it
+  /// loads, after a failed first load, and while a search is being answered
+  /// with nothing yet to show; otherwise the number of rows shown, after
+  /// [visible] (a search that matches nothing is 0). Called after the frame
+  /// that shows it, and only when the number changes.
+  final void Function(int? rows)? onRows;
 
   /// A search over the fields it names, on the server (#160): the list
   /// shows its matches, page after page. Changing it keeps the list and
@@ -712,6 +721,23 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
   /// The horizontal list's scroll position: near the end, the next page.
   final ScrollController _sideways = ScrollController();
 
+  /// What [KoolbaseCollectionList.onRows] was last told (#224); `_told`
+  /// false until it has been told anything.
+  int? _rowsTold;
+  bool _told = false;
+
+  /// Tells [KoolbaseCollectionList.onRows] the rows shown, after this frame,
+  /// when they changed -- never during a build.
+  void _rows(int? n) {
+    final onRows = widget.onRows;
+    if (onRows == null || (_told && _rowsTold == n)) return;
+    _told = true;
+    _rowsTold = n;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _rowsTold == n) onRows(n);
+    });
+  }
+
   void _nearEnd() {
     if (!_sideways.hasClients) return;
     if (_sideways.position.extentAfter < 240) _controller.loadMore();
@@ -788,10 +814,12 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
   Widget build(BuildContext context) {
     switch (_controller.status) {
       case KoolbaseListStatus.loading:
+        _rows(null);
         return widget.loading?.call(context) ??
             const Center(child: CircularProgressIndicator());
 
       case KoolbaseListStatus.error:
+        _rows(null);
         final err = _controller.error!;
         return widget.error?.call(context, err, _controller.refresh) ??
             KbLoadError(
@@ -803,6 +831,7 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
         final records = widget.visible?.call(loaded) ?? loaded;
         final searching = _controller.searching;
         // An empty preview is not "no results": nothing loaded matches yet.
+        _rows(searching && records.isEmpty ? null : records.length);
         if (searching && records.isEmpty) {
           return widget.loading?.call(context) ??
               const Center(child: CircularProgressIndicator());

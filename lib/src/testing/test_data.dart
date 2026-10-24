@@ -83,15 +83,13 @@ class KoolbaseTestData extends InheritedWidget {
 /// returned with the exact total. No realtime updates.
 class _TestDataQuery extends KoolbaseQuery {
   _TestDataQuery(this._all, String collection)
-    : _collection = collection,
-      super(
+    : super(
         baseUrl: 'https://test.invalid',
         publicKey: 'pk_test',
         collectionName: collection,
       );
 
   final List<KoolbaseRecord> _all;
-  final String _collection;
   int _pageSize = 20;
   int _from = 0;
 

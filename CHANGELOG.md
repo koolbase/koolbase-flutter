@@ -1,3 +1,9 @@
+## 12.46.0
+
+A list says how many rows it shows (#224).
+
+- **`KoolbaseCollectionList(onRows: (rows) { ... })`**: null while the list loads, after a failed first load, and while a search is being answered with nothing yet to show; otherwise the number of rows shown, after `visible` (a search that matches nothing is 0). Called after the frame, only when the number changes. With `empty: (context) => const SizedBox.shrink()`, an empty list takes no space and something else on the screen -- its heading -- can follow it.
+
 ## 12.45.0
 
 Totals take the typed filter. Same contract as @koolbase/* 12.34.0.
