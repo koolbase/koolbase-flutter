@@ -1,3 +1,7 @@
+## 12.48.0
+
+- **`ResendCooldownException.retryAfter`** (#244): how long until another verification email may be sent, from the server's `Retry-After` -- as `@koolbase/js`'s `VerificationResendCooldownError.cooldownUntil`. Null when it did not say.
+
 ## 12.47.0
 
 A rate-limited request says when to try again (#244).

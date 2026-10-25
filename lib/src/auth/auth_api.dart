@@ -619,7 +619,8 @@ class AuthApi {
       case 'hide_requires_verification':
         throw HideRequiresVerificationException(msg.isEmpty ? null : msg);
       case 'resend_cooldown':
-        throw ResendCooldownException(msg.isEmpty ? null : msg);
+        throw ResendCooldownException(
+            msg.isEmpty ? null : msg, _retryAfter(res, body));
       case 'resend_daily_cap':
         throw ResendDailyCapException(msg.isEmpty ? null : msg);
     }

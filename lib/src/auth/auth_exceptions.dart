@@ -136,11 +136,15 @@ class RateLimitException extends KoolbaseAuthException {
 /// cooldown (see [ResendVerificationResult.cooldownUntil] from a successful
 /// send for the countdown).
 class ResendCooldownException extends KoolbaseAuthException {
-  const ResendCooldownException([String? message])
+  const ResendCooldownException([String? message, this.retryAfter])
       : super(
             message ??
                 'Please wait before requesting another verification email',
             code: 'resend_cooldown');
+
+  /// How long until another verification email may be sent -- the server's
+  /// Retry-After -- for a countdown. Null when it did not say.
+  final Duration? retryAfter;
 }
 
 /// Thrown by [KoolbaseAuthClient.resendVerificationEmail] when the daily

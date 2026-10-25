@@ -36,6 +36,16 @@ void main() {
     );
   });
 
+  test('a verification email in its cooldown: when, from Retry-After', () {
+    expect(
+      api({'code': 'resend_cooldown', 'error': 'please wait before requesting another verification email'},
+              headers: {'retry-after': '41'})
+          .resendVerificationEmail('at'),
+      throwsA(isA<ResendCooldownException>()
+          .having((e) => e.retryAfter, 'retryAfter', const Duration(seconds: 41))),
+    );
+  });
+
   test('a server that says nothing: null, as before', () {
     expect(
       api({'error': 'too many requests'}).requestEmailCode('ama@example.com'),
