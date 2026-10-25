@@ -510,6 +510,15 @@ class AuthApi {
     return MfaRequiredException(challengeToken: token ?? '', expiresAt: exp);
   }
 
+  /// When a 429 says to try again: its `retry_after` (whole seconds), else
+  /// its Retry-After header; null when it says neither.
+  static Duration? _retryAfter(http.Response res, Map<String, dynamic> body) {
+    final b = body['retry_after'];
+    if (b is num && b >= 0) return Duration(seconds: b.ceil());
+    final h = int.tryParse(res.headers['retry-after']?.trim() ?? '');
+    return h != null && h >= 0 ? Duration(seconds: h) : null;
+  }
+
   void _checkError(http.Response res, {bool isRefresh = false}) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
 
@@ -569,7 +578,8 @@ class AuthApi {
       case 'invalid_unlock_token':
         throw const UnlockTokenInvalidException();
       case 'rate_limit':
-        throw RateLimitException(msg.isEmpty ? null : msg);
+        throw RateLimitException(
+            msg.isEmpty ? null : msg, _retryAfter(res, body));
       // email_not_verified is the same situation as contact_not_verified
       // from a different package; an app should not have to know which.
       case 'email_not_verified':
@@ -632,7 +642,8 @@ class AuthApi {
         if (msg.contains('account temporarily locked')) {
           throw const AccountLockedException();
         }
-        throw RateLimitException(msg.isEmpty ? null : msg);
+        throw RateLimitException(
+            msg.isEmpty ? null : msg, _retryAfter(res, body));
     }
 
     // ---- legacy message fallback ----

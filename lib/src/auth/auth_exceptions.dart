@@ -121,9 +121,14 @@ class AccountLockedException extends KoolbaseAuthException {
 /// endpoints throw [OtpRateLimitException] instead — they have a separate
 /// rate-limiter on the server.
 class RateLimitException extends KoolbaseAuthException {
-  const RateLimitException([String? message])
+  const RateLimitException([String? message, this.retryAfter])
       : super(message ?? 'Too many requests, please wait before trying again',
             code: 'rate_limit');
+
+  /// How long until the server would take the request again -- its
+  /// `retry_after`, or its Retry-After header -- so an app can count down
+  /// to it ("Resend in 7:42"). Null when the server did not say.
+  final Duration? retryAfter;
 }
 
 /// Thrown by [KoolbaseAuthClient.resendVerificationEmail] when a resend is
