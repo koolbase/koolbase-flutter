@@ -166,11 +166,18 @@ class KoolbaseAggregateResult {
   /// this API exists to prevent.
   final bool tooManyGroups;
 
+  /// The collection's count minimum (#299), when [matched] was below it:
+  /// the number is not said. [matched] is then 0, [accounting] is empty, and
+  /// what to show is "Fewer than [fewerThan]" -- never 0. Only a count that
+  /// sees beyond what the caller may read, under the collection's Count rule.
+  final int? fewerThan;
+
   const KoolbaseAggregateResult({
     required this.groups,
     required this.matched,
     required this.accounting,
     this.tooManyGroups = false,
+    this.fewerThan,
   });
 
   factory KoolbaseAggregateResult.fromJson(Map<String, dynamic> j) =>
@@ -187,6 +194,7 @@ class KoolbaseAggregateResult {
                 e.value as Map<String, dynamic>),
         },
         tooManyGroups: j['too_many_groups'] == true,
+        fewerThan: (j['fewer_than'] as num?)?.toInt(),
       );
 }
 
@@ -201,7 +209,16 @@ class KoolbaseAggregateGroup {
   /// different from a sum of zero.
   final Map<String, double?> values;
 
-  const KoolbaseAggregateGroup({required this.category, required this.values});
+  /// The collection's count minimum (#299), when this group's count was
+  /// below it: every value is null, and what to show is "Fewer than
+  /// [fewerThan]" -- never 0, and never nothing.
+  final int? fewerThan;
+
+  const KoolbaseAggregateGroup({
+    required this.category,
+    required this.values,
+    this.fewerThan,
+  });
 
   factory KoolbaseAggregateGroup.fromJson(Map<String, dynamic> j) =>
       KoolbaseAggregateGroup(
@@ -210,6 +227,7 @@ class KoolbaseAggregateGroup {
           for (final e in (j['values'] as Map<String, dynamic>? ?? const {}).entries)
             e.key: (e.value as num?)?.toDouble(),
         },
+        fewerThan: (j['fewer_than'] as num?)?.toInt(),
       );
 }
 

@@ -1,3 +1,7 @@
+## 12.49.0
+
+- **`KoolbaseAggregateResult.fewerThan` and `KoolbaseAggregateGroup.fewerThan`** (#299): below the collection's count minimum the API does not say the number -- show "Fewer than N", never 0. Null when the number is said. Only a count that sees beyond what the caller may read, under the collection's Count rule.
+
 ## 12.48.0
 
 - **`ResendCooldownException.retryAfter`** (#244): how long until another verification email may be sent, from the server's `Retry-After` -- as `@koolbase/js`'s `VerificationResendCooldownError.cooldownUntil`. Null when it did not say.
