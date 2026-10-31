@@ -181,8 +181,12 @@ class AuthApi {
     KoolbaseAvatarFile? avatar,
     bool removeAvatar = false,
   }) async {
-    if ([avatarUrl != null, avatar != null, removeAvatar].where((x) => x).length > 1) {
-      throw ArgumentError('updateProfile: give one of avatarUrl, avatar or removeAvatar');
+    if ([avatarUrl != null, avatar != null, removeAvatar]
+            .where((x) => x)
+            .length >
+        1) {
+      throw ArgumentError(
+          'updateProfile: give one of avatarUrl, avatar or removeAvatar');
     }
     final res = await _client
         .patch(
@@ -776,16 +780,30 @@ class AuthApi {
   /// [nonce], if provided, must match what was passed to the native
   /// sign-in flow (replay defense). [fullName] is only sent on first
   /// sign-in (Apple omits name data on subsequent sign-ins).
+  /// [authorizationCode] is the credential's authorization code: the server
+  /// exchanges it for the token it revokes when the account is deleted.
+  /// [client] is 'web' when the code came from Apple's web sign-in (issued
+  /// to the project's services id).
   Future<AuthSession> signInWithApple({
     required String identityToken,
     String? nonce,
     AppleFullName? fullName,
+    String? authorizationCode,
+    String? client,
   }) async {
     final body = <String, dynamic>{
       'identity_token': identityToken,
     };
     if (nonce != null && nonce.isNotEmpty) {
       body['nonce'] = nonce;
+    }
+    // Exchanged by the server for the token it revokes when the account is
+    // deleted, as Apple asks.
+    if (authorizationCode != null && authorizationCode.isNotEmpty) {
+      body['authorization_code'] = authorizationCode;
+    }
+    if (client != null && client.isNotEmpty) {
+      body['client'] = client;
     }
     if (fullName != null) {
       final nameJson = fullName.toJson();

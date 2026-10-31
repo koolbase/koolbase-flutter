@@ -1,3 +1,7 @@
+## 12.50.0
+
+- **`signInWithApple(authorizationCode:, client:)`** (A0 piece 6): pass the Apple credential's `authorizationCode`, and the server keeps the token it revokes when the account is deleted, as Apple asks. `client: 'web'` when the code came from Apple's web sign-in. Both optional; without them sign-in works as before, and that account's token can't be revoked.
+
 ## 12.49.0
 
 - **`KoolbaseAggregateResult.fewerThan` and `KoolbaseAggregateGroup.fewerThan`** (#299): below the collection's count minimum the API does not say the number -- show "Fewer than N", never 0. Null when the number is said. Only a count that sees beyond what the caller may read, under the collection's Count rule.

@@ -335,11 +335,15 @@ class KoolbaseAuthClient {
     required String identityToken,
     String? nonce,
     AppleFullName? fullName,
+    String? authorizationCode,
+    String? client,
   }) async {
     final session = await _api.signInWithApple(
       identityToken: identityToken,
       nonce: nonce,
       fullName: fullName,
+      authorizationCode: authorizationCode,
+      client: client,
     );
     await _setSession(session);
     return session.user;
