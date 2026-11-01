@@ -1,3 +1,7 @@
+## 12.51.0
+
+* `Koolbase.initializeForTesting` wires the session as an app's is: auth runs on the given client with an in-memory session, and data requests go through the session client, so a refused request renews once and a refused renewal ends the session. A test can sign in, have the session end and sign out against a fake server while the SDK's own code runs.
+
 ## 12.50.0
 
 - **`signInWithApple(authorizationCode:, client:)`** (A0 piece 6): pass the Apple credential's `authorizationCode`, and the server keeps the token it revokes when the account is deleted, as Apple asks. `client: 'web'` when the code came from Apple's web sign-in. Both optional; without them sign-in works as before, and that account's token can't be revoked.

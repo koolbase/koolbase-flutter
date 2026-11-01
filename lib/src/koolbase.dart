@@ -154,8 +154,12 @@ class Koolbase {
   /// request with an empty success, so a bound list settles to its empty
   /// slot; a test that needs real records needs a real setup.
   ///
-  /// Anything past `db` — auth, storage, realtime, code push — is left
-  /// unset and throws on access, which is the correct signal.
+  /// `auth` runs on the same client with its session in memory, and the
+  /// session is wired as an app's is (R49): a refused data request renews
+  /// once, and a refused renewal ends the session. So a test can sign in,
+  /// have the session end and sign out against a client that answers as the
+  /// server does, while the SDK's own code runs. Storage, realtime and code
+  /// push are left unset and throw on access, which is the correct signal.
   @visibleForTesting
   static void initializeForTesting({
     KoolbaseConfig? config,
@@ -169,14 +173,9 @@ class Koolbase {
     instance._platform = 'test';
     _instance = instance;
     final client = httpClient ?? _EmptyResponseClient();
-    _database = KoolbaseDatabaseClient(
-      baseUrl: cfg.baseUrl,
-      publicKey: cfg.publicKey,
-      httpClient: client,
-    );
-    // Auth with in-memory storage: restoreSession finds nothing and the
-    // gate settles to signed-out, which lets it render. Sign-in from a
-    // test would hit the never-completing client and hang, correctly.
+    // Auth on the given client, the session in memory: nothing to restore,
+    // so the gate settles to signed-out. With a client that answers as the
+    // server does, a test signs in, out, and has its session end.
     _auth = KoolbaseAuthClient(
       api: AuthApi(
         baseUrl: cfg.baseUrl,
@@ -185,7 +184,53 @@ class Koolbase {
       ),
       storage: InMemoryAuthStorage(),
     );
+    // Data through the session client, as an app's (R49): a request refused
+    // with the signed-in person's token renews once and goes again; a refused
+    // renewal ends the session.
+    _database = _sessionDatabase(cfg, httpClient: KoolbaseSessionClient(client));
+    _wireSession();
     _initialized = true;
+  }
+
+  /// The data client, with the session an app has (R49): the signed-in
+  /// person's token on each request, and a session the server refuses ended
+  /// -- an app that catches KoolbaseSessionExpiredException is already signed
+  /// out and can route to login, rather than looping on a dead token. One
+  /// builder for initialize and initializeForTesting.
+  static KoolbaseDatabaseClient _sessionDatabase(
+    KoolbaseConfig config, {
+    http.Client? httpClient,
+    CacheStore? cacheStore,
+    WriteQueue? writeQueue,
+  }) =>
+      KoolbaseDatabaseClient(
+        baseUrl: config.baseUrl,
+        publicKey: config.publicKey,
+        httpClient: httpClient,
+        accessTokenProvider: () =>
+            _auth?.validAccessToken() ?? Future<String?>.value(null),
+        onSessionExpired: () async => _auth?.sessionRejected(),
+        cacheStore: cacheStore,
+        writeQueue: writeQueue,
+      );
+
+  /// The session, wired as an app has it (R49), for initialize and
+  /// initializeForTesting alike: a data request refused with the signed-in
+  /// person's token renews the session once and goes again (#96), only a
+  /// refused renewal ending it; and the data client follows who is signed in
+  /// -- queued offline writes attributed without the app remembering (a
+  /// missed setUserId would queue writes with no owner, never replayed),
+  /// records read in memory going with the person who read them (#103), and
+  /// watchers reading again for the new person.
+  static void _wireSession() {
+    KoolbaseSessionClient.renew = (refused) =>
+        _auth?.renewRejected(refused) ?? Future<String?>.value(null);
+    _auth?.authStateChanges.listen((user) {
+      if (user == null) SeenRecords.clear();
+      _database?.setUserId(user?.id);
+      _database?.sessionChanged();
+    });
+    _database?.setUserId(_auth?.currentUser?.id);
   }
 
   /// Reset after a test so the next one starts clean.
@@ -235,11 +280,6 @@ class Koolbase {
     _auth = KoolbaseAuthClient(
       api: authApi,
     );
-    // A data request refused with the signed-in person's token renews the
-    // session once and goes again (#96); only a refused renewal ends it.
-    KoolbaseSessionClient.renew = (refused) =>
-        _auth?.renewRejected(refused) ?? Future<String?>.value(null);
-
     // Restore auth session from secure storage
     await _auth!.restoreSession();
 
@@ -273,15 +313,8 @@ class Koolbase {
     }
 
     // Initialize database client with offline support
-    _database = KoolbaseDatabaseClient(
-      baseUrl: config.baseUrl,
-      publicKey: config.publicKey,
-      accessTokenProvider: () =>
-          _auth?.validAccessToken() ?? Future<String?>.value(null),
-      // A session the server refuses is not a session. Clearing it here means
-      // an app that catches KoolbaseSessionExpiredException is already signed
-      // out and can route to login, rather than looping on a dead token.
-      onSessionExpired: () async => _auth?.sessionRejected(),
+    _database = _sessionDatabase(
+      config,
       cacheStore: cacheStore,
       writeQueue: writeQueue,
     );
@@ -306,18 +339,7 @@ class Koolbase {
       _database!.setSyncEngine(_syncEngine!);
     }
 
-    // Keep the database client's notion of the current user in step with auth,
-    // so queued offline writes are attributed without the app having to
-    // remember. A missed setUserId would queue writes with no owner, and those
-    // are never replayed.
-    _auth?.authStateChanges.listen((user) {
-      // Records read in memory go with the person who read them (#103).
-      if (user == null) SeenRecords.clear();
-      _database?.setUserId(user?.id);
-      // Pending writes are per-user: watchers read again for the new user.
-      _database?.sessionChanged();
-    });
-    _database?.setUserId(_auth?.currentUser?.id);
+    _wireSession();
 
     // Initialize storage client
     _storage = KoolbaseStorageClient(
