@@ -1,3 +1,7 @@
+## 12.52.0
+
+* `KoolbaseCollectionList(scrollController:)` and `KoolbaseFileList(scrollController:)`: a controller the app holds, so a "Back to top" can move the list -- vertical, sideways, grouped and empty alike (A2.3). The list never disposes a controller it was given. Null keeps its own, as before.
+
 ## 12.51.1
 
 * `KoolbaseCollectionList`: a query that fails after the list subscribed -- the session ended, the network went -- no longer throws an uncaught error. Before the list has loaded it shows its error state; after, the records it shows stay.

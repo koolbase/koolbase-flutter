@@ -40,6 +40,7 @@ class KoolbaseFileList extends StatefulWidget {
     this.padding,
     this.scrollsWithPage = false,
     @visibleForTesting this.controller,
+    this.scrollController,
   });
 
   /// The bucket to list.
@@ -80,6 +81,10 @@ class KoolbaseFileList extends StatefulWidget {
   /// Inside a page that scrolls: the rows lay out at their own height, the
   /// page scrolls and refreshes, and Load more is a button.
   final bool scrollsWithPage;
+
+  /// Where the list is scrolled to (A2.3): a controller the app holds, so a
+  /// "Back to top" can move it. The list never disposes it. Null: its own.
+  final ScrollController? scrollController;
 
   /// Test seam: a controller the test owns.
   final KoolbaseFilesController? controller;
@@ -167,6 +172,7 @@ class _KoolbaseFileListState extends State<KoolbaseFileList> {
             onRefresh: _controller.refresh,
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
+                controller: widget.scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
@@ -181,6 +187,7 @@ class _KoolbaseFileListState extends State<KoolbaseFileList> {
           );
         }
         final list = ListView.separated(
+          controller: widget.scrollController,
           shrinkWrap: widget.scrollsWithPage,
           physics: widget.scrollsWithPage
               ? const NeverScrollableScrollPhysics()

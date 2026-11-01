@@ -619,6 +619,7 @@ class KoolbaseCollectionList extends StatefulWidget {
     this.sectionHeaderBuilder,
     this.search,
     this.onRows,
+    this.scrollController,
   });
 
   /// How many rows the list shows (#224), for something else on the screen
@@ -628,6 +629,10 @@ class KoolbaseCollectionList extends StatefulWidget {
   /// [visible] (a search that matches nothing is 0). Called after the frame
   /// that shows it, and only when the number changes.
   final void Function(int? rows)? onRows;
+
+  /// Where the list is scrolled to (A2.3): a controller the app holds, so a
+  /// "Back to top" can move it. The list never disposes it. Null: its own.
+  final ScrollController? scrollController;
 
   /// A search over the fields it names, on the server (#160): the list
   /// shows its matches, page after page. Changing it keeps the list and
@@ -729,7 +734,10 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
   late final bool _ownsController;
 
   /// The horizontal list's scroll position: near the end, the next page.
-  final ScrollController _sideways = ScrollController();
+  /// The app's, when it gave one (A2.3); then it is the app's to dispose.
+  late final bool _ownsSideways = widget.scrollController == null;
+  late final ScrollController _sideways =
+      widget.scrollController ?? ScrollController();
 
   /// What [KoolbaseCollectionList.onRows] was last told (#224); `_told`
   /// false until it has been told anything.
@@ -814,9 +822,8 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
   void dispose() {
     _controller.removeListener(_onChanged);
     if (_ownsController) _controller.dispose();
-    _sideways
-      ..removeListener(_nearEnd)
-      ..dispose();
+    _sideways.removeListener(_nearEnd);
+    if (_ownsSideways) _sideways.dispose();
     super.dispose();
   }
 
@@ -926,6 +933,7 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
             onRefresh: _controller.refresh,
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
+                controller: widget.scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
@@ -941,6 +949,7 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
         }
         if (widget.groupBy != null) return _grouped(context, records);
         final list = ListView.separated(
+          controller: widget.scrollController,
           shrinkWrap: widget.scrollsWithPage,
           physics: widget.scrollsWithPage
               ? const NeverScrollableScrollPhysics()
@@ -1013,6 +1022,7 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
     return RefreshIndicator(
       onRefresh: _controller.refresh,
       child: CustomScrollView(
+        controller: widget.scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           if (padding.top > 0)
