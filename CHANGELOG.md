@@ -1,3 +1,7 @@
+## 12.51.1
+
+* `KoolbaseCollectionList`: a query that fails after the list subscribed -- the session ended, the network went -- no longer throws an uncaught error. Before the list has loaded it shows its error state; after, the records it shows stay.
+
 ## 12.51.0
 
 * `Koolbase.initializeForTesting` wires the session as an app's is: auth runs on the given client with an in-memory session, and data requests go through the session client, so a refused request renews once and a refused renewal ends the session. A test can sign in, have the session end and sign out against a fake server while the SDK's own code runs.

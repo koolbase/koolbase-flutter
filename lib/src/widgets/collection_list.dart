@@ -550,6 +550,16 @@ class KoolbaseCollectionController extends ChangeNotifier {
       _isFromCache = result.isFromCache;
       _error = null;
       notifyListeners();
+    }, onError: (Object e) {
+      // A query that failed -- the session ended, the network went -- is the
+      // list's own failure, never an uncaught error: before the list has
+      // loaded, its error state; after, the records it shows stay, as a
+      // refresh that fails keeps them.
+      if (_disposed) return;
+      if (_status == KoolbaseListStatus.loaded) return;
+      _status = KoolbaseListStatus.error;
+      _error = e;
+      notifyListeners();
     });
   }
 
