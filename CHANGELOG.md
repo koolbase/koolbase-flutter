@@ -1,3 +1,7 @@
+## 12.52.1
+
+* `package_info_plus` 10 is allowed (`>=8.0.0 <11.0.0`). Before, an app could not add `geolocator` 14.0.3 or later beside Koolbase: its Linux plugin needs `package_info_plus` 10, so `pub get` failed. `PackageInfo.fromPlatform()` and the fields Koolbase reads are unchanged; an app on an older Flutter keeps resolving 8 or 9.
+
 ## 12.52.0
 
 * `KoolbaseCollectionList(scrollController:)` and `KoolbaseFileList(scrollController:)`: a controller the app holds, so a "Back to top" can move the list -- vertical, sideways, grouped and empty alike (A2.3). The list never disposes a controller it was given. Null keeps its own, as before.
