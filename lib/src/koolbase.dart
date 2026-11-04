@@ -188,6 +188,15 @@ class Koolbase {
     // with the signed-in person's token renews once and goes again; a refused
     // renewal ends the session.
     _database = _sessionDatabase(cfg, httpClient: KoolbaseSessionClient(client));
+    // Functions on the same client, so a test's server answers them too.
+    _functions = KoolbaseFunctionsClient(
+      baseUrl: cfg.baseUrl,
+      publicKey: cfg.publicKey,
+      userAccessTokenProvider: () =>
+          _auth?.validAccessToken() ?? Future<String?>.value(null),
+      onSessionExpired: () async => _auth?.sessionRejected(),
+      httpClient: KoolbaseSessionClient(client),
+    );
     _wireSession();
     _initialized = true;
   }
@@ -241,6 +250,7 @@ class Koolbase {
     _database = null;
     _auth = null;
     _realtime = null;
+    _functions = null;
     _initialized = false;
   }
 

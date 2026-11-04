@@ -7,6 +7,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:koolbase_flutter/koolbase_flutter.dart' show Koolbase;
 import 'package:koolbase_flutter/src/database/aggregate.dart';
 import 'package:koolbase_flutter/src/database/database_client.dart';
 import 'package:koolbase_flutter/src/database/database_models.dart';
@@ -42,5 +43,19 @@ void main() {
       '/v1/sdk/db/delete-where',
       '/v1/sdk/db/batch',
     ]);
+  });
+
+  test('Koolbase.initializeForTesting answers Functions through the client it was given', () async {
+    final asked = <String>[];
+    Koolbase.initializeForTesting(
+      httpClient: MockClient((req) async {
+        asked.add(req.url.path);
+        return http.Response('{"ok":true}', 200, headers: {'content-type': 'application/json'});
+      }),
+    );
+    addTearDown(Koolbase.resetForTesting);
+    final r = await Koolbase.functions.invoke('plan_week');
+    expect(r.success, isTrue);
+    expect(asked, ['/v1/sdk/functions/plan_week']);
   });
 }

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:http/http.dart' as http;
+
 import '../koolbase_exception.dart';
 import 'functions_models.dart';
 import '../network/session_client.dart';
@@ -39,8 +41,14 @@ class KoolbaseFunctionsClient {
     required this.publicKey,
     Future<String?> Function()? userAccessTokenProvider,
     Future<void> Function()? onSessionExpired,
+    http.Client? httpClient,
   })  : _userAccessTokenProvider = userAccessTokenProvider,
-        _onSessionExpired = onSessionExpired;
+        _onSessionExpired = onSessionExpired,
+        _http = httpClient ?? koolbaseHttp;
+
+  /// What every request goes through: in an app, the shared session client;
+  /// in a test, the client initializeForTesting was given.
+  final http.Client _http;
 
   Future<Map<String, String>> _sdkHeaders() async {
     final headers = <String, String>{
@@ -62,7 +70,7 @@ class KoolbaseFunctionsClient {
   }) async {
     final uri = Uri.parse('$baseUrl/v1/sdk/functions/$name');
     try {
-      final response = await koolbaseHttp
+      final response = await _http
           .post(
             uri,
             headers: await _sdkHeaders(),
@@ -152,7 +160,7 @@ class KoolbaseFunctionsClient {
 
     final uri = Uri.parse('$baseUrl/v1/projects/$projectId/functions');
     try {
-      final response = await koolbaseHttp
+      final response = await _http
           .post(
             uri,
             headers: headers,

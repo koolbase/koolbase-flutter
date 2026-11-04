@@ -1,3 +1,7 @@
+## 12.52.3
+
+* `Koolbase.initializeForTesting(httpClient:)` now answers `Koolbase.functions` through that client too (it was not set up, so a test calling a Function failed). `KoolbaseFunctionsClient` takes an optional `httpClient`.
+
 ## 12.52.2
 
 * `KoolbaseCollectionList` that scrolls by itself loads its next page when the person nears the end, or at once when a page is too short to fill the list, as the Expo and web exports do. Load more stays at the end while there is more, for a page that failed. In a scrolling page (`scrollsWithPage`) Load more is still a button only.
