@@ -966,6 +966,8 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
               return _LoadMore(
                 loading: _controller.loadingMore,
                 onTap: _controller.loadMore,
+                // R121: near the end, the next page loads by itself.
+                auto: !widget.scrollsWithPage,
               );
             }
             return widget.itemBuilder(context, records[index]);
@@ -993,6 +995,8 @@ class _KoolbaseCollectionListState extends State<KoolbaseCollectionList> {
         ? _LoadMore(
             loading: _controller.loadingMore,
             onTap: _controller.loadMore,
+            // R121: pinned sections build their end lazily too.
+            auto: !widget.scrollsWithPage,
           )
         : null;
 
@@ -1154,15 +1158,42 @@ class KoolbaseSectionHeader extends StatelessWidget {
 }
 
 /// The row past the last loaded record, while there are more.
-class _LoadMore extends StatelessWidget {
+/// The end of a list while there is more: Load more, or a spinner while the
+/// next page comes. R121: in a list that scrolls by itself, it also loads the
+/// next page when it is first built -- a lazy list builds it only once the
+/// person is near the end (or the page is too short to fill the list) -- so
+/// paging is automatic, as on Expo and the web; the button stays for a page
+/// that failed. Never in a scrolling page, where every row is built at once.
+class _LoadMore extends StatefulWidget {
   final bool loading;
   final VoidCallback onTap;
   final Axis axis;
+  final bool auto;
   const _LoadMore({
     required this.loading,
     required this.onTap,
     this.axis = Axis.vertical,
+    this.auto = false,
   });
+
+  @override
+  State<_LoadMore> createState() => _LoadMoreState();
+}
+
+class _LoadMoreState extends State<_LoadMore> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.auto && !widget.loading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onTap();
+      });
+    }
+  }
+
+  bool get loading => widget.loading;
+  VoidCallback get onTap => widget.onTap;
+  Axis get axis => widget.axis;
 
   @override
   Widget build(BuildContext context) => Padding(

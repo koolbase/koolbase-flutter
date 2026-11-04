@@ -129,7 +129,9 @@ void main() {
       _recs(['Mon:a', 'Tue:b']),
       _recs(['Tue:c', 'Wed:d']),
     ], total: 4);
-    await tester.pumpWidget(_app(_list(c)));
+    // In a scrolling page, where Load more is a button (R121: a list that
+    // scrolls by itself loads its next page on its own).
+    await tester.pumpWidget(_app(SingleChildScrollView(child: _list(c, scrollsWithPage: true))));
     await _settle(tester);
     expect(find.text('Load more'), findsOneWidget);
     expect(

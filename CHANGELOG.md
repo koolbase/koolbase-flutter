@@ -1,5 +1,6 @@
 ## 12.52.2
 
+* `KoolbaseCollectionList` that scrolls by itself loads its next page when the person nears the end, or at once when a page is too short to fill the list, as the Expo and web exports do. Load more stays at the end while there is more, for a page that failed. In a scrolling page (`scrollsWithPage`) Load more is still a button only.
 * `insert`, `aggregate`, `upsert`, `deleteWhere` and `batch` now go through the database client's own HTTP client, as every other data call does. They called `package:http` directly, which skipped the session client: an insert made just as the access token expired failed as unauthorized instead of renewing the session and retrying, and those requests were missing from the request log. A test's `httpClient` fake is now asked for them too.
 
 ## 12.52.1

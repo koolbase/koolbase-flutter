@@ -25,10 +25,12 @@ Widget _row(BuildContext context, KoolbaseRecord r) =>
 void main() {
   testWidgets('a list pages the test data like the server: 2 rows and Load '
       'more, then all 3', (tester) async {
-    await tester.pumpWidget(_host(SizedBox(
-      height: 600,
+    // In a scrolling page, where Load more is a button (R121: a list that
+    // scrolls by itself loads a short page's next one on its own).
+    await tester.pumpWidget(_host(SingleChildScrollView(
       child: KoolbaseCollectionList(
         collection: 'songs',
+        scrollsWithPage: true,
         query: (q) => q.limit(2),
         itemBuilder: _row,
       ),
@@ -41,6 +43,22 @@ void main() {
     await tester.tap(find.text('Load more'));
     await tester.pumpAndSettle();
     expect(find.text('Third'), findsOneWidget);
+    expect(find.text('Load more'), findsNothing);
+  });
+
+  testWidgets('a list that scrolls by itself pages the test data by itself '
+      '(R121)', (tester) async {
+    await tester.pumpWidget(_host(SizedBox(
+      height: 600,
+      child: KoolbaseCollectionList(
+        collection: 'songs',
+        query: (q) => q.limit(2),
+        itemBuilder: _row,
+      ),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Short'), findsOneWidget);
+    expect(find.text('Third'), findsOneWidget, reason: 'the short page reached its end: page two came');
     expect(find.text('Load more'), findsNothing);
   });
 
