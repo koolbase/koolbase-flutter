@@ -38,6 +38,16 @@ class KoolbaseStorageClient {
   /// refresh.
   final void Function()? _nudgeBootstrap;
 
+  /// Every API call goes through it: in an app, the session client (an
+  /// expired session renews once and the call goes again); in a test, its
+  /// fake (R123).
+  final http.Client _http;
+
+  /// A new client for one transfer -- an upload's bytes to their presigned
+  /// address, a download -- closed when it ends, or by a cancel. In a test,
+  /// the fake (R123).
+  final http.Client Function() _transferClient;
+
   KoolbaseStorageClient({
     required this.baseUrl,
     required this.publicKey,
@@ -45,7 +55,11 @@ class KoolbaseStorageClient {
     Future<void> Function()? onSessionExpired,
     String Function()? projectIdProvider,
     void Function()? nudgeBootstrap,
-  })  : _accessTokenProvider = accessTokenProvider,
+    http.Client? httpClient,
+    http.Client Function()? transferClient,
+  })  : _http = httpClient ?? koolbaseHttp,
+        _transferClient = transferClient ?? http.Client.new,
+        _accessTokenProvider = accessTokenProvider,
         _onSessionExpired = onSessionExpired,
         _projectIdProvider = projectIdProvider,
         _nudgeBootstrap = nudgeBootstrap;
@@ -156,14 +170,14 @@ class KoolbaseStorageClient {
     bool overwrite = false,
   }) {
     final mimeType = contentType ?? _inferContentType(path);
-    return _listsReload(bucket, runUploadTask(bytes.length, (step) async {
+    return _listsReload(bucket, runUploadTask(bytes.length, newClient: _transferClient, (step) async {
       // Large files go in parts: resumable, each part retried (S3).
       if (bytes.length > multipartThreshold) {
         return _runInParts(step, bucket,
             path: path, bytes: bytes, contentType: mimeType, metadata: metadata, overwrite: overwrite);
       }
       // 1. An upload link, for this upload alone.
-      final urlRes = await koolbaseHttp
+      final urlRes = await _http
           .post(
             Uri.parse('$baseUrl/v1/sdk/storage/upload-url'),
             headers: await _headers(),
@@ -207,7 +221,7 @@ class KoolbaseStorageClient {
         if (uploadId != null) 'upload_id': uploadId,
         if (metadata != null) 'metadata': metadata,
       };
-      final confirmRes = await koolbaseHttp
+      final confirmRes = await _http
           .post(
             Uri.parse('$baseUrl/v1/sdk/storage/confirm'),
             headers: await _headers(),
@@ -247,7 +261,7 @@ class KoolbaseStorageClient {
     Map<String, String>? metadata,
     bool overwrite = false,
   }) =>
-      _listsReload(bucket, runUploadTask(bytes.length, (step) => _runInParts(step, bucket,
+      _listsReload(bucket, runUploadTask(bytes.length, newClient: _transferClient, (step) => _runInParts(step, bucket,
           bytes: bytes, metadata: metadata, overwrite: overwrite, resumeId: uploadId)));
 
   /// [task], whose success reloads [bucket]'s file lists (S4).
@@ -269,7 +283,7 @@ class KoolbaseStorageClient {
     final base = '$baseUrl/v1/sdk/storage/uploads';
     final KoolbaseMultipartPlan plan;
     if (resumeId != null) {
-      final res = await koolbaseHttp
+      final res = await _http
           .get(Uri.parse(base).replace(queryParameters: {'bucket': bucket, 'upload_id': resumeId}), headers: await _headers())
           .timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) {
@@ -281,7 +295,7 @@ class KoolbaseStorageClient {
             'This is not the file the upload began with: it has ${bytes.length} bytes, the upload ${plan.size}');
       }
     } else {
-      final res = await koolbaseHttp
+      final res = await _http
           .post(Uri.parse(base),
               headers: await _headers(),
               body: jsonEncode({
@@ -302,7 +316,7 @@ class KoolbaseStorageClient {
 
     try {
       await koolbaseSendParts(step, plan, bytes, (parts) async {
-        final res = await koolbaseHttp
+        final res = await _http
             .post(Uri.parse('$base/parts'),
                 headers: await _headers(),
                 body: jsonEncode({'bucket': bucket, 'upload_id': plan.uploadId, 'parts': parts}))
@@ -318,7 +332,7 @@ class KoolbaseStorageClient {
       // abandons the upload.
       if (step.cancelled) {
         try {
-          await koolbaseHttp
+          await _http
               .delete(Uri.parse(base),
                   headers: await _headers(), body: jsonEncode({'bucket': bucket, 'upload_id': plan.uploadId}))
               .timeout(const Duration(seconds: 15));
@@ -333,7 +347,7 @@ class KoolbaseStorageClient {
     // The parts have arrived: the server joins and checks them. No longer
     // cancellable.
     step.verifying();
-    final done = await koolbaseHttp
+    final done = await _http
         .post(Uri.parse('$base/complete'),
             headers: await _headers(),
             body: jsonEncode({
@@ -361,7 +375,7 @@ class KoolbaseStorageClient {
     void Function(int received, int? total)? onProgress,
   }) async {
     final url = await getDownloadUrl(bucket: bucket, path: path, versionId: versionId);
-    final client = http.Client();
+    final client = _transferClient();
     try {
       final res = await client.send(http.Request('GET', Uri.parse(url))).timeout(const Duration(seconds: 30));
       if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -417,7 +431,7 @@ class KoolbaseStorageClient {
         descending: descending,
       ),
     );
-    final res = await koolbaseHttp.get(uri, headers: await _headers()).timeout(const Duration(seconds: 15));
+    final res = await _http.get(uri, headers: await _headers()).timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) {
       throw await _error(res, fallbackMessage: 'Failed to list files');
     }
@@ -434,7 +448,7 @@ class KoolbaseStorageClient {
     final uri = Uri.parse('$baseUrl/v1/sdk/storage/file').replace(
       queryParameters: {'bucket': bucket, 'path': path},
     );
-    final res = await koolbaseHttp.get(uri, headers: await _headers()).timeout(const Duration(seconds: 10));
+    final res = await _http.get(uri, headers: await _headers()).timeout(const Duration(seconds: 10));
     if (res.statusCode != 200) {
       throw await _error(res, fallbackMessage: 'Failed to get file info');
     }
@@ -469,7 +483,7 @@ class KoolbaseStorageClient {
       _transfer('copy', bucket, from, to, toBucket);
 
   Future<KoolbaseObject> _transfer(String op, String bucket, String from, String to, String? toBucket) async {
-    final res = await koolbaseHttp
+    final res = await _http
         .post(
           Uri.parse('$baseUrl/v1/sdk/storage/$op'),
           headers: await _headers(),
@@ -525,7 +539,7 @@ class KoolbaseStorageClient {
     required String path,
     required Map<String, String?> metadata,
   }) async {
-    final res = await koolbaseHttp
+    final res = await _http
         .patch(
           Uri.parse('$baseUrl/v1/sdk/storage/objects/metadata'),
           headers: await _headers(),
@@ -571,7 +585,7 @@ class KoolbaseStorageClient {
     String? versionId,
     String? preset,
   }) async {
-    final res = await koolbaseHttp
+    final res = await _http
         .get(
           _query('/v1/sdk/storage/download-url', {
             'bucket': bucket,
@@ -704,7 +718,7 @@ class KoolbaseStorageClient {
     final url = forcePurge
         ? '$baseUrl/v1/sdk/storage/object?force_purge=true'
         : '$baseUrl/v1/sdk/storage/object';
-    final res = await koolbaseHttp
+    final res = await _http
         .delete(
           Uri.parse(url),
           headers: await _headers(),
@@ -748,7 +762,7 @@ class KoolbaseStorageClient {
     required String bucket,
     required String path,
   }) async {
-    final res = await koolbaseHttp
+    final res = await _http
         .get(
           _query('/v1/sdk/storage/object-versions',
               {'bucket': bucket, 'path': path}),
@@ -775,7 +789,7 @@ class KoolbaseStorageClient {
     required String path,
     required String versionId,
   }) async {
-    final res = await koolbaseHttp
+    final res = await _http
         .get(
           _query('/v1/sdk/storage/object-versions/${Uri.encodeComponent(versionId)}',
               {'bucket': bucket, 'path': path}),
@@ -803,7 +817,7 @@ class KoolbaseStorageClient {
     required String path,
     required String versionId,
   }) async {
-    final res = await koolbaseHttp
+    final res = await _http
         .post(
           _query('/v1/sdk/storage/object-versions/${Uri.encodeComponent(versionId)}/restore',
               {'bucket': bucket, 'path': path}),
@@ -830,7 +844,7 @@ class KoolbaseStorageClient {
     required String path,
     required String versionId,
   }) async {
-    final res = await koolbaseHttp
+    final res = await _http
         .delete(
           _query('/v1/sdk/storage/object-versions/${Uri.encodeComponent(versionId)}',
               {'bucket': bucket, 'path': path}),

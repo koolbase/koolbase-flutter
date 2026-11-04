@@ -74,7 +74,7 @@ class KoolbaseUploadProgress {
 
 /// A running upload: watch [progress], [cancel] it, await [result].
 class KoolbaseUploadTask {
-  KoolbaseUploadTask._(this._total) {
+  KoolbaseUploadTask._(this._total, this._newClient) {
     _current = KoolbaseUploadProgress(state: KoolbaseUploadState.pending, bytesSent: 0, bytesTotal: _total);
     // An app that only follows progress is not left with an unhandled
     // error; awaiting [result] still sees it.
@@ -82,6 +82,9 @@ class KoolbaseUploadTask {
   }
 
   final int _total;
+  // Where each transfer's client comes from (R123): http.Client() in an
+  // app, a test's fake in a test.
+  final http.Client Function() _newClient;
   final _controller = StreamController<KoolbaseUploadProgress>.broadcast(sync: true);
   final _done = Completer<UploadResult>();
   late KoolbaseUploadProgress _current;
@@ -150,9 +153,10 @@ class KoolbaseUploadTask {
 /// Runs [body] as [task]'s upload: its steps report through [step].
 KoolbaseUploadTask runUploadTask(
   int total,
-  Future<UploadResult> Function(KoolbaseUploadTaskControl step) body,
-) {
-  final task = KoolbaseUploadTask._(total);
+  Future<UploadResult> Function(KoolbaseUploadTaskControl step) body, {
+  http.Client Function()? newClient,
+}) {
+  final task = KoolbaseUploadTask._(total, newClient ?? http.Client.new);
   // Started on the next turn, so a caller can listen to every event.
   scheduleMicrotask(() async {
     try {
@@ -187,7 +191,7 @@ class KoolbaseUploadTaskControl {
   /// every one. Close it when they are done.
   http.Client openClient() {
     checkCancelled();
-    final client = http.Client();
+    final client = _task._newClient();
     _task._transfer = client;
     return client;
   }
@@ -225,7 +229,7 @@ class KoolbaseUploadTaskControl {
   /// A transfer still going after [timeout] is stopped.
   Future<http.Response> put(Uri url, List<int> bytes, String contentType, {required Duration timeout}) async {
     checkCancelled();
-    final client = http.Client();
+    final client = _task._newClient();
     _task._transfer = client;
     try {
       final req = _ProgressRequest(url, bytes, (sent) {

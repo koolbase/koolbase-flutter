@@ -158,8 +158,11 @@ class Koolbase {
   /// session is wired as an app's is (R49): a refused data request renews
   /// once, and a refused renewal ends the session. So a test can sign in,
   /// have the session end and sign out against a client that answers as the
-  /// server does, while the SDK's own code runs. Storage and code push are
-  /// left unset and throw on access, which is the correct signal.
+  /// server does, while the SDK's own code runs. Storage answers on the same
+  /// client too (R123): its API calls through the session client, an
+  /// upload's bytes and a download through [httpClient] itself, so a test
+  /// plays the storage server, holds an upload open and cancels it. Code push
+  /// is left unset and throws on access, which is the correct signal.
   ///
   /// Realtime too, unless [realtimeConnector] is given (R122): then realtime
   /// opens its connection through it, so a test plays the realtime server
@@ -202,6 +205,18 @@ class Koolbase {
           _auth?.validAccessToken() ?? Future<String?>.value(null),
       onSessionExpired: () async => _auth?.sessionRejected(),
       httpClient: KoolbaseSessionClient(client),
+    );
+    _storage = KoolbaseStorageClient(
+      baseUrl: cfg.baseUrl,
+      publicKey: cfg.publicKey,
+      accessTokenProvider: () =>
+          _auth?.validAccessToken() ?? Future<String?>.value(null),
+      onSessionExpired: () async => _auth?.sessionRejected(),
+      projectIdProvider: () => 'test-project',
+      httpClient: KoolbaseSessionClient(client),
+      // The test's client is shared: a transfer's close (an upload ended or
+      // cancelled) must not close it.
+      transferClient: () => _KeepOpenClient(client),
     );
     if (realtimeConnector != null) {
       _realtime = KoolbaseRealtimeClient(
@@ -268,6 +283,7 @@ class Koolbase {
     _auth = null;
     _realtime?.dispose();
     _realtime = null;
+    _storage = null;
     _functions = null;
     _initialized = false;
   }
@@ -820,4 +836,17 @@ class _AnalyticsOff extends KoolbaseAnalyticsClient {
   Future<void> flush() async {}
   @override
   Future<void> dispose() async {}
+}
+
+/// A shared client, lent for one transfer: closing it lets go of the loan,
+/// not the client (R123).
+class _KeepOpenClient extends http.BaseClient {
+  _KeepOpenClient(this._inner);
+  final http.Client _inner;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) => _inner.send(request);
+
+  @override
+  void close() {}
 }

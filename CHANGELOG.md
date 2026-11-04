@@ -1,3 +1,8 @@
+## 12.52.5
+
+* `Koolbase.initializeForTesting(httpClient:)` now sets up `Koolbase.storage` on that client: its API calls through the session client, an upload's bytes and a download through the client itself (lent, never closed). A widget test can play the storage server, hold an upload open and cancel it. Storage was unset before, so a test touching it failed.
+* `KoolbaseStorageClient` takes an optional `httpClient` (every API call; the session client by default, as before) and `transferClient` (a new client per transfer; `http.Client()` by default, as before). Nothing changes in an app.
+
 ## 12.52.4
 
 * `Koolbase.initializeForTesting` takes an optional `realtimeConnector`. With it, `Koolbase.realtime` is set up and opens its connection through that connector, so a widget test can play the realtime server: a `live` list or record subscribes through the SDK's own realtime client and follows what the test sends. Without it, realtime stays unset, as before. `resetForTesting` now disposes the realtime client.
