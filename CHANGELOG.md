@@ -1,3 +1,7 @@
+## 12.52.2
+
+* `insert`, `aggregate`, `upsert`, `deleteWhere` and `batch` now go through the database client's own HTTP client, as every other data call does. They called `package:http` directly, which skipped the session client: an insert made just as the access token expired failed as unauthorized instead of renewing the session and retrying, and those requests were missing from the request log. A test's `httpClient` fake is now asked for them too.
+
 ## 12.52.1
 
 * `package_info_plus` 10 is allowed (`>=8.0.0 <11.0.0`). Before, an app could not add `geolocator` 14.0.3 or later beside Koolbase: its Linux plugin needs `package_info_plus` 10, so `pub get` failed. `PackageInfo.fromPlatform()` and the fields Koolbase reads are unchanged; an app on an older Flutter keeps resolving 8 or 9.

@@ -36,10 +36,10 @@ class KoolbaseDatabaseClient {
   SyncEngine? _syncEngine;
   static const _uuid = Uuid();
 
-  /// Injectable for tests; a real client otherwise. Only the conflict
-  /// resolution path uses it so far — the bare http.* calls elsewhere migrate
-  /// opportunistically. An unmockable resolution path is why the
-  /// refusal-never-teaches bug had no test to catch it.
+  /// Every request goes through it (R120): in an app, KoolbaseSessionClient,
+  /// which renews an expired session and retries once; in a test, its fake.
+  /// A bare http.* call skips both -- insert, aggregate, upsert, deleteWhere
+  /// and batch did, until test/injected_client_writes_test.dart.
   final http.Client _http;
 
   KoolbaseDatabaseClient({
@@ -437,7 +437,7 @@ class KoolbaseDatabaseClient {
     required Map<String, dynamic> data,
   }) async {
     try {
-      final res = await http
+      final res = await _http
           .post(
             Uri.parse('$baseUrl/v1/sdk/db/insert'),
             headers: await _headers(),
@@ -557,7 +557,7 @@ class KoolbaseDatabaseClient {
   /// so in [KoolbaseAggregateResult.accounting] rather than presenting
   /// itself as complete.
   Future<KoolbaseAggregateResult> aggregate(KoolbaseAggregate request) async {
-    final res = await http
+    final res = await _http
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/aggregate'),
           headers: await _headers(),
@@ -591,7 +591,7 @@ class KoolbaseDatabaseClient {
     required Map<String, dynamic> match,
     required Map<String, dynamic> data,
   }) async {
-    final res = await http
+    final res = await _http
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/upsert'),
           headers: await _headers(),
@@ -635,7 +635,7 @@ class KoolbaseDatabaseClient {
     required String collection,
     required Map<String, dynamic> filters,
   }) async {
-    final res = await http
+    final res = await _http
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/delete-where'),
           headers: await _headers(),
@@ -687,7 +687,7 @@ class KoolbaseDatabaseClient {
       throw ArgumentError('batch requires at least one operation');
     }
 
-    final res = await http
+    final res = await _http
         .post(
           Uri.parse('$baseUrl/v1/sdk/db/batch'),
           headers: await _headers(),
