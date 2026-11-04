@@ -1,3 +1,7 @@
+## 12.52.4
+
+* `Koolbase.initializeForTesting` takes an optional `realtimeConnector`. With it, `Koolbase.realtime` is set up and opens its connection through that connector, so a widget test can play the realtime server: a `live` list or record subscribes through the SDK's own realtime client and follows what the test sends. Without it, realtime stays unset, as before. `resetForTesting` now disposes the realtime client.
+
 ## 12.52.3
 
 * `Koolbase.initializeForTesting(httpClient:)` now answers `Koolbase.functions` through that client too (it was not set up, so a test calling a Function failed). `KoolbaseFunctionsClient` takes an optional `httpClient`.

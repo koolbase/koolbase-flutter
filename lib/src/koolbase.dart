@@ -158,12 +158,18 @@ class Koolbase {
   /// session is wired as an app's is (R49): a refused data request renews
   /// once, and a refused renewal ends the session. So a test can sign in,
   /// have the session end and sign out against a client that answers as the
-  /// server does, while the SDK's own code runs. Storage, realtime and code
-  /// push are left unset and throw on access, which is the correct signal.
+  /// server does, while the SDK's own code runs. Storage and code push are
+  /// left unset and throw on access, which is the correct signal.
+  ///
+  /// Realtime too, unless [realtimeConnector] is given (R122): then realtime
+  /// opens its connection through it, so a test plays the realtime server
+  /// and a live list or record follows what it sends, through the SDK's own
+  /// realtime code. Its connection follows the session, as an app's does.
   @visibleForTesting
   static void initializeForTesting({
     KoolbaseConfig? config,
     http.Client? httpClient,
+    RealtimeConnector? realtimeConnector,
   }) {
     final cfg = config ??
         KoolbaseConfig(baseUrl: 'http://localhost', publicKey: 'pk_test');
@@ -197,6 +203,17 @@ class Koolbase {
       onSessionExpired: () async => _auth?.sessionRejected(),
       httpClient: KoolbaseSessionClient(client),
     );
+    if (realtimeConnector != null) {
+      _realtime = KoolbaseRealtimeClient(
+        baseUrl: cfg.baseUrl,
+        publicKey: cfg.publicKey,
+        accessTokenProvider: () =>
+            _auth?.validAccessToken() ?? Future<String?>.value(null),
+        userIdProvider: () => _auth?.currentUser?.id,
+        connector: realtimeConnector,
+      );
+      _auth?.authStateChanges.listen((_) => _realtime?.sessionChanged());
+    }
     _wireSession();
     _initialized = true;
   }
@@ -249,6 +266,7 @@ class Koolbase {
     _instance = null;
     _database = null;
     _auth = null;
+    _realtime?.dispose();
     _realtime = null;
     _functions = null;
     _initialized = false;
