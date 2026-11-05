@@ -24,7 +24,7 @@ For browser apps, use the Koolbase JS SDK instead.
 
 ```yaml
    dependencies:
-     koolbase_flutter: ^12.52.6
+     koolbase_flutter: ^12.52.7
 ```
 
 4. Initialize before `runApp()`:

@@ -1,3 +1,7 @@
+## 12.52.7
+
+* `KoolbaseRecordView` follows the app's own writes to its collection, as `KoolbaseCollectionList` does: after an update it shows the device's saved copy at once (which holds the change, made online or queued offline), then the server's. Before, a shown record kept its old values until the screen was opened again -- a "Mark done" on a detail screen left it saying not done.
+
 ## 12.52.6
 
 * `Koolbase.initializeForTesting(offline: true)` sets up the offline layer as an app's is, on an in-memory database: a write the network fails is queued and shown from the device's copy, and `Koolbase.db.syncPendingWrites()` replays the queue through the test's `httpClient`, so a widget test plays a server that accepts or refuses each change (a refused one becomes a conflict). Nothing listens for connectivity. `resetForTesting` closes it.

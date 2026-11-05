@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../testing/test_data.dart';
 
 import '../database/database_exceptions.dart';
+import '../database/database_query.dart' show koolbaseRegisterRecordRefresher;
 import '../koolbase.dart';
 import 'load_error.dart';
 
@@ -81,6 +82,7 @@ class KoolbaseRecordController extends ChangeNotifier {
   final Stream<RealtimeEvent> Function(String collection)? _liveEvents;
 
   StreamSubscription<RealtimeEvent>? _liveSub;
+  void Function()? _unregister;
   Timer? _liveTimer;
 
   KoolbaseRecordStatus _status = KoolbaseRecordStatus.loading;
@@ -109,6 +111,11 @@ class KoolbaseRecordController extends ChangeNotifier {
   Future<void> load() async {
     if (_disposed) return;
     _goLive();
+    // The app's own writes to this collection (R125), as a list follows
+    // them. A test's fetch stands alone: nothing registers for it.
+    if (id.isNotEmpty && _fetch == null) {
+      _unregister ??= koolbaseRegisterRecordRefresher(collection, _afterWrite);
+    }
     await _showSaved();
     await _run();
   }
@@ -179,6 +186,29 @@ class KoolbaseRecordController extends ChangeNotifier {
     });
   }
 
+  /// After the app's own write to this collection (R125): the device's saved
+  /// copy at once -- which already holds the change, made online or queued
+  /// offline -- then the server's, silently (no [refreshing]). A read still
+  /// in flight is superseded; if the server cannot be reached, the saved
+  /// copy stays.
+  Future<void> _afterWrite() async {
+    if (_disposed || id.isEmpty) return;
+    final gen = ++_generation;
+    try {
+      final saved = await Koolbase.db.doc(id).getSaved();
+      if (saved != null &&
+          !_isStale(gen) &&
+          (saved.collection == null || saved.collection == collection)) {
+        _isSaved = true;
+        _show(KoolbaseRecordStatus.loaded, saved, null);
+      }
+    } catch (_) {
+      // No saved copy to show: the server's answer decides.
+    }
+    if (_isStale(gen)) return;
+    await _run();
+  }
+
   /// Fetch again. The record stays visible while it runs, and stays if it
   /// fails.
   Future<void> refresh() async {
@@ -235,6 +265,8 @@ class KoolbaseRecordController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _unregister?.call();
+    _unregister = null;
     _liveSub?.cancel();
     _liveSub = null;
     _liveTimer?.cancel();

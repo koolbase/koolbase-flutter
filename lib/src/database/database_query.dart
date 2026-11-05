@@ -68,6 +68,20 @@ void _refreshStreamsAfterWrite(String? collection) {
       : refreshCollectionStreams(collection));
 }
 
+var _nextRecordRefresher = 0;
+
+/// Registers what a shown record re-reads after the app's own write to
+/// [collection] (R125), as a list's stream is registered; returns the
+/// unregister. For the SDK's own record view; not for apps.
+void Function() koolbaseRegisterRecordRefresher(
+  String collection,
+  Future<void> Function() refresh,
+) {
+  final key = '$collection:record:${++_nextRecordRefresher}';
+  _refreshers[key] = refresh;
+  return () => _refreshers.remove(key);
+}
+
 /// Registers a refresher directly.
 ///
 /// Tests only — in production this happens when a query's stream is first
