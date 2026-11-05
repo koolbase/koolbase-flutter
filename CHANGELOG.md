@@ -1,3 +1,7 @@
+## 12.53.0
+
+* Messaging (R138): `registerToken` sends the signed-in person's session, so the API ties the device to them -- before, every registration was ownerless and sends to a user never reached their devices. It posts on the app's HTTP client, accepts `web` as a platform, and remembers the last token: signing in or out registers it again by itself. `initializeForTesting` sets messaging up on the test's client (device `test-device`). `userId` is kept but ignored (the API takes the owner from the session).
+
 ## 12.52.8
 
 * A change refused on replay because the record changed elsewhere (409 `revision_mismatch`) is recorded as that conflict again, with the server's version that came with it. It was filed as a plain refusal: the conflict read "refused" instead of "changed elsewhere", and keeping the server's version had nothing to show.

@@ -262,6 +262,15 @@ class Koolbase {
       );
       _auth?.authStateChanges.listen((_) => _realtime?.sessionChanged());
     }
+    // Messaging on the same client (R138), so a test's server sees a
+    // device register.
+    _messaging = KoolbaseMessaging(
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.publicKey,
+      accessTokenProvider: () =>
+          _auth?.validAccessToken() ?? Future<String?>.value(null),
+      httpClient: _KeepOpenClient(client),
+    )..setDeviceId('test-device');
     _wireSession();
     _initialized = true;
   }
@@ -299,10 +308,16 @@ class Koolbase {
   static void _wireSession() {
     KoolbaseSessionClient.renew = (refused) =>
         _auth?.renewRejected(refused) ?? Future<String?>.value(null);
+    String? lastUser = _auth?.currentUser?.id;
     _auth?.authStateChanges.listen((user) {
       if (user == null) SeenRecords.clear();
       _database?.setUserId(user?.id);
       _database?.sessionChanged();
+      // R138: a registered device follows who is signed in.
+      if (user?.id != lastUser) {
+        lastUser = user?.id;
+        unawaited(_messaging?.sessionChanged());
+      }
     });
     _database?.setUserId(_auth?.currentUser?.id);
   }
@@ -318,6 +333,7 @@ class Koolbase {
     _realtime = null;
     _storage = null;
     _functions = null;
+    _messaging = null;
     // The offline layer, when the test had one (R124).
     _syncEngine?.dispose();
     _syncEngine = null;
@@ -508,6 +524,9 @@ class Koolbase {
       _messaging = KoolbaseMessaging(
         baseUrl: config.baseUrl,
         apiKey: config.publicKey,
+        // R138: the device is the signed-in person's while they are.
+        accessTokenProvider: () =>
+            _auth?.validAccessToken() ?? Future<String?>.value(null),
       );
       _messaging!.setDeviceId(await DeviceIdManager.getOrCreate());
     }
