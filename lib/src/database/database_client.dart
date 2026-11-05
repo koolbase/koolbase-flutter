@@ -382,6 +382,25 @@ class KoolbaseDatabaseClient {
         row.recordId, fields, row.serverRevision);
   }
 
+  /// The server's version stands (keep theirs, abandon): the device's saved
+  /// copy takes it -- it still held the refused change -- and what shows the
+  /// collection hears of it (R125), so the screen stops showing what was
+  /// discarded, offline too.
+  Future<void> _showServerVersion(Conflict row) async {
+    final raw = row.serverState;
+    final state = raw == null ? null : _decodeOrNull(raw);
+    if (state != null) {
+      final fields = <String, dynamic>{
+        for (final e in state.entries)
+          if (!e.key.startsWith(r'$')) e.key: e.value,
+      };
+      await _cacheStore?.saveRecord(row.recordId, row.collection, fields, _userId,
+          revision: row.serverRevision);
+      await _cacheStore?.updateInQueries(row.collection, row.recordId, fields);
+    }
+    unawaited(refreshCollectionStreams(row.collection));
+  }
+
   int? _revisionFromResponse(http.Response res) {
     try {
       final body = jsonDecode(res.body);
@@ -797,6 +816,7 @@ class _ConflictResolver implements ConflictResolver {
     // is the server's version, so rebase them onto that — otherwise each would
     // replay against a revision that moved and conflict in turn.
     await _client._rebaseOntoServerState(row);
+    await _client._showServerVersion(row);
     debugPrint(
         '[Koolbase] Conflict ${row.id} resolved in favour of the server');
   }
@@ -808,6 +828,7 @@ class _ConflictResolver implements ConflictResolver {
     // Abandoning claims neither version won, so the record stands as the server
     // has it — which is what anything still queued must build on.
     await _client._rebaseOntoServerState(row);
+    await _client._showServerVersion(row);
     debugPrint('[Koolbase] Conflict ${row.id} abandoned');
   }
 }

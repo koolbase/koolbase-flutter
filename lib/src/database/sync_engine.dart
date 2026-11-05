@@ -304,6 +304,11 @@ class SyncEngine {
     final err = await koolbaseDataErrorNotifying(res,
         onSessionExpired: onSessionExpired, fallbackMessage: fallback);
     if (err is KoolbaseUnauthenticatedException) return err;
+    // Changed elsewhere since the change was made (409 revision_mismatch):
+    // itself, so syncPendingWrites records it as that conflict, with the
+    // server's version it came with. As a plain terminal refusal it lost
+    // both -- read as "refused", with nothing for keep-theirs to show.
+    if (err is KoolbaseRevisionMismatchException) return err;
     if (_isTerminal(res.statusCode)) {
       return _TerminalRejection(err.message, res.statusCode);
     }

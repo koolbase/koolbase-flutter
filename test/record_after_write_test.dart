@@ -47,7 +47,16 @@ void main() {
         return json(200, {'access_token': 'at_1', 'refresh_token': 'rt_1', 'expires_at': '2099-01-01T00:00:00Z', 'user': user});
       case '/v1/sdk/db/records/r1':
         if (r.method == 'GET') return json(200, wire());
-        title = ((jsonDecode(r.body) as Map)['data'] as Map)['title'] as String;
+        final body = jsonDecode(r.body) as Map<String, dynamic>;
+        final expected = body['expected_revision'];
+        if (expected != null && expected != revision) {
+          return json(409, {
+            'code': 'revision_mismatch',
+            'error': 'the record has changed since you read it',
+            'details': {'expected_revision': expected, 'current_revision': revision, 'record': {'title': title}},
+          });
+        }
+        title = (body['data'] as Map)['title'] as String;
         revision++;
         return json(200, wire());
     }
@@ -99,5 +108,32 @@ void main() {
     await settle(tester);
     expect(find.text('Water the garden'), findsOneWidget);
     expect(title, 'Water plants', reason: 'nothing reached the server');
+  });
+
+  testWidgets('discarding a refused change shows the server\'s version, offline too', (tester) async {
+    await tester.runAsync(() => Koolbase.auth.login(email: 'ama@example.com', password: 'secret'));
+    await tester.pumpWidget(view());
+    await settle(tester);
+    online = false;
+    await tester.runAsync(() => Koolbase.db.doc('r1').update({'title': 'Water the garden'}));
+    await settle(tester);
+    expect(find.text('Water the garden'), findsOneWidget);
+    // Someone else changed it; back online the change is refused.
+    title = 'Water the roses';
+    revision = 2;
+    online = true;
+    await tester.runAsync(() => Koolbase.db.syncPendingWrites());
+    final conflicts = (await tester.runAsync(() => Koolbase.db.conflicts()))!;
+    expect(conflicts, hasLength(1));
+    // Discard while offline: the saved copy shows the server's version.
+    online = false;
+    await tester.runAsync(() async {
+      for (final c in conflicts) {
+        await c.resolveWithServer();
+      }
+    });
+    await settle(tester);
+    expect(find.text('Water the roses'), findsOneWidget);
+    expect(find.text('Water the garden'), findsNothing);
   });
 }

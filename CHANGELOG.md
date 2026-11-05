@@ -1,3 +1,8 @@
+## 12.52.8
+
+* A change refused on replay because the record changed elsewhere (409 `revision_mismatch`) is recorded as that conflict again, with the server's version that came with it. It was filed as a plain refusal: the conflict read "refused" instead of "changed elsewhere", and keeping the server's version had nothing to show.
+* Keeping the server's version, or abandoning a conflict, puts the server's version in the device's saved copy and tells what shows the collection, so a shown record or list stops showing the discarded change -- offline too.
+
 ## 12.52.7
 
 * `KoolbaseRecordView` follows the app's own writes to its collection, as `KoolbaseCollectionList` does: after an update it shows the device's saved copy at once (which holds the change, made online or queued offline), then the server's. Before, a shown record kept its old values until the screen was opened again -- a "Mark done" on a detail screen left it saying not done.
