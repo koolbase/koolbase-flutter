@@ -1,3 +1,8 @@
+## 12.52.6
+
+* `Koolbase.initializeForTesting(offline: true)` sets up the offline layer as an app's is, on an in-memory database: a write the network fails is queued and shown from the device's copy, and `Koolbase.db.syncPendingWrites()` replays the queue through the test's `httpClient`, so a widget test plays a server that accepts or refuses each change (a refused one becomes a conflict). Nothing listens for connectivity. `resetForTesting` closes it.
+* `SyncEngine` takes an optional `httpClient` (the session client by default, as before). Nothing changes in an app.
+
 ## 12.52.5
 
 * `Koolbase.initializeForTesting(httpClient:)` now sets up `Koolbase.storage` on that client: its API calls through the session client, an upload's bytes and a download through the client itself (lent, never closed). A widget test can play the storage server, hold an upload open and cancel it. Storage was unset before, so a test touching it failed.

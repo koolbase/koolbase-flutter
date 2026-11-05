@@ -26,6 +26,7 @@ export 'fiscal/fiscal_client.dart';
 import 'storage/storage_client.dart';
 import 'database/database_client.dart';
 import 'database/offline/local_database.dart';
+import 'database/offline/memory_executor.dart';
 import 'database/offline/cache_store.dart';
 import 'database/offline/write_queue.dart';
 import 'database/sync_engine.dart';
@@ -164,6 +165,13 @@ class Koolbase {
   /// plays the storage server, holds an upload open and cancels it. Code push
   /// is left unset and throws on access, which is the correct signal.
   ///
+  /// With [offline] (R124), the offline layer is set up as an app's is, on
+  /// an in-memory database: a write the network fails is queued, the device's
+  /// copy shown, and `Koolbase.db.syncPendingWrites()` replays the queue
+  /// through [httpClient] -- a test stands in for the device reconnecting,
+  /// and plays the server that accepts or refuses each change. Nothing
+  /// listens for connectivity.
+  ///
   /// Realtime too, unless [realtimeConnector] is given (R122): then realtime
   /// opens its connection through it, so a test plays the realtime server
   /// and a live list or record follows what it sends, through the SDK's own
@@ -173,6 +181,7 @@ class Koolbase {
     KoolbaseConfig? config,
     http.Client? httpClient,
     RealtimeConnector? realtimeConnector,
+    bool offline = false,
   }) {
     final cfg = config ??
         KoolbaseConfig(baseUrl: 'http://localhost', publicKey: 'pk_test');
@@ -196,7 +205,31 @@ class Koolbase {
     // Data through the session client, as an app's (R49): a request refused
     // with the signed-in person's token renews once and goes again; a refused
     // renewal ends the session.
-    _database = _sessionDatabase(cfg, httpClient: KoolbaseSessionClient(client));
+    if (offline) {
+      _localDb = KoolbaseLocalDatabase.withExecutor(koolbaseMemoryExecutor());
+      final cacheStore = CacheStore(_localDb!);
+      final writeQueue = WriteQueue(_localDb!);
+      _database = _sessionDatabase(
+        cfg,
+        httpClient: KoolbaseSessionClient(client),
+        cacheStore: cacheStore,
+        writeQueue: writeQueue,
+      );
+      _syncEngine = SyncEngine(
+        baseUrl: cfg.baseUrl,
+        publicKey: cfg.publicKey,
+        cacheStore: cacheStore,
+        writeQueue: writeQueue,
+        accessTokenProvider: () =>
+            _auth?.validAccessToken() ?? Future<String?>.value(null),
+        currentUserId: () => _auth?.currentUser?.id,
+        onSessionExpired: () async => _auth?.sessionRejected(),
+        httpClient: KoolbaseSessionClient(client),
+      );
+      _database!.setSyncEngine(_syncEngine!);
+    } else {
+      _database = _sessionDatabase(cfg, httpClient: KoolbaseSessionClient(client));
+    }
     // Functions on the same client, so a test's server answers them too.
     _functions = KoolbaseFunctionsClient(
       baseUrl: cfg.baseUrl,
@@ -285,6 +318,12 @@ class Koolbase {
     _realtime = null;
     _storage = null;
     _functions = null;
+    // The offline layer, when the test had one (R124).
+    _syncEngine?.dispose();
+    _syncEngine = null;
+    final db = _localDb;
+    _localDb = null;
+    if (db != null) unawaited(db.close());
     _initialized = false;
   }
 

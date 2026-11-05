@@ -82,7 +82,12 @@ class SyncEngine {
     this.accessTokenProvider,
     this.currentUserId,
     this.onSessionExpired,
-  });
+    http.Client? httpClient,
+  }) : _http = httpClient ?? koolbaseHttp;
+
+  /// Every replay goes through it: in an app, the session client; in a
+  /// test, its fake (R124).
+  final http.Client _http;
 
   // ─── Start auto-sync on reconnect ─────────────────────────────────────────
 
@@ -222,7 +227,7 @@ class SyncEngine {
 
     switch (write.operation) {
       case 'insert':
-        final res = await koolbaseHttp
+        final res = await _http
             .post(
               Uri.parse('$baseUrl/v1/sdk/db/insert'),
               headers: headers,
@@ -245,7 +250,7 @@ class SyncEngine {
         if (write.recordId == null) {
           throw const _MalformedWrite('update has no record id');
         }
-        final res = await koolbaseHttp
+        final res = await _http
             .patch(
               Uri.parse('$baseUrl/v1/sdk/db/records/${write.recordId}'),
               headers: headers,
@@ -270,7 +275,7 @@ class SyncEngine {
         if (write.recordId == null) {
           throw const _MalformedWrite('delete has no record id');
         }
-        final res = await koolbaseHttp
+        final res = await _http
             .delete(
               Uri.parse(
                   '$baseUrl/v1/sdk/db/records/${write.recordId}${write.baseRevision != null ? '?expected_revision=${write.baseRevision}' : ''}'),
