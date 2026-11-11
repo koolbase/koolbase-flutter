@@ -220,7 +220,8 @@ class KoolbaseError {
     // fix -- the server category, as other misconfigurations, the raw code
     // saying which. Before the session check, and never unauthorized: that
     // routes to sign-in.
-    if (e is KoolbaseInvalidPublicKeyException) {
+    // A Run preview the API would not serve: setup too, never a sign-out.
+    if (e is KoolbaseInvalidPublicKeyException || e is KoolbasePreviewException) {
       return KoolbaseError(
         code: KoolbaseErrorCode.server,
         message: e.message,

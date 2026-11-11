@@ -176,18 +176,24 @@ class Koolbase {
   /// opens its connection through it, so a test plays the realtime server
   /// and a live list or record follows what it sends, through the SDK's own
   /// realtime code. Its connection follows the session, as an app's does.
+  ///
+  /// [payload] and [appVersion] set what [checkVersion] and the flags read,
+  /// as if the bootstrap had answered: a test can show its force-update
+  /// screen, store link included.
   @visibleForTesting
   static void initializeForTesting({
     KoolbaseConfig? config,
     http.Client? httpClient,
     RealtimeConnector? realtimeConnector,
     bool offline = false,
+    KoolbasePayload? payload,
+    String appVersion = '0.0.0',
   }) {
     final cfg = config ??
         KoolbaseConfig(baseUrl: 'http://localhost', publicKey: 'pk_test');
-    final instance = Koolbase._(cfg, KoolbasePayload.empty());
+    final instance = Koolbase._(cfg, payload ?? KoolbasePayload.empty());
     instance._deviceId = 'test-device';
-    instance._appVersion = '0.0.0';
+    instance._appVersion = appVersion;
     instance._platform = 'test';
     _instance = instance;
     final client = httpClient ?? _EmptyResponseClient();
@@ -746,6 +752,7 @@ class Koolbase {
         status: VersionStatus.forceUpdate,
         message: policy.updateMessage,
         latestVersion: policy.latestVersion,
+        storeUrl: policy.storeUrl.isEmpty ? null : policy.storeUrl,
       );
     }
 
@@ -756,6 +763,7 @@ class Koolbase {
             : VersionStatus.softUpdate,
         message: policy.updateMessage,
         latestVersion: policy.latestVersion,
+        storeUrl: policy.storeUrl.isEmpty ? null : policy.storeUrl,
       );
     }
 

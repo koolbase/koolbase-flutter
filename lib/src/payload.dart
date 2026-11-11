@@ -87,11 +87,16 @@ class KoolbaseVersionPolicy {
   final bool forceUpdate; // force_update from API (boolean)
   final String updateMessage;
 
+  /// The store page set in the dashboard for this app's platform; empty when
+  /// none was set.
+  final String storeUrl;
+
   const KoolbaseVersionPolicy({
     required this.latestVersion,
     required this.minVersion,
     required this.forceUpdate,
     required this.updateMessage,
+    this.storeUrl = '',
   });
 
   factory KoolbaseVersionPolicy.fromJson(Map<String, dynamic> json) =>
@@ -100,6 +105,7 @@ class KoolbaseVersionPolicy {
         minVersion: json['min_version'] as String? ?? '',
         forceUpdate: json['force_update'] as bool? ?? false,
         updateMessage: json['update_message'] as String? ?? '',
+        storeUrl: json['store_url'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -107,6 +113,7 @@ class KoolbaseVersionPolicy {
         'min_version': minVersion,
         'force_update': forceUpdate,
         'update_message': updateMessage,
+        'store_url': storeUrl,
       };
 
   static KoolbaseVersionPolicy empty() => const KoolbaseVersionPolicy(
@@ -125,9 +132,15 @@ class VersionCheckResult {
   final String message;
   final String latestVersion;
 
+  /// Where to send the person to update: the store page set in the
+  /// dashboard's version policy for this platform. Null when the app is up
+  /// to date, or when no store page was set.
+  final String? storeUrl;
+
   const VersionCheckResult({
     required this.status,
     required this.message,
     required this.latestVersion,
+    this.storeUrl,
   });
 }

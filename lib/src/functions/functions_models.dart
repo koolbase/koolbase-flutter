@@ -107,6 +107,8 @@ class FunctionExecutionException extends FunctionInvokeException {
 /// permissions problem, and one is a bug in the Function.
 KoolbaseException functionInvokeError(int statusCode, String message,
     {String? code}) {
+  // A Run preview the API would not serve: setup, never a sign-out.
+  if (KoolbasePreviewException.fromCode(code) case final e?) return e;
   switch (statusCode) {
     case 401:
       // A refused app key is setup, not a session (#169): never signs out.

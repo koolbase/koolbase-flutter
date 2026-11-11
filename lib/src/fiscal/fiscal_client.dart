@@ -122,6 +122,9 @@ class KoolbaseFiscalClient {
     // A refused app key is setup, not a session (#169): never signs out.
     final badKey = invalidPublicKeyIn(resp.body);
     if (badKey != null) throw badKey;
+    // A Run preview the API would not serve: a 403, but not a sign-out.
+    final preview = previewRefusalIn(resp.body);
+    if (preview != null) throw preview;
     if (resp.statusCode == 401 || resp.statusCode == 403) {
       await _onSessionExpired?.call();
       throw KoolbaseUnauthenticatedException(

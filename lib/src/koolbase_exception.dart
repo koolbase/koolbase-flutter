@@ -107,6 +107,35 @@ class KoolbaseInvalidPublicKeyException extends KoolbaseException {
   ]) : super(code: 'invalid_public_key');
 }
 
+/// A request from a Run preview the API would not serve: the preview has
+/// ended (`preview_not_live`: replaced by a newer Run, or past its 7 days), or
+/// it carried a key or session from another project
+/// (`preview_origin_mismatch`). Only Run previews meet it, never a published
+/// app. Like a refused key it is setup, not the user's session: it never signs
+/// anyone out.
+class KoolbasePreviewException extends KoolbaseException {
+  const KoolbasePreviewException(super.message, {required String super.code});
+
+  /// The refusal for a server [code], or null when [code] is not one.
+  static KoolbasePreviewException? fromCode(String? code) => switch (code) {
+        'preview_not_live' => const KoolbasePreviewException(
+            kPreviewEndedMessage,
+            code: 'preview_not_live'),
+        'preview_origin_mismatch' => const KoolbasePreviewException(
+            kPreviewOtherProjectMessage,
+            code: 'preview_origin_mismatch'),
+        _ => null,
+      };
+}
+
+/// What an ended Run preview says.
+const kPreviewEndedMessage =
+    'This preview has ended. Press Run in the Koolbase Designer for a new one.';
+
+/// What a Run preview says when a request carried another project's key.
+const kPreviewOtherProjectMessage =
+    "This preview can only use its own project's Koolbase key.";
+
 /// What the server says for a refused key, word for word.
 const kInvalidPublicKeyMessage =
     "This app's Koolbase key isn't valid for this project.";

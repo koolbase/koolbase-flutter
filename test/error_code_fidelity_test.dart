@@ -56,6 +56,8 @@ const apiCodes = <String>{
   // #161, #162.
   'placement_unavailable', 'auto_embedding_managed', 'reembed_confirmation_required',
   'embedding_model_unsupported',
+  // Run previews (koolbase-preview.app).
+  'preview_not_live', 'preview_origin_mismatch',
 };
 
 // Codes with no server counterpart, each for a checked reason.
@@ -202,6 +204,9 @@ final exceptions = <KoolbaseException>[
   const KoolbaseEmbeddingModelUnsupportedException(),
   // #168, #169.
   const KoolbaseInvalidPublicKeyException(),
+  // Run previews.
+  KoolbasePreviewException.fromCode('preview_not_live')!,
+  KoolbasePreviewException.fromCode('preview_origin_mismatch')!,
 ];
 
 void main() {

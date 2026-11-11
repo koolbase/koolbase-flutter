@@ -6,6 +6,7 @@ import '../koolbase_exception.dart'
     show
         KoolbaseServiceUnavailableException,
         KoolbaseInvalidPublicKeyException,
+        KoolbasePreviewException,
         kInvalidPublicKeyMessage;
 import 'device_metadata.dart';
 import '../network/request_log.dart';
@@ -550,6 +551,9 @@ class AuthApi {
       case 'invalid_public_key':
         throw KoolbaseInvalidPublicKeyException(
             msg.isEmpty ? kInvalidPublicKeyMessage : msg);
+      case 'preview_not_live':
+      case 'preview_origin_mismatch':
+        throw KoolbasePreviewException.fromCode(code)!;
       case 'invalid_credentials':
         throw const InvalidCredentialsException();
       case 'invalid_password':
@@ -849,6 +853,9 @@ class AuthApi {
       case 'invalid_public_key':
         throw KoolbaseInvalidPublicKeyException(
             errorMessage.isEmpty ? kInvalidPublicKeyMessage : errorMessage);
+      case 'preview_not_live':
+      case 'preview_origin_mismatch':
+        throw KoolbasePreviewException.fromCode(code)!;
       case 'oauth_not_configured':
         throw const AppleSignInNotConfiguredException();
       case 'invalid_oauth_token':
@@ -942,6 +949,9 @@ class AuthApi {
       case 'invalid_public_key':
         throw KoolbaseInvalidPublicKeyException(
             errorMessage.isEmpty ? kInvalidPublicKeyMessage : errorMessage);
+      case 'preview_not_live':
+      case 'preview_origin_mismatch':
+        throw KoolbasePreviewException.fromCode(code)!;
       case 'oauth_not_configured':
         throw const GoogleSignInNotConfiguredException();
       case 'invalid_oauth_token':

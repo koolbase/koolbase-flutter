@@ -370,6 +370,9 @@ KoolbaseException koolbaseStorageError(
   final code = body['code'] as String?;
   final message = (body['error'] as String?) ?? fallbackMessage;
 
+  // A Run preview the API would not serve: setup, never a sign-out.
+  if (KoolbasePreviewException.fromCode(code) case final e?) return e;
+
   // ---- code-first ----
   switch (code) {
     case 'path_conflict':

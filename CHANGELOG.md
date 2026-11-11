@@ -1,3 +1,13 @@
+## 12.55.0
+
+* A Run preview the API would not serve raises `KoolbasePreviewException`, with a message a person can act on: "This preview has ended. Press Run in the Koolbase Designer for a new one." (`preview_not_live`), or "This preview can only use its own project's Koolbase key." (`preview_origin_mismatch`). Before, it surfaced as a bare permission error, and in payments as a session failure that signed the person out. Like a refused key, it never signs anyone out. Only Run previews meet it, never a published app.
+
+## 12.54.0
+
+* `VersionCheckResult.storeUrl`: where to send the person to update -- the store page set in the dashboard's version policy for the app's platform. Null when the app is up to date or no store page was set. Before, the server kept the store page but no app could read it.
+* The version policy is the app's own platform's: the API now answers iOS with the iOS policy and Android with the Android one, falling back to All platforms. Before, every app was sent the newest policy whatever its platform. This is a server change: earlier SDK versions get the right policy too.
+* `initializeForTesting` takes a `payload` and an `appVersion`, so a test can show its force-update screen.
+
 ## 12.53.0
 
 * Messaging (R138): `registerToken` sends the signed-in person's session, so the API ties the device to them -- before, every registration was ownerless and sends to a user never reached their devices. It posts on the app's HTTP client, accepts `web` as a platform, and remembers the last token: signing in or out registers it again by itself. `initializeForTesting` sets messaging up on the test's client (device `test-device`). `userId` is kept but ignored (the API takes the owner from the session).
