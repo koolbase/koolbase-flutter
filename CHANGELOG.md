@@ -1,3 +1,7 @@
+## 12.56.0
+
+* Location fields (needs the API with location fields): `KbField(name).within(lat, lng, km)` reads the records at most `km` from a point by great-circle distance, and `KbSort.near(name, lat, lng)` orders them nearest first, records with no position last. A location is stored as `{"lat": ..., "lng": ...}`; the server refuses any other shape.
+
 ## 12.55.0
 
 * A Run preview the API would not serve raises `KoolbasePreviewException`, with a message a person can act on: "This preview has ended. Press Run in the Koolbase Designer for a new one." (`preview_not_live`), or "This preview can only use its own project's Koolbase key." (`preview_origin_mismatch`). Before, it surfaced as a bare permission error, and in payments as a session failure that signed the person out. Like a refused key, it never signs anyone out. Only Run previews meet it, never a published app.

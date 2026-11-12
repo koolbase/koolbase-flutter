@@ -98,6 +98,14 @@ class KbField {
   /// The calendar day of [when] in the query's time zone.
   KbWhere on(Object when) => _with('on', when);
 
+  /// A location field (G5): records at most [km] from [lat], [lng] by
+  /// great-circle distance. A record with no position never matches.
+  KbWhere within(double lat, double lng, double km) {
+    _checkPoint(lat, lng);
+    if (!(km > 0)) throw ArgumentError.value(km, 'km', 'more than 0');
+    return _with('within', {'lat': lat, 'lng': lng, 'km': km});
+  }
+
   /// No value: missing, null or an empty list. `0`, `false` and an empty
   /// text are values.
   KbWhere isEmpty() => _bare('is_empty');
@@ -164,15 +172,35 @@ class KbValue {
 /// One sort field. Typed by the declaration; values that are empty or do
 /// not fit it come last both ways, and the record's id breaks ties.
 class KbSort {
-  const KbSort._(this.field, this.dir);
+  const KbSort._(this.field, this.dir, [this._near]);
 
   final String field;
   final String dir;
+  final ({double lat, double lng})? _near;
 
   static KbSort asc(String field) => KbSort._(field, 'asc');
   static KbSort desc(String field) => KbSort._(field, 'desc');
 
-  Map<String, Object?> toJson() => {'field': field, 'dir': dir};
+  /// A location field (G5) by distance from [lat], [lng], nearest first;
+  /// records with no position last.
+  static KbSort near(String field, double lat, double lng) {
+    _checkPoint(lat, lng);
+    return KbSort._(field, 'asc', (lat: lat, lng: lng));
+  }
+
+  Map<String, Object?> toJson() {
+    final p = _near;
+    return {
+      'field': field,
+      'dir': dir,
+      if (p != null) 'near': {'lat': p.lat, 'lng': p.lng},
+    };
+  }
+}
+
+void _checkPoint(double lat, double lng) {
+  if (!(lat >= -90 && lat <= 90)) throw ArgumentError.value(lat, 'lat', '-90 to 90');
+  if (!(lng >= -180 && lng <= 180)) throw ArgumentError.value(lng, 'lng', '-180 to 180');
 }
 
 String? _deviceZone;
