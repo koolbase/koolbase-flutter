@@ -4,6 +4,7 @@ import 'auth_api.dart';
 import 'auth_models.dart';
 import 'auth_storage.dart';
 import 'auth_exceptions.dart';
+import 'app_admin.dart';
 
 /// Result of [KoolbaseAuthClient.restoreSession].
 ///
@@ -447,6 +448,10 @@ class KoolbaseAuthClient {
     final token = await _ensureValidToken();
     return _api.listAudit(accessToken: token, limit: limit, offset: offset);
   }
+
+  /// Managing the app's people, for the app's own admins (the `app_admin`
+  /// claim). See [KoolbaseAppAdmin].
+  late final KoolbaseAppAdmin admin = KoolbaseAppAdmin(_api, _ensureValidToken);
 
   Future<List<KoolbaseSessionInfo>> listSessions() async {
     final token = await _ensureValidToken();

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'auth_models.dart';
+import 'app_admin.dart';
 import 'auth_exceptions.dart';
 import '../koolbase_exception.dart'
     show
@@ -669,6 +670,130 @@ class AuthApi {
       msg.isEmpty ? 'An unexpected error occurred' : msg,
       code: code.isEmpty ? null : code,
     );
+  }
+
+  // ---- in-app admin (/v1/sdk/admin) ----
+
+  Future<KoolbaseMemberPage> adminListMembers(String accessToken,
+      {String? query, int? limit, int? offset}) async {
+    final q = <String, String>{
+      if (query != null && query.isNotEmpty) 'q': query,
+      if (limit != null) 'limit': '$limit',
+      if (offset != null) 'offset': '$offset',
+    };
+    final uri = Uri.parse('$baseUrl/v1/sdk/admin/members')
+        .replace(queryParameters: q.isEmpty ? null : q);
+    final res = await _client
+        .get(uri, headers: _authHeaders(accessToken))
+        .timeout(timeout);
+    _checkAdminError(res);
+    return KoolbaseMemberPage.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<List<KoolbaseAssignableRole>> adminRoles(String accessToken) async {
+    final res = await _client
+        .get(Uri.parse('$baseUrl/v1/sdk/admin/roles'),
+            headers: _authHeaders(accessToken))
+        .timeout(timeout);
+    _checkAdminError(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return [
+      for (final r in (body['roles'] as List<dynamic>? ?? const []))
+        KoolbaseAssignableRole.fromJson(r as Map<String, dynamic>),
+    ];
+  }
+
+  Future<KoolbaseMember> adminInvite(String accessToken,
+      {required String email,
+      String? fullName,
+      Map<String, Object?>? roles}) async {
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/admin/members/invite'),
+          headers: _authHeaders(accessToken),
+          body: jsonEncode({
+            'email': email,
+            if (fullName != null) 'full_name': fullName,
+            if (roles != null && roles.isNotEmpty) 'roles': roles,
+          }),
+        )
+        .timeout(timeout);
+    _checkAdminError(res);
+    return KoolbaseMember.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<void> adminSetDisabled(String accessToken, String userId,
+      {required bool disabled}) async {
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sdk/admin/members/'
+              '${Uri.encodeComponent(userId)}/${disabled ? 'disable' : 'enable'}'),
+          headers: _authHeaders(accessToken),
+        )
+        .timeout(timeout);
+    _checkAdminError(res);
+  }
+
+  Future<KoolbaseMemberRoles> adminSetRoles(String accessToken, String userId,
+      {required Map<String, Object?> roles,
+      required int expectedVersion}) async {
+    final res = await _client
+        .put(
+          Uri.parse('$baseUrl/v1/sdk/admin/members/'
+              '${Uri.encodeComponent(userId)}/roles'),
+          headers: _authHeaders(accessToken),
+          body: jsonEncode(
+              {'roles': roles, 'expected_version': expectedVersion}),
+        )
+        .timeout(timeout);
+    _checkAdminError(res);
+    return KoolbaseMemberRoles.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// The admin routes' own codes first. Their plain failures (a member not
+  /// found, a conflict, a refusal) keep the server's words: the general
+  /// status fallback would call a 409 an email in use and a 403 a disabled
+  /// account, neither of which an admin route means.
+  void _checkAdminError(http.Response res) {
+    if (res.statusCode >= 200 && res.statusCode < 300) return;
+    Map<String, dynamic> body = {};
+    try {
+      body = jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (_) {}
+    final code = (body['code'] as String?) ?? '';
+    final msg = (body['error'] as String?) ?? '';
+    switch (code) {
+      // Never sent by these routes; mapped so every parser here handles the
+      // challenge the same way (mfa_test checks each switch).
+      case 'mfa_required':
+        throw _mfaRequired(body);
+      case 'app_admin_required':
+        throw const NotAppAdminException();
+      case 'app_admin_self':
+        throw const AppAdminSelfException();
+      case 'app_admin_target_is_admin':
+        throw const AppAdminTargetIsAdminException();
+      case 'role_not_assignable':
+        throw RoleNotAssignableException(msg.isEmpty ? null : msg);
+      case 'role_value_not_allowed':
+        throw RoleValueNotAllowedException(msg.isEmpty ? null : msg);
+      case 'member_exists':
+        throw const MemberExistsException();
+      case 'claims_version_conflict':
+        throw ClaimsVersionConflictException(
+            (body['version'] as num?)?.toInt());
+      case 'not_found':
+      case 'conflict':
+      case 'permission_denied':
+      case 'validation_error':
+        throw KoolbaseAuthException(
+            msg.isEmpty ? 'The request was refused.' : msg,
+            code: code);
+    }
+    _checkError(res);
   }
 
   Future<OtpSendResult> sendOtp({required String phoneNumber}) async {

@@ -1,3 +1,7 @@
+## 12.57.0
+
+* In-app admin (needs the API with in-app admin): `Koolbase.auth.admin` lets a signed-in app admin (the `app_admin` claim, given by the project owner in the dashboard) manage the app's people from inside the app: `members()`, `roles()`, `invite()`, `disable()`, `enable()` and `setRoles()`. Only roles the project marked "App admins can give it" can be given. Admins never change themselves or another admin. `setRoles` takes the member's `version` and throws `ClaimsVersionConflictException` when someone changed them in between. With two-step sign-in on, disabling, enabling and changing roles need `stepUpMfa` first (`RecentMfaRequiredException`). New exceptions: `NotAppAdminException`, `AppAdminSelfException`, `AppAdminTargetIsAdminException`, `RoleNotAssignableException`, `RoleValueNotAllowedException`, `MemberExistsException`.
+
 ## 12.56.0
 
 * Location fields (needs the API with location fields): `KbField(name).within(lat, lng, km)` reads the records at most `km` from a point by great-circle distance, and `KbSort.near(name, lat, lng)` orders them nearest first, records with no position last. A location is stored as `{"lat": ..., "lng": ...}`; the server refuses any other shape.

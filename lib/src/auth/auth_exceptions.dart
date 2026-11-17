@@ -412,3 +412,56 @@ class MfaNotEnabledException extends KoolbaseAuthException {
       : super('Two-step sign-in is not on for this account',
             code: 'mfa_not_enabled');
 }
+
+// ---- in-app admin ----
+
+/// The signed-in person is not an app admin. The project owner gives the
+/// `app_admin` claim in the dashboard.
+class NotAppAdminException extends KoolbaseAuthException {
+  const NotAppAdminException()
+      : super('Only app admins can do this', code: 'app_admin_required');
+}
+
+/// An admin tried to disable themselves or change their own roles.
+class AppAdminSelfException extends KoolbaseAuthException {
+  const AppAdminSelfException()
+      : super('You cannot change your own account here',
+            code: 'app_admin_self');
+}
+
+/// The person is an app admin too; only the project owner can change them.
+class AppAdminTargetIsAdminException extends KoolbaseAuthException {
+  const AppAdminTargetIsAdminException()
+      : super('Another app admin can only be changed by the project owner',
+            code: 'app_admin_target_is_admin');
+}
+
+/// The project has not let app admins give this role.
+class RoleNotAssignableException extends KoolbaseAuthException {
+  const RoleNotAssignableException([String? message])
+      : super(message ?? 'App admins cannot give this role',
+            code: 'role_not_assignable');
+}
+
+/// The role exists, but not with this value.
+class RoleValueNotAllowedException extends KoolbaseAuthException {
+  const RoleValueNotAllowedException([String? message])
+      : super(message ?? 'That value is not allowed for this role',
+            code: 'role_value_not_allowed');
+}
+
+/// The invited email already has an account in this app.
+class MemberExistsException extends KoolbaseAuthException {
+  const MemberExistsException()
+      : super('Someone with this email is already in the app',
+            code: 'member_exists');
+}
+
+/// The person's roles changed since they were read; nothing was changed.
+/// Read them again, or retry with [currentVersion].
+class ClaimsVersionConflictException extends KoolbaseAuthException {
+  final int? currentVersion;
+  const ClaimsVersionConflictException(this.currentVersion)
+      : super("This person's roles changed since you opened them",
+            code: 'claims_version_conflict');
+}

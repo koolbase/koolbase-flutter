@@ -6,6 +6,7 @@ export 'src/koolbase.dart';
 export 'src/auth/auth_models.dart';
 export 'src/auth/auth_exceptions.dart';
 export 'src/auth/auth_client.dart';
+export 'src/auth/app_admin.dart';
 export 'src/auth/auth_storage.dart' show KoolbaseAuthStorage, InMemoryAuthStorage;
 export 'src/storage/storage_client.dart';
 export 'src/database/kb_where.dart' hide debugDeviceZone;
