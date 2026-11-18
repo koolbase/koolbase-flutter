@@ -1,3 +1,7 @@
+## 12.58.0
+
+* What the app two-step setting allows (needs the API with it): MfaStatus from Koolbase.auth.mfaStatus() also has offered (false when the app does not offer two-step sign-in, so nothing can turn it on) and required (true when it is required, so nothing can turn it off). An older API sends neither: offered, not required.
+
 ## 12.57.0
 
 * In-app admin (needs the API with in-app admin): `Koolbase.auth.admin` lets a signed-in app admin (the `app_admin` claim, given by the project owner in the dashboard) manage the app's people from inside the app: `members()`, `roles()`, `invite()`, `disable()`, `enable()` and `setRoles()`. Only roles the project marked "App admins can give it" can be given. Admins never change themselves or another admin. `setRoles` takes the member's `version` and throws `ClaimsVersionConflictException` when someone changed them in between. With two-step sign-in on, disabling, enabling and changing roles need `stepUpMfa` first (`RecentMfaRequiredException`). New exceptions: `NotAppAdminException`, `AppAdminSelfException`, `AppAdminTargetIsAdminException`, `RoleNotAssignableException`, `RoleValueNotAllowedException`, `MemberExistsException`.

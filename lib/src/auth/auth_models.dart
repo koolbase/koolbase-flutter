@@ -456,12 +456,26 @@ class MfaEnrollment {
 class MfaStatus {
   final bool enabled;
   final int recoveryCodesRemaining;
-  const MfaStatus(
-      {required this.enabled, required this.recoveryCodesRemaining});
+
+  /// Whether the app offers two-step sign-in: false when its setting is off,
+  /// so nothing can turn it on. An API before 12.58.0 does not say: true.
+  final bool offered;
+
+  /// Whether the app requires it, so nothing can turn it off. An API before
+  /// 12.58.0 does not say: false.
+  final bool required;
+  const MfaStatus({
+    required this.enabled,
+    required this.recoveryCodesRemaining,
+    this.offered = true,
+    this.required = false,
+  });
   factory MfaStatus.fromJson(Map<String, dynamic> j) => MfaStatus(
         enabled: j['enabled'] as bool? ?? false,
         recoveryCodesRemaining:
             (j['recovery_codes_remaining'] as num?)?.toInt() ?? 0,
+        offered: j['offered'] as bool? ?? true,
+        required: j['required'] as bool? ?? false,
       );
 }
 
