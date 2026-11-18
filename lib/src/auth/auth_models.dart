@@ -335,6 +335,16 @@ class KoolbaseSessionInfo {
   /// exclude.
   final bool isCurrent;
 
+  /// The device, named for a person: "Chrome on macOS", "iOS 18.1".
+  /// "Unknown device" from an API that does not name it.
+  final String device;
+
+  /// When the device last used this session (its last renewal).
+  final DateTime lastActiveAt;
+
+  /// When its owner last signed in on it.
+  final DateTime signedInAt;
+
   const KoolbaseSessionInfo({
     required this.id,
     this.ip,
@@ -343,17 +353,31 @@ class KoolbaseSessionInfo {
     required this.createdAt,
     required this.expiresAt,
     required this.isCurrent,
-  });
+    this.device = 'Unknown device',
+    // Optional so code building one by hand keeps compiling: the row's own
+    // time when not given.
+    DateTime? lastActiveAt,
+    DateTime? signedInAt,
+  })  : lastActiveAt = lastActiveAt ?? createdAt,
+        signedInAt = signedInAt ?? createdAt;
 
   factory KoolbaseSessionInfo.fromJson(Map<String, dynamic> json) {
+    final created = DateTime.parse(json['created_at'] as String);
+    // An API before these sends none of these: the row's own times.
+    final device = json['device'];
+    final lastActive = json['last_active_at'];
+    final signedIn = json['signed_in_at'];
     return KoolbaseSessionInfo(
       id: json['id'] as String,
       ip: json['ip'] as String?,
       userAgent: json['user_agent'] as String?,
       deviceLabel: json['device_label'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: created,
       expiresAt: DateTime.parse(json['expires_at'] as String),
       isCurrent: json['is_current'] as bool? ?? false,
+      device: device is String && device.isNotEmpty ? device : 'Unknown device',
+      lastActiveAt: lastActive is String ? DateTime.parse(lastActive) : created,
+      signedInAt: signedIn is String ? DateTime.parse(signedIn) : created,
     );
   }
 

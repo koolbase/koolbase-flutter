@@ -71,6 +71,31 @@ void main() {
       expect(sessions.first.ip, isNull);
       expect(sessions.first.userAgent, isNull);
       expect(sessions.first.isCurrent, isFalse);
+      // An API before the names: unknown, and the row's own times.
+      expect(sessions.first.device, 'Unknown device');
+      expect(sessions.first.lastActiveAt, DateTime.parse('2026-09-01T00:00:00Z'));
+      expect(sessions.first.signedInAt, DateTime.parse('2026-09-01T00:00:00Z'));
+    });
+
+    test('names the device, when it was last active and signed in', () async {
+      final api = apiReturning({
+        'sessions': [
+          {
+            'id': 's3',
+            'created_at': '2026-11-18T10:00:00Z',
+            'expires_at': '2026-12-18T10:00:00Z',
+            'is_current': true,
+            'device': 'iOS 18.1',
+            'last_active_at': '2026-11-18T10:00:00Z',
+            'signed_in_at': '2026-11-01T09:00:00Z',
+          }
+        ],
+      });
+
+      final s = (await api.listSessions('token')).first;
+      expect(s.device, 'iOS 18.1');
+      expect(s.lastActiveAt, DateTime.parse('2026-11-18T10:00:00Z'));
+      expect(s.signedInAt, DateTime.parse('2026-11-01T09:00:00Z'));
     });
 
     test('an empty list is empty, not an error', () async {

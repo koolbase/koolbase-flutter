@@ -1,3 +1,7 @@
+## 12.59.0
+
+* Signed-in devices, named (needs the API with it): Koolbase.auth.listSessions() lists every device still signed in, not only those used in the last 15 minutes, this device first. Each KoolbaseSessionInfo also has device ("Chrome on macOS", "iOS 18.1"), lastActiveAt (its last renewal) and signedInAt. An older API sends none: "Unknown device", and createdAt for both times.
+
 ## 12.58.0
 
 * What the app two-step setting allows (needs the API with it): MfaStatus from Koolbase.auth.mfaStatus() also has offered (false when the app does not offer two-step sign-in, so nothing can turn it on) and required (true when it is required, so nothing can turn it off). An older API sends neither: offered, not required.
